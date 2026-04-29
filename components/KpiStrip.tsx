@@ -4,8 +4,8 @@ function sum(rows: CampaignReport[], key: keyof CampaignReport) {
   return rows.reduce((a, r) => a + (Number(r[key]) || 0), 0)
 }
 function pct(n: number, d: number) { return d ? `${((n / d) * 100).toFixed(1)}%` : '—' }
-function fmt(n: number) { return n.toLocaleString('en-ZA') }
-function rand(n: number) { return `R${n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
+function fmtN(n: number) { return n.toLocaleString('en-ZA') }
+function fmtR(n: number) { return `R${n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
 
 export default function KpiStrip({ reports }: { reports: CampaignReport[] }) {
   const dialed    = sum(reports, 'dialed')
@@ -20,30 +20,32 @@ export default function KpiStrip({ reports }: { reports: CampaignReport[] }) {
   const avgCpl    = cpls.length ? cpls.reduce((a, b) => a + b, 0) / cpls.length : 0
 
   const kpis = [
-    { label: 'Dialed',       value: fmt(dialed),       delta: 'Total across campaigns', tone: 'neutral' },
-    { label: 'Connected',    value: fmt(connected),     delta: pct(connected, dialed) + ' connect rate', tone: 'positive' },
-    { label: 'Qualified',    value: fmt(qualified),     delta: pct(qualified, connected) + ' of connected', tone: 'positive' },
-    { label: 'Voicemail',    value: fmt(voicemail),     delta: pct(voicemail, dialed), tone: 'neutral' },
-    { label: 'No Speech',    value: fmt(nospeech),      delta: pct(nospeech, dialed), tone: 'negative' },
-    { label: 'Hangup',       value: fmt(hangup),        delta: pct(hangup, connected), tone: 'negative' },
-    { label: 'Callback',     value: fmt(callback),      delta: pct(callback, connected), tone: 'positive' },
-    { label: 'Avg CPL',      value: rand(avgCpl),       delta: 'Cost per lead', tone: 'neutral' },
-    { label: 'Total Spent',  value: rand(spent),        delta: 'All campaigns', tone: 'negative' },
+    { label:'Dialed',       value: fmtN(dialed),    delta:'Total across campaigns',           tone:'neu' },
+    { label:'Connected',    value: fmtN(connected), delta: pct(connected,dialed)+' connect',  tone:'pos' },
+    { label:'Qualified',    value: fmtN(qualified), delta: pct(qualified,connected)+' of connected', tone:'pos' },
+    { label:'Voicemail',    value: fmtN(voicemail), delta: pct(voicemail,dialed),             tone:'neu' },
+    { label:'No Speech',    value: fmtN(nospeech),  delta: pct(nospeech,dialed),              tone:'neg' },
+    { label:'Hangup',       value: fmtN(hangup),    delta: pct(hangup,connected),             tone:'neg' },
+    { label:'Callback',     value: fmtN(callback),  delta: pct(callback,connected),           tone:'pos' },
+    { label:'Avg CPL',      value: fmtR(avgCpl),    delta:'Cost per lead',                    tone:'neu' },
+    { label:'Total Spent',  value: fmtR(spent),     delta:'All campaigns',                    tone:'neg' },
   ]
 
-  const tone: Record<string, string> = {
-    positive: 'text-emerald-400',
-    negative: 'text-red-400',
-    neutral:  'text-slate-400',
-  }
-
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3 mb-5">
+    <div
+      className="kpi-strip"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(168px, 1fr))',
+        gap: '1rem',
+        marginBottom: '1.5rem',
+      }}
+    >
       {kpis.map(k => (
-        <div key={k.label} className="bg-slate-800/60 border border-white/8 rounded-xl p-3.5 backdrop-blur">
-          <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">{k.label}</p>
-          <p className="text-xl font-bold text-white leading-none mb-1">{k.value}</p>
-          <p className={`text-[11px] ${tone[k.tone]}`}>{k.delta}</p>
+        <div key={k.label} className="glass" style={{ borderRadius: 12, padding: '1.1rem 1.25rem' }}>
+          <p style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{k.label}</p>
+          <p style={{ fontSize: '1.85rem', fontWeight: 700, letterSpacing: '-1px', lineHeight: 1.1 }}>{k.value}</p>
+          <p className={`delta-${k.tone}`} style={{ fontSize: '0.72rem', marginTop: '0.3rem' }}>{k.delta}</p>
         </div>
       ))}
     </div>

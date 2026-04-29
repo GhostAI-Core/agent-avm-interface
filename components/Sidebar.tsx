@@ -1,16 +1,10 @@
 'use client'
-import { X, LayoutDashboard, Radio, FileBarChart2 } from 'lucide-react'
+import { X } from 'lucide-react'
 
 const NAV = [
-  { id: 'dashboard', label: 'Dashboard',       icon: LayoutDashboard },
-  { id: 'campaigns', label: 'Campaigns',        icon: Radio },
-  { id: 'reports',   label: 'Campaign Report',  icon: FileBarChart2 },
-]
-
-const AGENTS = [
-  { id: 'seeker',  color: 'bg-blue-500',   label: 'Seeker'  },
-  { id: 'grace',   color: 'bg-purple-500', label: 'Grace'   },
-  { id: 'sangoma', color: 'bg-orange-500', label: 'Sangoma' },
+  { id: 'dashboard', label: 'Dashboard'      },
+  { id: 'campaigns', label: 'Campaigns'       },
+  { id: 'reports',   label: 'Campaign Report' },
 ]
 
 export default function Sidebar({ active, onNav, open, onClose }: {
@@ -21,53 +15,76 @@ export default function Sidebar({ active, onNav, open, onClose }: {
 }) {
   return (
     <>
-      {/* Overlay */}
-      {open && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={onClose} />}
+      {/* Mobile overlay */}
+      <div
+        className="sidebar-overlay"
+        style={{
+          display: open ? 'block' : 'none',
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.55)',
+          backdropFilter: 'blur(2px)',
+          zIndex: 199,
+        }}
+        onClick={onClose}
+      />
 
-      <aside className={`
-        fixed top-0 left-0 h-full w-64 z-50 flex flex-col gap-6 p-6
-        bg-slate-900/90 backdrop-blur-xl border-r border-white/10
-        transition-transform duration-300
-        ${open ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:static lg:flex
-      `}>
+      <aside
+        className={`sidebar glass${open ? ' open' : ''}`}
+        style={{
+          width: 260,
+          minHeight: '100vh',
+          padding: '2rem 1.5rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.75rem',
+          borderRight: '1px solid rgba(255,255,255,0.1)',
+          position: 'fixed',
+          top: 0, left: 0,
+          zIndex: 200,
+          transition: 'transform 0.28s cubic-bezier(.4,0,.2,1)',
+        }}
+      >
         {/* Logo */}
-        <div className="flex items-start justify-between">
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Agent<span className="text-blue-400">AVM</span>
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">South Africa</p>
+            <h2 style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '-0.5px', lineHeight: 1 }}>
+              Agent<span style={{ color: '#3b82f6' }}>AVM</span>
+            </h2>
+            <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.15rem' }}>South Africa</p>
           </div>
-          <button onClick={onClose} className="lg:hidden text-slate-400 hover:text-white p-1">
+          <button
+            onClick={onClose}
+            style={{ background: 'none', color: '#94a3b8', fontSize: '1.4rem', lineHeight: 1, padding: '0.2rem' }}
+            className="hamburger-close"
+          >
             <X size={18} />
           </button>
         </div>
 
         {/* Nav */}
-        <nav className="flex flex-col gap-1">
-          {NAV.map(({ id, label, icon: Icon }) => (
-            <button
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          {NAV.map(({ id, label }) => (
+            <a
               key={id}
-              onClick={() => { onNav(id); onClose() }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left
-                ${active === id
-                  ? 'bg-blue-500/15 text-blue-400'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+              href="#"
+              className={`nav-link${active === id ? ' active' : ''}`}
+              onClick={e => { e.preventDefault(); onNav(id); onClose() }}
             >
-              <Icon size={16} />
               {label}
-            </button>
+            </a>
           ))}
         </nav>
 
         {/* Agent legend */}
-        <div className="mt-auto pt-4 border-t border-white/10">
-          <p className="text-xs text-slate-500 mb-2 uppercase tracking-widest">Agents</p>
-          <div className="flex flex-col gap-2">
-            {AGENTS.map(a => (
-              <div key={a.id} className="flex items-center gap-2 text-xs text-slate-400">
-                <span className={`w-2 h-2 rounded-full ${a.color}`} />
+        <div style={{ marginTop: 'auto', paddingTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {[
+              { id: 'seeker',  label: 'Seeker'  },
+              { id: 'grace',   label: 'Grace'   },
+              { id: 'sangoma', label: 'Sangoma' },
+            ].map(a => (
+              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                <span className={`dot-${a.id}`} style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block' }} />
                 {a.label}
               </div>
             ))}

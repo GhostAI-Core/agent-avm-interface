@@ -1,6 +1,5 @@
 'use client'
 import { useState } from 'react'
-import { X } from 'lucide-react'
 
 interface Props { onClose: () => void; onCreated: () => void }
 
@@ -11,59 +10,80 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
     e.preventDefault()
     setLoading(true)
     const data = Object.fromEntries(new FormData(e.currentTarget).entries())
-    await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+    await fetch('/api/campaigns', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) })
     setLoading(false)
     onCreated()
     onClose()
   }
 
+  const S = {
+    overlay: {
+      position: 'fixed' as const, inset: 0,
+      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+      display: 'flex', justifyContent: 'center', alignItems: 'center',
+      zIndex: 500, padding: '1rem',
+    },
+    modal: {
+      width: '100%', maxWidth: 520,
+      borderRadius: 16, padding: '1.75rem',
+      maxHeight: '90vh', overflowY: 'auto' as const,
+    },
+    header: {
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      marginBottom: '1.5rem',
+    },
+    label: { display: 'block', marginBottom: '0.45rem', fontSize: '0.85rem', color: '#94a3b8' },
+    row: { display: 'flex', gap: '1rem' },
+    group: { marginBottom: '1.1rem', flex: 1, minWidth: 0 },
+    actions: { display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' },
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between p-5 border-b border-white/10">
-          <h3 className="font-semibold text-white">New Campaign</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={18} /></button>
+    <div style={S.overlay}>
+      <div className="glass modal-enter" style={S.modal}>
+        <div style={S.header}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Create New Campaign</h2>
+          <button onClick={onClose} style={{ background: 'none', color: '#94a3b8', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="text-xs text-slate-400 mb-1 block">Campaign Name</label>
-              <input name="name" required placeholder="e.g. 1Life BMI AI V5.0"
-                className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500" />
+        <form onSubmit={handleSubmit}>
+          <div style={S.row}>
+            <div style={{ ...S.group, flex: 2 }}>
+              <label style={S.label}>Campaign Name</label>
+              <input name="name" required placeholder="e.g. 1Life BMI AI V5.0" />
             </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">Agent</label>
-              <select name="agent" required className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500">
+            <div style={S.group}>
+              <label style={S.label}>Agent</label>
+              <select name="agent" required>
                 <option value="">— Select —</option>
                 <option value="seeker">Seeker</option>
                 <option value="grace">Grace</option>
                 <option value="sangoma">Sangoma</option>
               </select>
             </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">Dialing Speed (calls/sec)</label>
-              <input name="dialing_speed" type="number" min="1" max="10" defaultValue="1"
-                className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div style={S.row}>
+            <div style={S.group}>
+              <label style={S.label}>Dialing Speed (calls/sec)</label>
+              <input name="dialing_speed" type="number" min="1" max="10" defaultValue="1" />
             </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">Window Start</label>
-              <input name="window_start" type="time" defaultValue="08:00"
-                className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
-            </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">Window End</label>
-              <input name="window_end" type="time" defaultValue="20:00"
-                className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500" />
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs text-slate-400 mb-1 block">Voice Recording</label>
-              <input name="voice_file" type="file" accept="audio/*"
-                className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-400 focus:outline-none focus:border-blue-500" />
+            <div style={S.group}>
+              <label style={S.label}>Voice Recording</label>
+              <input name="voice_file" type="file" accept="audio/*" />
             </div>
           </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-slate-400 border border-white/10 hover:bg-white/5">Cancel</button>
-            <button type="submit" disabled={loading} className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50">
+          <div style={S.row}>
+            <div style={S.group}>
+              <label style={S.label}>Time Window Start</label>
+              <input name="window_start" type="time" defaultValue="08:00" />
+            </div>
+            <div style={S.group}>
+              <label style={S.label}>Time Window End</label>
+              <input name="window_end" type="time" defaultValue="20:00" />
+            </div>
+          </div>
+          <div style={S.actions}>
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? 'Creating…' : 'Create Campaign'}
             </button>
           </div>

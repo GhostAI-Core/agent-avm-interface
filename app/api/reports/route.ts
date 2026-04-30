@@ -1,21 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase, DEMO_MODE } from '@/lib/supabase'
+import { createClient } from '@/utils/supabase/server'
+import { cookies } from 'next/headers'
 import { DEMO_REPORTS } from '@/lib/demo-data'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const agent = searchParams.get('agent')
-  const date  = searchParams.get('date')
+  try {
+    const { searchParams } = new URL(req.url)
+    const agent = searchParams.get('agent')
+    const date  = searchParams.get('date')
 
-  if (DEMO_MODE) {
-    const rows = agent ? DEMO_REPORTS.filter(r => r.campaign?.agent === agent) : DEMO_REPORTS
-    return NextResponse.json({ reports: rows, demo: true })
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    let query = supabase
+      .from('call_logs')
+      .select('*, campaign:campaigns(name, agent)')
+      .order('created_at', { ascending: false })
+      .limit(500)
+    
+    if (date) query = query.gte('called_at', `${date}T00:00:00`).lte('called_at', `${date}T23:59:59`)
+    
+    const { data, error } = await query
+    
+    if (error || !data || data.length === 0) {
+      const rows = agent ? DEMO_REPORTS.filter(r => r.campaign?.agent === agent) : DEMO_REPORTS
+      return NextResponse.json({ reports: rows, demo: true })
+    }
+    
+    const rows = agent ? data.filter((r: any) => r.campaign?.agent === agent) : data
+    return NextResponse.json({ reports: rows })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
-
-  let query = supabase!.from('call_logs').select('*, campaigns(name,agent)').order('called_at', { ascending: false }).limit(500)
-  if (date) query = query.gte('called_at', `${date}T00:00:00`).lte('called_at', `${date}T23:59:59`)
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  const rows = agent ? (data ?? []).filter((r: any) => r.campaigns?.agent === agent) : (data ?? [])
-  return NextResponse.json({ reports: rows })
 }

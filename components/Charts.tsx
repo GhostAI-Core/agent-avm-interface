@@ -1,5 +1,5 @@
 'use client'
-import { Doughnut, Bar, Line } from 'react-chartjs-2'
+import { Doughnut, Bar } from 'react-chartjs-2'
 import {
   Chart as ChartJS, ArcElement, Tooltip, Legend,
   CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler,

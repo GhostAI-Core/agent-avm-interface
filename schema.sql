@@ -1,6 +1,8 @@
 -- Agent AVM — Supabase (PostgreSQL) schema
 -- Run this in the Supabase SQL editor for your project
+-- This script is idempotent (safe to run multiple times)
 
+-- 1. Tables
 CREATE TABLE IF NOT EXISTS voip_providers (
     id          SERIAL PRIMARY KEY,
     name        VARCHAR(50)  NOT NULL,
@@ -18,27 +20,17 @@ CREATE TABLE IF NOT EXISTS campaigns (
     time_window_start   TIME,
     time_window_end     TIME,
     voice_recording_url TEXT,
+    transfer_key        VARCHAR(10),
+    transfer_target     VARCHAR(100),
     created_at          TIMESTAMPTZ  DEFAULT NOW(),
     updated_at          TIMESTAMPTZ  DEFAULT NOW()
 );
-
--- Auto-update updated_at
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
-BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
-$$;
-
-DROP TRIGGER IF EXISTS campaigns_updated_at ON campaigns;
-CREATE TRIGGER campaigns_updated_at
-    BEFORE UPDATE ON campaigns
-    FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
 
 CREATE TABLE IF NOT EXISTS call_logs (
     id          SERIAL PRIMARY KEY,
     campaign_id INT REFERENCES campaigns(id) ON DELETE CASCADE,
     phone_number VARCHAR(20) NOT NULL,
     status      VARCHAR(20)  DEFAULT 'pending' CHECK (status IN ('pending','connected','qualified','voicemail','no_speech','hangup','ni','dnq','callback','no_answer','busy','failed')),
-    -- Disposition counters (aggregated row per campaign batch)
     dialed      INT          DEFAULT 0,
     connected   INT          DEFAULT 0,
     qualified   INT          DEFAULT 0,
@@ -58,10 +50,85 @@ CREATE TABLE IF NOT EXISTS call_logs (
     created_at  TIMESTAMPTZ  DEFAULT NOW()
 );
 
--- Enable Row Level Security (adjust policies for your auth setup)
-ALTER TABLE campaigns  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE call_logs  ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS contacts (
+    id          SERIAL PRIMARY KEY,
+    campaign_id INT REFERENCES campaigns(id) ON DELETE CASCADE,
+    phone       VARCHAR(20) NOT NULL,
+    first_name  VARCHAR(100),
+    last_name   VARCHAR(100),
+    status      VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'dialed', 'failed')),
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
 
--- Allow authenticated users full access (tighten per role as needed)
-CREATE POLICY "auth_all_campaigns" ON campaigns  FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "auth_all_call_logs" ON call_logs  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE TABLE IF NOT EXISTS security_logs (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_type  TEXT NOT NULL,
+    agent_name  TEXT,
+    ip_address  TEXT,
+    details     TEXT,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+    id              TEXT PRIMARY KEY,
+    whitelisted_ips TEXT[],
+    environment     TEXT DEFAULT 'staging',
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS profiles (
+    id              UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name       TEXT,
+    role            TEXT DEFAULT 'engineer' CHECK (role IN ('admin', 'engineer')),
+    face_signature  TEXT,
+    passkey_credential JSONB, -- Stores the WebAuthn public key & credential ID
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Triggers
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$;
+
+DROP TRIGGER IF EXISTS campaigns_updated_at ON campaigns;
+CREATE TRIGGER campaigns_updated_at BEFORE UPDATE ON campaigns FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+
+-- 3. Seed
+INSERT INTO system_settings (id, whitelisted_ips, environment) 
+VALUES ('global_config', ARRAY['127.0.0.1'], 'staging')
+ON CONFLICT (id) DO NOTHING;
+
+-- 4. RLS (Row Level Security)
+ALTER TABLE campaigns     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE call_logs     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE contacts      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE security_logs  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles       ENABLE ROW LEVEL SECURITY;
+
+-- 5. Policies (Drop first to avoid collision)
+DROP POLICY IF EXISTS "auth_all_campaigns" ON campaigns;
+CREATE POLICY "auth_all_campaigns" ON campaigns FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "auth_all_call_logs" ON call_logs;
+CREATE POLICY "auth_all_call_logs" ON call_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "auth_all_contacts" ON contacts;
+CREATE POLICY "auth_all_contacts" ON contacts FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "admin_all_security" ON security_logs;
+CREATE POLICY "admin_all_security" ON security_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "admin_all_settings" ON system_settings;
+CREATE POLICY "admin_all_settings" ON system_settings FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "users_read_own_profile" ON profiles;
+CREATE POLICY "users_read_own_profile" ON profiles FOR SELECT TO authenticated USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "users_update_own_profile" ON profiles;
+CREATE POLICY "users_update_own_profile" ON profiles FOR UPDATE TO authenticated USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "admin_all_profiles" ON profiles;
+CREATE POLICY "admin_all_profiles" ON profiles FOR ALL TO authenticated USING (true) WITH CHECK (true);

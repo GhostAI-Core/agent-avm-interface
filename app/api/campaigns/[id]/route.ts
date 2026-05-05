@@ -13,7 +13,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json({ campaign: data })
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   if (!DEMO_MODE) await supabase!.from('campaigns').update({ status: 'deleted' }).eq('id', id)
   return NextResponse.json({ success: true })

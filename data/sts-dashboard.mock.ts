@@ -1,0 +1,42 @@
+export const stsDashboardMock = {
+  lastRefreshed: 'Today, 08:00',
+  pricePerDay: 7,
+  totals: {
+    totalUsers: 12450,
+    activeUsers: 8920,
+    inactiveUsers: 3530,
+    subscriberChange: 320,
+  },
+  revenue: {
+    dailyRevenue: 62440,
+    monthlyRunRate: 1873200,
+    lostDailyRevenue: 2100,
+    billingRiskUsers: 740,
+  },
+  statusBreakdown: [
+    { status: 'ACTIVE',               users: 8920, percentage: 71.6 },
+    { status: 'CANCELLED',            users: 1240, percentage: 10.0 },
+    { status: 'EXPIRED',              users: 820,  percentage: 6.6  },
+    { status: 'BILLING_FAILED',       users: 510,  percentage: 4.1  },
+    { status: 'INSUFFICIENT_FUNDS',   users: 230,  percentage: 1.8  },
+    { status: 'PENDING_ACTIVATION',   users: 430,  percentage: 3.5  },
+    { status: 'BLOCKED',              users: 180,  percentage: 1.4  },
+    { status: 'LOCKED',               users: 120,  percentage: 1.0  },
+  ],
+  dailyMovement: [
+    { label: 'New Activations',  value: 620  },
+    { label: 'Cancellations',    value: 300  },
+    { label: 'Reactivations',    value: 85   },
+    { label: 'Billing Failures', value: 510  },
+    { label: 'Net Active Change',value: 320  },
+  ],
+  sevenDayTrend: [
+    { date: 'Mon', activeUsers: 8100, dailyRevenue: 56700 },
+    { date: 'Tue', activeUsers: 8240, dailyRevenue: 57680 },
+    { date: 'Wed', activeUsers: 8390, dailyRevenue: 58730 },
+    { date: 'Thu', activeUsers: 8510, dailyRevenue: 59570 },
+    { date: 'Fri', activeUsers: 8600, dailyRevenue: 60200 },
+    { date: 'Sat', activeUsers: 8750, dailyRevenue: 61250 },
+    { date: 'Sun', activeUsers: 8920, dailyRevenue: 62440 },
+  ],
+}

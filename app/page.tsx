@@ -6,10 +6,10 @@ import KpiStrip from '@/components/KpiStrip'
 import CampaignModal from '@/components/CampaignModal'
 import AuthView from '@/components/AuthView'
 import SecurityView from '@/components/SecurityView'
-import GuideView from '@/components/GuideView'
 import SettingsView from '@/components/SettingsView'
 import { OutcomeDonut, CampaignBar, SpendChart, FunnelChart } from '@/components/Charts'
 import { maskPhone } from '@/lib/security'
+import STSDashboard from '@/components/STSDashboard'
 import type { Campaign, CampaignReport } from '@/types'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ const VIEW_TITLES: Record<string, string> = {
   campaigns: 'Campaigns',
   reports:   'Campaign Report',
   security:  'Security Audit Log',
-  guide:     'Platform Training Guide',
+  sts:       'STS Dashboard',
   settings:  'System Settings',
 }
 
@@ -284,8 +284,8 @@ export default function Page() {
           {/* ── SECURITY ── */}
           {view === 'security' && <SecurityView securityLogs={securityLogs} C={C} glass={glass} />}
 
-          {/* ── GUIDE ── */}
-          {view === 'guide' && <GuideView glass={glass} />}
+          {/* ── STS DASHBOARD ── */}
+          {view === 'sts' && <STSDashboard />}
 
           {/* ── SETTINGS ── */}
           {view === 'settings' && <SettingsView role={role} providers={providers} setProviders={setProviders} C={C} glass={glass} inputStyle={inputStyle} />}

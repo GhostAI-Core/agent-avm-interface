@@ -5,7 +5,7 @@ const NAV = [
   { id: 'campaigns', label: 'Campaigns'       },
   { id: 'reports',   label: 'Campaign Report' },
   { id: 'security',  label: 'Security Audit'  },
-  { id: 'guide',     label: 'Platform Guide'  },
+  { id: 'sts',        label: 'STS Dashboard'   },
   { id: 'settings',  label: 'Settings'        },
 ]
 

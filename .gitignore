@@ -40,3 +40,18 @@
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# duplicate / generated configs
+next.config.js
+
+# scratch / local-only files
+data/note.md
+proxy.ts
+
+# ui scratch components (not wired into app)
+components/ui/
+
+# Claude / AI agent artifacts
+pull_request.md
+MEMORY.md
+.claude/

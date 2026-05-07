@@ -1,206 +1,165 @@
 'use client'
-import { stsDashboardMock as d } from '@/data/sts-dashboard.mock'
+import { useState } from 'react'
+import Grid from '@mui/material/Grid'
+import Box from '@mui/material/Box'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
+import Paper from '@mui/material/Paper'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import IconButton from '@mui/material/IconButton'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import RefreshIcon from '@mui/icons-material/Refresh'
+import GlassCard from '@/components/ui/GlassCard'
+import { stsProductData, type STSProductKey } from '@/data/sts-dashboard.mock'
 
-const C = {
-  glass:   'rgba(30,41,59,0.75)',
-  border:  'rgba(255,255,255,0.10)',
-  accent:  '#3b82f6',
-  success: '#10b981',
-  warn:    '#f59e0b',
-  danger:  '#ef4444',
-  muted:   '#94a3b8',
-  text:    '#f8fafc',
+function fmt(n: number) { return n.toLocaleString() }
+
+const STATUS_COLOR: Record<string, string> = {
+  ACTIVE: '#10b981', CANCELLED: '#ef4444', EXPIRED: '#f59e0b',
+  BILLING_FAILED: '#ef4444', INSUFFICIENT_FUNDS: '#f97316',
+  PENDING_ACTIVATION: '#3b82f6', BLOCKED: '#a855f7', LOCKED: '#94a3b8',
 }
 
-const glass = {
-  background: C.glass,
-  backdropFilter: 'blur(14px)',
-  WebkitBackdropFilter: 'blur(14px)',
-  border: `1px solid ${C.border}`,
-  boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-}
-
-function fmt(n: number) {
-  return n.toLocaleString()
-}
-
-function MetricCard({ title, value, sub, valueColor }: { title: string; value: string; sub: string; valueColor?: string }) {
+function MetricCard({ title, value, sub, color }: { title: string; value: string; sub: string; color?: string }) {
   return (
-    <div style={{ ...glass, borderRadius: 12, padding: '1.25rem 1.4rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-      <p style={{ fontSize: '0.72rem', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{title}</p>
-      <p style={{ fontSize: '1.7rem', fontWeight: 800, color: valueColor ?? C.text, lineHeight: 1.1 }}>{value}</p>
-      <p style={{ fontSize: '0.75rem', color: C.muted }}>{sub}</p>
-    </div>
+    <GlassCard>
+      <Typography variant="caption" sx={{ textTransform: 'uppercase', letterSpacing: '0.08em', color: 'text.secondary', display: 'block', mb: 0.5 }}>{title}</Typography>
+      <Typography sx={{ fontSize: '1.7rem', fontWeight: 800, color: color ?? 'text.primary', lineHeight: 1.1 }}>{value}</Typography>
+      <Typography variant="caption" color="text.secondary">{sub}</Typography>
+    </GlassCard>
   )
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  ACTIVE:               C.success,
-  CANCELLED:            C.danger,
-  EXPIRED:              '#f59e0b',
-  BILLING_FAILED:       '#ef4444',
-  INSUFFICIENT_FUNDS:   '#f97316',
-  PENDING_ACTIVATION:   C.accent,
-  BLOCKED:              '#a855f7',
-  LOCKED:               C.muted,
-}
-
 export default function STSDashboard() {
-  const { totals, revenue, statusBreakdown, dailyMovement, sevenDayTrend, lastRefreshed } = d
+  const [product, setProduct] = useState<STSProductKey>('all')
+  const d = stsProductData[product]
+  const [lastRefreshed, setLastRefreshed] = useState(d.lastRefreshed)
 
-  const changeColor = totals.subscriberChange >= 0 ? C.success : C.danger
+  const { totals, revenue, statusBreakdown, dailyMovement, sevenDayTrend } = stsProductData[product]
+  const changeColor  = totals.subscriberChange >= 0 ? '#10b981' : '#ef4444'
   const changePrefix = totals.subscriberChange >= 0 ? '+' : ''
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <Stack sx={{ gap: 3 }}>
 
       {/* Header */}
-      <div>
-        <h2 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '0.25rem' }}>STS Subscription Dashboard</h2>
-        <p style={{ fontSize: '0.85rem', color: C.muted }}>Daily overview of subscriber activity, revenue, and churn.</p>
-        <p style={{ fontSize: '0.75rem', color: C.muted, marginTop: '0.25rem' }}>
-          <span style={{ opacity: 0.6 }}>Last refreshed:</span> {lastRefreshed}
-        </p>
-      </div>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>STS Subscription Dashboard</Typography>
+          <Typography variant="body2" color="text.secondary">Daily overview of subscriber activity, revenue, and churn.</Typography>
+          <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">Last refreshed: {lastRefreshed}</Typography>
+            <IconButton size="small" onClick={() => setLastRefreshed(new Date().toLocaleTimeString())} aria-label="Refresh data">
+              <RefreshIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Stack>
+        </Box>
+        <ToggleButtonGroup exclusive size="small" value={product} onChange={(_, v) => v && setProduct(v)}>
+          {(['all','seeker','grace','doctor','voxi'] as STSProductKey[]).map(p => (
+            <ToggleButton key={p} value={p} sx={{ textTransform: 'capitalize', fontSize: '0.75rem' }}>{p}</ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Box>
 
-      {/* User metric cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-        <MetricCard
-          title="Total Users"
-          value={fmt(totals.totalUsers)}
-          sub="All known STS subscribers."
-        />
-        <MetricCard
-          title="Active Users"
-          value={fmt(totals.activeUsers)}
-          sub="Users currently active on the service."
-          valueColor={C.success}
-        />
-        <MetricCard
-          title="Inactive Users"
-          value={fmt(totals.inactiveUsers)}
-          sub="Cancelled, expired, blocked, or billing-failed users."
-          valueColor={C.muted}
-        />
-        <MetricCard
-          title="Subscriber Change"
-          value={`${changePrefix}${fmt(totals.subscriberChange)}`}
-          sub="Active users compared to yesterday."
-          valueColor={changeColor}
-        />
-      </div>
+      {/* User metrics */}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 6, md: 3 }}><MetricCard title="Total Users"       value={fmt(totals.totalUsers)}       sub="All known STS subscribers."                    /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><MetricCard title="Active Users"      value={fmt(totals.activeUsers)}      sub="Currently active on the service."  color="#10b981" /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><MetricCard title="Inactive Users"    value={fmt(totals.inactiveUsers)}    sub="Cancelled, expired, or billing-failed."          /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><MetricCard title="Subscriber Change" value={`${changePrefix}${fmt(totals.subscriberChange)}`} sub="vs. yesterday." color={changeColor} /></Grid>
+      </Grid>
 
-      {/* Revenue metric cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-        <MetricCard
-          title="Daily Revenue"
-          value={`R${fmt(revenue.dailyRevenue)}`}
-          sub="Estimated revenue from today's active users."
-          valueColor={C.success}
-        />
-        <MetricCard
-          title="Monthly Run Rate"
-          value={`R${fmt(revenue.monthlyRunRate)}`}
-          sub="Estimated 30-day revenue at current active user level."
-          valueColor={C.success}
-        />
-        <MetricCard
-          title="Lost Daily Revenue"
-          value={`R${fmt(revenue.lostDailyRevenue)}`}
-          sub="Estimated daily revenue lost from cancellations today."
-          valueColor={C.danger}
-        />
-        <MetricCard
-          title="Billing Risk"
-          value={`${fmt(revenue.billingRiskUsers)} users`}
-          sub="Users with failed billing or insufficient funds."
-          valueColor={C.warn}
-        />
-      </div>
+      {/* Revenue metrics */}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 6, md: 3 }}><MetricCard title="Daily Revenue"    value={`R${fmt(revenue.dailyRevenue)}`}    sub="From today's active users."    color="#10b981" /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><MetricCard title="Monthly Run Rate" value={`R${fmt(revenue.monthlyRunRate)}`}  sub="Estimated 30-day revenue."     color="#10b981" /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><MetricCard title="Lost Daily Rev."  value={`R${fmt(revenue.lostDailyRevenue)}`} sub="From cancellations today."   color="#ef4444" /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><MetricCard title="Billing Risk"     value={`${fmt(revenue.billingRiskUsers)} users`} sub="Failed billing / insufficient funds." color="#f59e0b" /></Grid>
+      </Grid>
 
       {/* Status breakdown + Daily movement */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'text.secondary', display: 'block', mb: 1.5 }}>Status Breakdown</Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {['Status', 'Users', '%'].map(h => <TableCell key={h} align={h === 'Status' ? 'left' : 'right'} sx={{ fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', color: 'text.secondary' }}>{h}</TableCell>)}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {statusBreakdown.map(row => (
+                    <TableRow key={row.status}>
+                      <TableCell>
+                        <Typography variant="caption" sx={{ color: STATUS_COLOR[row.status] ?? 'text.primary', fontWeight: 600 }}>{row.status}</Typography>
+                        <Box sx={{ height: 4, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.07)', overflow: 'hidden', mt: 0.5 }}>
+                          <Box sx={{ height: '100%', width: `${row.percentage}%`, bgcolor: STATUS_COLOR[row.status] ?? '#3b82f6', borderRadius: 1 }} />
+                        </Box>
+                      </TableCell>
+                      <TableCell align="right"><Typography variant="caption">{fmt(row.users)}</Typography></TableCell>
+                      <TableCell align="right"><Typography variant="caption" color="text.secondary">{row.percentage}%</Typography></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        </Grid>
 
-        {/* Status breakdown */}
-        <div style={{ ...glass, borderRadius: 12, padding: '1.25rem' }}>
-          <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: C.muted }}>Status Breakdown</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-            <thead>
-              <tr>
-                {['Status', 'Users', '%'].map(h => (
-                  <th key={h} style={{ textAlign: h === 'Status' ? 'left' : 'right', padding: '0.45rem 0.6rem', borderBottom: `1px solid ${C.border}`, color: C.muted, fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {statusBreakdown.map(row => (
-                <tr key={row.status}>
-                  <td style={{ padding: '0.55rem 0.6rem', borderBottom: `1px solid rgba(255,255,255,0.04)` }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      <span style={{ color: STATUS_COLORS[row.status] ?? C.text, fontWeight: 600, fontSize: '0.75rem' }}>{row.status}</span>
-                      <div style={{ height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${row.percentage}%`, background: STATUS_COLORS[row.status] ?? C.accent, borderRadius: 4 }} />
-                      </div>
-                    </div>
-                  </td>
-                  <td style={{ padding: '0.55rem 0.6rem', textAlign: 'right', borderBottom: `1px solid rgba(255,255,255,0.04)` }}>{fmt(row.users)}</td>
-                  <td style={{ padding: '0.55rem 0.6rem', textAlign: 'right', color: C.muted, borderBottom: `1px solid rgba(255,255,255,0.04)` }}>{row.percentage}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Daily movement */}
-        <div style={{ ...glass, borderRadius: 12, padding: '1.25rem' }}>
-          <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: C.muted }}>Daily Movement</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {dailyMovement.map(row => {
-              const isNet = row.label === 'Net Active Change'
-              const netColor = row.value >= 0 ? C.success : C.danger
-              return (
-                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
-                  <span style={{ fontSize: '0.83rem', color: isNet ? C.text : C.muted }}>{row.label}</span>
-                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: isNet ? netColor : C.text }}>
-                    {isNet && row.value > 0 ? '+' : ''}{fmt(row.value)}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'text.secondary', display: 'block', mb: 1.5 }}>Daily Movement</Typography>
+            <Stack sx={{ gap: 1 }}>
+              {dailyMovement.map(row => {
+                const isNet = row.label === 'Net Active Change'
+                const netColor = row.value >= 0 ? '#10b981' : '#ef4444'
+                return (
+                  <Stack key={row.label} direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', p: 1, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.03)' }}>
+                    <Typography variant="body2" sx={{ color: isNet ? 'text.primary' : 'text.secondary' }}>{row.label}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: isNet ? netColor : 'text.primary' }}>
+                      {isNet && row.value > 0 ? '+' : ''}{fmt(row.value)}
+                    </Typography>
+                  </Stack>
+                )
+              })}
+            </Stack>
+          </Paper>
+        </Grid>
+      </Grid>
 
       {/* 7-day trend */}
-      <div style={{ ...glass, borderRadius: 12, padding: '1.25rem' }}>
-        <h3 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: C.muted }}>7-Day Trend</h3>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: 420 }}>
-            <thead>
-              <tr>
-                {['Date', 'Active Users', 'Daily Revenue'].map(h => (
-                  <th key={h} style={{ textAlign: h === 'Date' ? 'left' : 'right', padding: '0.5rem 0.75rem', borderBottom: `1px solid ${C.border}`, color: C.muted, fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
+      <Paper sx={{ p: 2, overflow: 'auto' }}>
+        <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'text.secondary', display: 'block', mb: 1.5 }}>7-Day Trend</Typography>
+        <TableContainer>
+          <Table size="small" sx={{ minWidth: 420 }}>
+            <TableHead>
+              <TableRow>
+                {['Date', 'Active Users', 'Daily Revenue'].map(h => <TableCell key={h} align={h === 'Date' ? 'left' : 'right'} sx={{ fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', color: 'text.secondary' }}>{h}</TableCell>)}
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {sevenDayTrend.map((row, i) => {
                 const isToday = i === sevenDayTrend.length - 1
                 return (
-                  <tr key={row.date} style={{ background: isToday ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
-                    <td style={{ padding: '0.65rem 0.75rem', borderBottom: `1px solid rgba(255,255,255,0.04)`, fontWeight: isToday ? 700 : 400, color: isToday ? C.text : C.muted }}>
-                      {row.date}{isToday ? ' (today)' : ''}
-                    </td>
-                    <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right', borderBottom: `1px solid rgba(255,255,255,0.04)`, color: C.success }}>{fmt(row.activeUsers)}</td>
-                    <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right', borderBottom: `1px solid rgba(255,255,255,0.04)` }}>R{fmt(row.dailyRevenue)}</td>
-                  </tr>
+                  <TableRow key={row.date} sx={{ bgcolor: isToday ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
+                    <TableCell sx={{ fontWeight: isToday ? 700 : 400, color: isToday ? 'text.primary' : 'text.secondary' }}>{row.date}{isToday ? ' (today)' : ''}</TableCell>
+                    <TableCell align="right" sx={{ color: '#10b981' }}>{fmt(row.activeUsers)}</TableCell>
+                    <TableCell align="right">R{fmt(row.dailyRevenue)}</TableCell>
+                  </TableRow>
                 )
               })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-    </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
+    </Stack>
   )
 }

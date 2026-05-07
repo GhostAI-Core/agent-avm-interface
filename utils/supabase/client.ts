@@ -8,6 +8,11 @@ export const createClient = () =>
     supabaseUrl!,
     supabaseKey!,
     {
+      global: {
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+        },
+      },
       auth: {
         experimental: {
           passkey: true

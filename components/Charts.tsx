@@ -29,7 +29,7 @@ export function OutcomeDonut({ reports }: { reports: CampaignReport[] }) {
       borderWidth: 0,
     }],
   }
-  return <Doughnut data={data} options={{ plugins: { legend: { ...LEGEND, position: 'right' } } }} />
+  return <Doughnut data={data} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { ...LEGEND, position: 'right' } } }} />
 }
 
 export function CampaignBar({ reports }: { reports: CampaignReport[] }) {
@@ -44,7 +44,7 @@ export function CampaignBar({ reports }: { reports: CampaignReport[] }) {
           { label:'Qualified', data: reports.map(r => r.qualified * 100), backgroundColor: '#10b981bb', borderRadius: 3 },
         ],
       }}
-      options={{ plugins: { legend: LEGEND }, scales: { x: { ticks: TICK, grid: GRID }, y: { ticks: TICK, grid: GRID } } }}
+      options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: LEGEND }, scales: { x: { ticks: TICK, grid: GRID }, y: { ticks: TICK, grid: GRID } } }}
     />
   )
 }
@@ -61,6 +61,8 @@ export function SpendChart({ reports }: { reports: CampaignReport[] }) {
         ],
       }}
       options={{
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: LEGEND },
         scales: {
           x:  { ticks: TICK, grid: GRID },
@@ -83,7 +85,7 @@ export function FunnelChart({ reports }: { reports: CampaignReport[] }) {
         labels: ['Dialed','Connected','Voicemail','No Speech','Hangup','Qualified'],
         datasets: [{ data: vals, backgroundColor: ['#3b82f6','#10b981','#f59e0b','#94a3b8','#ef4444','#6366f1'], borderRadius: 4 }],
       }}
-      options={{ plugins: { legend: { display: false } }, scales: { x: { ticks: TICK, grid: GRID }, y: { ticks: TICK, grid: GRID } } }}
+      options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: TICK, grid: GRID }, y: { ticks: TICK, grid: GRID } } }}
     />
   )
 }

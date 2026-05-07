@@ -1,46 +1,44 @@
-'use client'
-import type { CampaignReport } from '@/types'
+import Paper from '@mui/material/Paper'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Chip from '@mui/material/Chip'
 
-interface SecurityViewProps {
-  securityLogs: any[]
-  C: any
-  glass: any
+const EVENT_COLOR: Record<string, 'error' | 'success' | 'primary'> = {
+  unauthorized_access: 'error',
+  login: 'success',
 }
 
-export default function SecurityView({ securityLogs, C, glass }: SecurityViewProps) {
+export default function SecurityView({ securityLogs }: { securityLogs: any[] }) {
   return (
-    <div style={{ ...glass, borderRadius: 12, overflow: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: 800 }}>
-        <thead>
-          <tr>
-            {['Event', 'Agent', 'IP Address', 'Details', 'Timestamp'].map(h => (
-              <th key={h} style={{ padding: '0.85rem 1.1rem', borderBottom: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.2)', fontWeight: 600, color: C.muted, fontSize: '0.7rem', textTransform: 'uppercase' }}>{h}</th>
+    <Paper sx={{ overflow: 'auto' }}>
+      <TableContainer>
+        <Table size="small" sx={{ minWidth: 800 }}>
+          <TableHead>
+            <TableRow>
+              {['Event', 'Agent', 'IP Address', 'Details', 'Timestamp'].map(h => (
+                <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', color: 'text.secondary', bgcolor: 'rgba(0,0,0,0.2)' }}>{h}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {securityLogs.map(log => (
+              <TableRow key={log.id} hover>
+                <TableCell>
+                  <Chip label={log.event_type.replace('_', ' ').toUpperCase()} size="small" color={EVENT_COLOR[log.event_type] ?? 'primary'} variant="outlined" sx={{ fontSize: '0.65rem' }} />
+                </TableCell>
+                <TableCell sx={{ fontSize: '0.82rem' }}>{log.agent_name}</TableCell>
+                <TableCell sx={{ fontSize: '0.82rem', color: 'text.secondary' }}>{log.ip_address}</TableCell>
+                <TableCell sx={{ fontSize: '0.82rem' }}>{log.details}</TableCell>
+                <TableCell sx={{ fontSize: '0.82rem', color: 'text.secondary' }}>{new Date(log.created_at).toLocaleString()}</TableCell>
+              </TableRow>
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {securityLogs.map(log => (
-            <tr key={log.id} style={{ borderBottom: `1px solid ${C.border}` }}>
-              <td style={{ padding: '0.85rem 1.1rem', fontSize: '0.82rem' }}>
-                <span style={{
-                  padding: '0.2rem 0.5rem',
-                  borderRadius: 4,
-                  background: log.event_type === 'unauthorized_access' ? 'rgba(239,68,68,0.1)' : (log.event_type === 'login' ? 'rgba(16,185,129,0.1)' : 'rgba(59,130,246,0.1)'),
-                  color: log.event_type === 'unauthorized_access' ? C.danger : (log.event_type === 'login' ? C.success : C.accent),
-                  fontWeight: 700,
-                  fontSize: '0.65rem'
-                }}>
-                  {log.event_type.replace('_', ' ').toUpperCase()}
-                </span>
-              </td>
-              <td style={{ padding: '0.85rem 1.1rem', fontSize: '0.82rem' }}>{log.agent_name}</td>
-              <td style={{ padding: '0.85rem 1.1rem', fontSize: '0.82rem', color: C.muted }}>{log.ip_address}</td>
-              <td style={{ padding: '0.85rem 1.1rem', fontSize: '0.82rem' }}>{log.details}</td>
-              <td style={{ padding: '0.85rem 1.1rem', fontSize: '0.82rem', color: C.muted }}>{new Date(log.created_at).toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Paper>
   )
 }

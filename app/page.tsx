@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
+import FloatingNav from '@/components/FloatingNav'
 import KpiStrip from '@/components/KpiStrip'
 import CampaignModal from '@/components/CampaignModal'
 import AuthView from '@/components/AuthView'
@@ -10,9 +11,38 @@ import SettingsView from '@/components/SettingsView'
 import { OutcomeDonut, CampaignBar, SpendChart, FunnelChart } from '@/components/Charts'
 import { maskPhone } from '@/lib/security'
 import STSDashboard from '@/components/STSDashboard'
+import ProfileView from '@/components/ProfileView'
+import Grid from '@mui/material/Grid'
+import Stack from '@mui/material/Stack'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import MuiIconButton from '@mui/material/IconButton'
+import Tooltip from '@mui/material/Tooltip'
+import OpenInFullIcon from '@mui/icons-material/OpenInFull'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import CardActions from '@mui/material/CardActions'
+import Divider from '@mui/material/Divider'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import TextField from '@mui/material/TextField'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import AgentChip from '@/components/ui/AgentChip'
+import StatusChip from '@/components/ui/StatusChip'
+import GlassCard from '@/components/ui/GlassCard'
 import type { Campaign, CampaignReport } from '@/types'
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
+// Tokens still used by child components that haven't been migrated yet
 const C = {
   glass:   'rgba(30,41,59,0.75)',
   border:  'rgba(255,255,255,0.10)',
@@ -22,35 +52,6 @@ const C = {
   danger:  '#ef4444',
   muted:   '#94a3b8',
   text:    '#f8fafc',
-}
-
-function agentPill(agent: string) {
-  const map: Record<string, { bg: string; color: string }> = {
-    seeker:  { bg:'rgba(59,130,246,0.15)',  color:'#3b82f6' },
-    grace:   { bg:'rgba(168,85,247,0.15)',  color:'#a855f7' },
-    sangoma: { bg:'rgba(249,115,22,0.15)',  color:'#f97316' },
-  }
-  const s = map[agent] ?? { bg:'rgba(148,163,184,0.15)', color:'#94a3b8' }
-  return (
-    <span style={{ background: s.bg, color: s.color, fontSize:'0.7rem', fontWeight:700, padding:'0.15rem 0.6rem', borderRadius:9999, display:'inline-block' }}>
-      {agent ? agent.charAt(0).toUpperCase() + agent.slice(1) : agent}
-    </span>
-  )
-}
-
-function statusBadge(status: string) {
-  const map: Record<string, { bg: string; color: string }> = {
-    running:   { bg:'rgba(16,185,129,0.18)',  color:'#10b981' },
-    paused:    { bg:'rgba(245,158,11,0.18)',  color:'#f59e0b' },
-    draft:     { bg:'rgba(148,163,184,0.15)', color:'#94a3b8' },
-    completed: { bg:'rgba(59,130,246,0.15)',  color:'#3b82f6' },
-  }
-  const s = map[status] ?? { bg:'rgba(148,163,184,0.15)', color:'#94a3b8' }
-  return (
-    <span style={{ background: s.bg, color: s.color, fontSize:'0.72rem', fontWeight:700, padding:'0.2rem 0.65rem', borderRadius:9999, whiteSpace:'nowrap' }}>
-      {status}
-    </span>
-  )
 }
 
 const glass = { background: C.glass, backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)', border:`1px solid ${C.border}`, boxShadow:'0 8px 32px rgba(0,0,0,0.3)' }
@@ -63,6 +64,7 @@ const VIEW_TITLES: Record<string, string> = {
   security:  'Security Audit Log',
   sts:       'STS Dashboard',
   settings:  'System Settings',
+  profile:   'Profile & Appearance',
 }
 
 const REPORT_KEYS: (keyof CampaignReport)[] = ['dialed','connected','qualified','voicemail','no_speech','hangup','ni','dnq','callback','no_answer','busy_line','failed']
@@ -84,6 +86,8 @@ export default function Page() {
   const [securityLogs,    setSecurityLogs]     = useState<any[]>([])
   const [filterAgent,      setFilterAgent]      = useState('')
   const [filterDate,       setFilterDate]       = useState('')
+  const [expandedChart,    setExpandedChart]    = useState<string | null>(null)
+  const [expandCampaign,   setExpandCampaign]   = useState<string>('')  // '' = collective
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -128,7 +132,7 @@ export default function Page() {
 
   const viewDetailedLogs = async (report: CampaignReport) => {
     setSelectedCampaign(report)
-    const res = await fetch(`/api/logs?campaignId=${report.campaign?.id || ''}`); const json = await res.json(); setDetailedLogs(json.logs || [])
+    const res = await fetch(`/api/logs?campaignId=${report.campaign_id || ''}`); const json = await res.json(); setDetailedLogs(json.logs || [])
   }
 
   async function updateStatus(id: number, status: string) {
@@ -162,159 +166,252 @@ export default function Page() {
 
   const activeCount = campaigns.filter(c => c.status === 'running' || c.status === 'paused').length
 
-  function IconBtn({ onClick, title, danger, children }: { onClick: () => void; title: string; danger?: boolean; children: React.ReactNode }) {
-    const [hov, setHov] = useState(false)
-    return (
-      <button
-        onClick={onClick} title={title}
-        onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-        style={{
-          background: hov ? (danger ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.12)') : 'rgba(255,255,255,0.06)',
-          color: hov && danger ? '#ef4444' : '#f8fafc',
-          border: 'none', borderRadius: 6, padding:'0.45rem 0.55rem',
-          cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center',
-          fontSize: '1rem', transition:'all 0.15s', fontFamily:'inherit',
-        }}
-      >
-        {children}
-      </button>
-    )
-  }
 
   return (
     <div style={{ minHeight:'100vh', display:'flex', background:'#0f172a', color:C.text, fontFamily:"'Inter', sans-serif" }}>
-      <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} role={role} />
+      <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} />
       <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
         <TopBar title={VIEW_TITLES[view]} onMenu={() => setSideOpen(true)} onLogout={() => setAuth(false)} />
-        <main style={{ flex:1, padding:'1.5rem', overflowY:'auto' }}>
+        <main style={{ flex:1, padding:'1.5rem', paddingBottom:'6rem', overflowY:'auto' }}>
           
           {/* ── DASHBOARD ── */}
           {view === 'dashboard' && (
             <>
               <KpiStrip reports={reports} />
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem' }}>
-                <h2 style={{ fontSize:'1.1rem', fontWeight:600 }}>Live Active Calls</h2>
-                <span style={{ fontSize:'0.75rem', color:C.success, display:'flex', alignItems:'center', gap:'0.4rem' }}>
-                  <span style={{ width:8, height:8, background:C.success, borderRadius:'50%', animation:'pulse 2s infinite' }} />
-                  Monitoring Live Streams
-                </span>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:'1.25rem' }}>
+
+              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>Live Active Calls</Typography>
+                <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75 }}>
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main', animation: 'livePulse 1.4s infinite' }} />
+                  <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 600 }}>Monitoring Live Streams</Typography>
+                </Stack>
+              </Stack>
+
+              <Grid container spacing={2}>
                 {[
-                  { title:'Call Outcome Breakdown', chart:<OutcomeDonut reports={reports} /> },
-                  { title:'Campaign Comparison',    chart:<CampaignBar   reports={reports} /> },
-                  { title:'Spend & CPL',            chart:<SpendChart    reports={reports} /> },
-                  { title:'Dialling Funnel',        chart:<FunnelChart   reports={reports} /> },
-                ].map(({ title, chart }) => (
-                  <div key={title} style={{ ...glass, borderRadius:12, padding:'1.25rem' }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.75rem' }}>
-                      <h3 style={{ fontSize:'0.88rem', fontWeight:600 }}>{title}</h3>
-                      <span style={{ fontSize:'0.68rem', color:C.muted }}>expand ↗</span>
-                    </div>
-                    <div style={{ height:180 }}>{chart}</div>
-                  </div>
+                  { id: 'outcome',  title: 'Call Outcome Breakdown', chart: <OutcomeDonut reports={reports} />,   metrics: ['Connected','Voicemail','No Speech','Hangup','NI','DNQ','Callback','NA+Busy+Failed'] },
+                  { id: 'campaign', title: 'Campaign Comparison',    chart: <CampaignBar reports={reports} />,    metrics: ['Connected','Qualified'] },
+                  { id: 'spend',    title: 'Spend & CPL',            chart: <SpendChart reports={reports} />,     metrics: ['Spent','CPL'] },
+                  { id: 'funnel',   title: 'Dialling Funnel',        chart: <FunnelChart reports={reports} />,    metrics: ['Dialed','Connected','Voicemail','No Speech','Hangup','Qualified'] },
+                ].map(({ id, title, chart, metrics }) => (
+                  <Grid key={id} size={{ xs: 12, md: 6 }}>
+                    <GlassCard>
+                      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{title}</Typography>
+                        <Tooltip title="Expand">
+                          <MuiIconButton size="small" aria-label={`Expand ${title}`} onClick={() => setExpandedChart(id)}>
+                            <OpenInFullIcon sx={{ fontSize: 16 }} />
+                          </MuiIconButton>
+                        </Tooltip>
+                      </Stack>
+                      <Box sx={{ height: 180 }}>{chart}</Box>
+                    </GlassCard>
+                  </Grid>
                 ))}
-              </div>
+              </Grid>
             </>
           )}
 
           {/* ── CAMPAIGNS ── */}
           {view === 'campaigns' && (
             <>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem' }}>
-                <h2 style={{ fontSize:'1.1rem', fontWeight:600 }}>Active Campaigns <span style={{ marginLeft:'0.75rem', fontSize:'0.8rem', color:C.muted }}>{activeCount} active</span></h2>
-                <button onClick={() => setShowModal(true)} style={{ background:C.accent, color:'white', padding:'0.65rem 1.4rem', borderRadius:8, fontWeight:600, fontSize:'0.875rem', border:'none', cursor:'pointer' }}>+ New Campaign</button>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:'1.25rem' }}>
+              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>Active Campaigns</Typography>
+                  <Typography variant="caption" color="text.secondary">{activeCount} active</Typography>
+                </Stack>
+                <Button variant="contained" onClick={() => setShowModal(true)}>+ New Campaign</Button>
+              </Stack>
+
+              <Grid container spacing={2}>
                 {campaigns.map(c => (
-                  <div key={c.id} style={{ ...glass, borderRadius:12, padding:'1.4rem', display:'flex', flexDirection:'column', gap:'0.9rem' }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                      <div><h3 style={{ fontSize:'1.1rem', fontWeight:600 }}>{c.name}</h3>{agentPill(c.agent)}</div>
-                      {statusBadge(c.status)}
-                    </div>
-                    <div style={{ color:C.muted, fontSize:'0.88rem' }}>
-                      <p><strong>Speed:</strong> {c.dialing_speed} calls/sec</p>
-                      <p><strong>Window:</strong> {c.time_window_start} – {c.time_window_end}</p>
-                    </div>
-                    <div style={{ display:'flex', gap:'0.5rem', paddingTop:'0.9rem', borderTop:`1px solid ${C.border}` }}>
-                      {c.status === 'running' ? <IconBtn onClick={() => updateStatus(c.id,'paused')} title="Pause">⏸</IconBtn> : <IconBtn onClick={() => updateStatus(c.id,'running')} title="Resume">▶</IconBtn>}
-                      <IconBtn onClick={() => updateStatus(c.id,'completed')} title="Stop">⏹</IconBtn>
-                      <div style={{ marginLeft:'auto' }}><IconBtn onClick={() => deleteCampaign(c.id)} title="Delete" danger>🗑</IconBtn></div>
-                    </div>
-                  </div>
+                  <Grid key={c.id} size={{ xs: 12, sm: 6, lg: 4 }}>
+                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                      <CardContent sx={{ flexGrow: 1 }}>
+                        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                          <Box>
+                            <Typography sx={{ fontWeight: 600 }}>{c.name}</Typography>
+                            <AgentChip agent={c.agent} />
+                          </Box>
+                          <StatusChip status={c.status} />
+                        </Stack>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                          <strong>Speed:</strong> {c.dialing_speed} calls/sec
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Window:</strong> {c.time_window_start} – {c.time_window_end}
+                        </Typography>
+                      </CardContent>
+
+                      <Divider />
+
+                      <CardActions sx={{ px: 2, py: 1 }}>
+                        <Tooltip title={c.status === 'running' ? 'Pause' : 'Resume'}>
+                          <MuiIconButton size="small" aria-label={c.status === 'running' ? `Pause ${c.name}` : `Resume ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>
+                            {c.status === 'running' ? '⏸' : '▶'}
+                          </MuiIconButton>
+                        </Tooltip>
+                        <Tooltip title="Stop">
+                          <MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}>⏹</MuiIconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <MuiIconButton size="small" aria-label={`Delete ${c.name}`} onClick={() => deleteCampaign(c.id)} sx={{ ml: 'auto', color: 'error.main' }}>🗑</MuiIconButton>
+                        </Tooltip>
+                      </CardActions>
+                    </Card>
+                  </Grid>
                 ))}
-              </div>
+              </Grid>
             </>
           )}
 
           {/* ── REPORTS ── */}
           {view === 'reports' && (
             <>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem' }}>
-                <h2 style={{ fontSize:'1.1rem', fontWeight:600 }}>Campaign Report</h2>
-                <div style={{ display:'flex', gap:'0.6rem' }}>
-                  <select value={filterAgent} onChange={e => setFilterAgent(e.target.value)} style={{ ...inputStyle, width:'auto' }}>
-                    <option value="">All Agents</option><option value="seeker">Seeker</option><option value="grace">Grace</option><option value="sangoma">Sangoma</option>
-                  </select>
-                  <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} style={{ ...inputStyle, width:'auto', colorScheme:'dark' }} />
-                  <button onClick={handleExportCSV} style={{ background:'transparent', color:'white', border:`1px solid ${C.border}`, padding:'0.6rem 1.2rem', borderRadius:8, cursor:'pointer' }}>Export CSV</button>
-                </div>
-              </div>
-              <div style={{ ...glass, borderRadius:12, overflow:'auto' }}>
-                <table style={{ width:'100%', borderCollapse:'collapse', textAlign:'left', minWidth:1100 }}>
-                  <thead>
-                    <tr>{['Campaign Name','Dialed','Connected','Qualified','Voicemail','No Speech','Hangup','NI','DNQ','Callback','NA','Busy','Failed','Duration','CPL','Spent'].map(h => (<th key={h} style={{ padding:'0.85rem 1.1rem', borderBottom:`1px solid ${C.border}`, background:'rgba(0,0,0,0.2)', fontWeight:600, color:C.muted, fontSize:'0.7rem', textTransform:'uppercase' }}>{h}</th>))}</tr>
-                  </thead>
-                  <tbody>
-                    {reports.map((r) => (
-                      <tr key={r.id} onClick={() => viewDetailedLogs(r)} style={{ cursor:'pointer', borderBottom:`1px solid ${C.border}` }}>
-                        <td style={{ padding:'0.85rem 1.1rem' }}>{agentPill(r.campaign?.agent ?? '')}<br/>{r.campaign?.name}</td>
-                        {REPORT_KEYS.map(k => (<td key={k} style={{ padding:'0.85rem 1.1rem', fontSize:'0.82rem' }}>{Number(r[k]).toLocaleString()}</td>))}
-                        <td style={{ padding:'0.85rem 1.1rem', fontSize:'0.82rem' }}>{r.duration}</td>
-                        <td style={{ padding:'0.85rem 1.1rem', fontSize:'0.82rem' }}>R{r.cpl.toFixed(2)}</td>
-                        <td style={{ padding:'0.85rem 1.1rem', fontSize:'0.82rem', color:C.success, fontWeight:600 }}>R{r.total_spent.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1.5 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>Campaign Report</Typography>
+                <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  <Select size="small" value={filterAgent} onChange={e => setFilterAgent(e.target.value)} displayEmpty sx={{ minWidth: 130 }}>
+                    <MenuItem value="">All Agents</MenuItem>
+                    <MenuItem value="seeker">Seeker</MenuItem>
+                    <MenuItem value="grace">Grace</MenuItem>
+                    <MenuItem value="sangoma">Sangoma</MenuItem>
+                  </Select>
+                  <TextField size="small" type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
+                    slotProps={{ htmlInput: { style: { colorScheme: 'dark' } } }}
+                  />
+                  <Button variant="outlined" onClick={handleExportCSV}>Export CSV</Button>
+                </Stack>
+              </Stack>
+
+              <GlassCard sx={{ p: 0, overflow: 'auto' }}>
+                <TableContainer>
+                  <Table size="small" sx={{ minWidth: 1100 }}>
+                    <TableHead>
+                      <TableRow>
+                        {['Campaign','Dialed','Connected','Qualified','Voicemail','No Speech','Hangup','NI','DNQ','Callback','NA','Busy','Failed','Duration','CPL','Spent'].map(h => (
+                          <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', color: 'text.secondary', bgcolor: 'rgba(0,0,0,0.2)', whiteSpace: 'nowrap' }}>{h}</TableCell>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {reports.map(r => (
+                        <TableRow key={r.id} hover onClick={() => viewDetailedLogs(r)} sx={{ cursor: 'pointer' }}>
+                          <TableCell>
+                            <AgentChip agent={r.campaign?.agent ?? ''} />
+                            <Typography variant="caption" sx={{ display: 'block' }}>{r.campaign?.name}</Typography>
+                          </TableCell>
+                          {REPORT_KEYS.map(k => <TableCell key={k} sx={{ fontSize: '0.82rem' }}>{Number(r[k]).toLocaleString()}</TableCell>)}
+                          <TableCell sx={{ fontSize: '0.82rem' }}>{r.duration}</TableCell>
+                          <TableCell sx={{ fontSize: '0.82rem' }}>R{r.cpl.toFixed(2)}</TableCell>
+                          <TableCell sx={{ fontSize: '0.82rem', color: 'success.main', fontWeight: 600 }}>R{r.total_spent.toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </GlassCard>
             </>
           )}
 
           {/* ── SECURITY ── */}
-          {view === 'security' && <SecurityView securityLogs={securityLogs} C={C} glass={glass} />}
+          {view === 'security' && <SecurityView securityLogs={securityLogs} />}
 
           {/* ── STS DASHBOARD ── */}
           {view === 'sts' && <STSDashboard />}
 
           {/* ── SETTINGS ── */}
-          {view === 'settings' && <SettingsView role={role} providers={providers} setProviders={setProviders} C={C} glass={glass} inputStyle={inputStyle} />}
+          {view === 'settings' && <SettingsView role={role} providers={providers} setProviders={setProviders} />}
+
+          {/* ── PROFILE ── */}
+          {view === 'profile' && <ProfileView role={role} />}
 
         </main>
       </div>
 
-      {selectedCampaign && (
-        <div style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,0.8)', backdropFilter:'blur(10px)', display:'flex', justifyContent:'center', alignItems:'center', padding:'1rem' }}>
-          <div style={{ ...glass, width:'100%', maxWidth:800, borderRadius:24, padding:'2rem', maxHeight:'80vh', display:'flex', flexDirection:'column' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem' }}>
-              <div><h2 style={{ fontSize:'1.25rem', fontWeight:800 }}>{selectedCampaign.campaign?.name}</h2><p style={{ color:C.muted, fontSize:'0.85rem' }}>Individual Call Records</p></div>
-              <button onClick={() => setSelectedCampaign(null)} style={{ background:'transparent', border:'none', color:C.muted, fontSize:'1.5rem', cursor:'pointer' }}>×</button>
-            </div>
-            <div style={{ flex:1, overflow:'auto', borderRadius:12, border:`1px solid ${C.border}` }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', textAlign:'left' }}>
-                <thead><tr>{['Phone Number', 'Outcome', 'Duration', 'Timestamp'].map(h => (<th key={h} style={{ padding:'0.75rem 1rem', background:'rgba(0,0,0,0.2)', color:C.muted, fontSize:'0.75rem', fontWeight:600 }}>{h}</th>))}</tr></thead>
-                <tbody>
-                  {detailedLogs.map(log => (
-                    <tr key={log.id}><td style={{ padding:'0.75rem 1rem', borderBottom:`1px solid ${C.border}`, fontSize:'0.85rem' }}>{maskPhone(log.phone)}</td><td style={{ padding:'0.75rem 1rem', borderBottom:`1px solid ${C.border}`, fontSize:'0.85rem' }}>{statusBadge(log.outcome)}</td><td style={{ padding:'0.75rem 1rem', borderBottom:`1px solid ${C.border}`, fontSize:'0.85rem' }}>{log.duration}</td><td style={{ padding:'0.75rem 1rem', borderBottom:`1px solid ${C.border}`, fontSize:'0.85rem', color:C.muted }}>{new Date(log.called_at).toLocaleString()}</td></tr>
+      <Dialog open={!!selectedCampaign} onClose={() => setSelectedCampaign(null)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>
+          {selectedCampaign?.campaign?.name}
+          <Typography variant="body2" color="text.secondary">Individual Call Records</Typography>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  {['Phone Number', 'Outcome', 'Duration', 'Timestamp'].map(h => (
+                    <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.75rem', bgcolor: 'rgba(0,0,0,0.2)', color: 'text.secondary' }}>{h}</TableCell>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {detailedLogs.map(log => (
+                  <TableRow key={log.id}>
+                    <TableCell sx={{ fontSize: '0.85rem' }}>{maskPhone(log.phone)}</TableCell>
+                    <TableCell><StatusChip status={log.outcome} /></TableCell>
+                    <TableCell sx={{ fontSize: '0.85rem' }}>{log.duration}</TableCell>
+                    <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>{new Date(log.called_at).toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedCampaign(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── CHART EXPAND DIALOG ── */}
+      {(() => {
+        if (!expandedChart) return null
+        // '' = collective (all reports); otherwise filter to the selected campaign
+        const visibleReports = expandCampaign
+          ? reports.filter(r => r.campaign?.name === expandCampaign)
+          : reports
+        const charts = [
+          { id: 'outcome',  title: 'Call Outcome Breakdown', chart: <OutcomeDonut reports={visibleReports} /> },
+          { id: 'campaign', title: 'Campaign Comparison',    chart: <CampaignBar  reports={visibleReports} /> },
+          { id: 'spend',    title: 'Spend & CPL',            chart: <SpendChart   reports={visibleReports} /> },
+          { id: 'funnel',   title: 'Dialling Funnel',        chart: <FunnelChart  reports={visibleReports} /> },
+        ]
+        const active = charts.find(c => c.id === expandedChart)!
+        return (
+          <Dialog open onClose={() => { setExpandedChart(null); setExpandCampaign('') }} maxWidth="lg" fullWidth>
+            <DialogTitle sx={{ fontWeight: 800 }}>
+              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>{active.title}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {expandCampaign ? `Showing: ${expandCampaign}` : 'Collective — all campaigns'}
+                  </Typography>
+                </Box>
+                <Select
+                  size="small"
+                  displayEmpty
+                  value={expandCampaign}
+                  onChange={e => setExpandCampaign(e.target.value)}
+                  sx={{ minWidth: 200, fontSize: '0.85rem' }}
+                >
+                  <MenuItem value="">All Campaigns (Collective)</MenuItem>
+                  {reports.map(r => (
+                    <MenuItem key={r.id} value={r.campaign?.name ?? ''}>{r.campaign?.name}</MenuItem>
+                  ))}
+                </Select>
+              </Stack>
+            </DialogTitle>
+            <DialogContent>
+              <Box sx={{ height: 420 }}>{active.chart}</Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => { setExpandedChart(null); setExpandCampaign('') }}>Close</Button>
+            </DialogActions>
+          </Dialog>
+        )
+      })()}
 
       {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} />}
+      <FloatingNav view={view} setView={setView} />
     </div>
   )
 }

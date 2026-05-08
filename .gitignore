@@ -55,3 +55,6 @@ components/ui/
 pull_request.md
 MEMORY.md
 .claude/
+openspec/
+.cursor/
+.codex/

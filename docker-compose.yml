@@ -2,7 +2,7 @@ services:
   agent-avm:
     build: .
     ports:
-      - "3000:3000"
+      - "9000:9000"
     env_file:
-      - .env.local
+      - .env
     restart: unless-stopped

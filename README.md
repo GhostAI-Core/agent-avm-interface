@@ -75,6 +75,15 @@ npm install
 npm run dev
 ```
 
+### 5. Rasa Integration
+The platform is integrated with **Rasa NLU** for intelligent assistant capabilities.
+1. Ensure Rasa is installed on your machine.
+2. Start the Rasa server with the REST API enabled:
+   ```bash
+   rasa run --enable-api --cors "*"
+   ```
+3. The app will automatically connect to `http://localhost:5005` via the built-in proxy.
+
 ---
 
 ## 📈 Roadmap
@@ -82,6 +91,7 @@ npm run dev
 - [x] VAS Inc. Brand Integration
 - [x] Biometric Passkey Implementation
 - [x] High-Fidelity Dialing Simulation
+- [x] AI Voice Agent Intelligence (Rasa NLU Integration)
 - [ ] Production VoIP Gateway Cutover
 - [ ] AI Voice Agent Voice Synthesis (Phase 2)
 

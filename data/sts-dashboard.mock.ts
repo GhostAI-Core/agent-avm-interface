@@ -1,3 +1,5 @@
+export type STSProductKey = 'all' | 'seeker' | 'grace' | 'doctor' | 'voxi'
+
 export const stsDashboardMock = {
   lastRefreshed: 'Today, 08:00',
   pricePerDay: 7,
@@ -39,4 +41,36 @@ export const stsDashboardMock = {
     { date: 'Sat', activeUsers: 8750, dailyRevenue: 61250 },
     { date: 'Sun', activeUsers: 8920, dailyRevenue: 62440 },
   ],
+}
+
+export const stsProductData: Record<STSProductKey, typeof stsDashboardMock> = {
+  all: stsDashboardMock,
+  seeker: { ...stsDashboardMock, lastRefreshed: 'Today, 08:00',
+    totals: { totalUsers: 4200, activeUsers: 3100, inactiveUsers: 1100, subscriberChange: 140 },
+    revenue: { dailyRevenue: 21700, monthlyRunRate: 651000, lostDailyRevenue: 770, billingRiskUsers: 260 },
+    statusBreakdown: stsDashboardMock.statusBreakdown.map(r => ({ ...r, users: Math.round(r.users * 0.34) })),
+    dailyMovement:   stsDashboardMock.dailyMovement.map(r => ({ ...r, value: Math.round(r.value * 0.34) })),
+    sevenDayTrend:   stsDashboardMock.sevenDayTrend.map(r => ({ ...r, activeUsers: Math.round(r.activeUsers * 0.34), dailyRevenue: Math.round(r.dailyRevenue * 0.35) })),
+  },
+  grace: { ...stsDashboardMock, lastRefreshed: 'Today, 08:00',
+    totals: { totalUsers: 3800, activeUsers: 2700, inactiveUsers: 1100, subscriberChange: 95 },
+    revenue: { dailyRevenue: 18900, monthlyRunRate: 567000, lostDailyRevenue: 630, billingRiskUsers: 210 },
+    statusBreakdown: stsDashboardMock.statusBreakdown.map(r => ({ ...r, users: Math.round(r.users * 0.3) })),
+    dailyMovement:   stsDashboardMock.dailyMovement.map(r => ({ ...r, value: Math.round(r.value * 0.3) })),
+    sevenDayTrend:   stsDashboardMock.sevenDayTrend.map(r => ({ ...r, activeUsers: Math.round(r.activeUsers * 0.3), dailyRevenue: Math.round(r.dailyRevenue * 0.3) })),
+  },
+  doctor: { ...stsDashboardMock, lastRefreshed: 'Today, 08:00',
+    totals: { totalUsers: 2900, activeUsers: 1980, inactiveUsers: 920, subscriberChange: 60 },
+    revenue: { dailyRevenue: 13860, monthlyRunRate: 415800, lostDailyRevenue: 420, billingRiskUsers: 150 },
+    statusBreakdown: stsDashboardMock.statusBreakdown.map(r => ({ ...r, users: Math.round(r.users * 0.22) })),
+    dailyMovement:   stsDashboardMock.dailyMovement.map(r => ({ ...r, value: Math.round(r.value * 0.22) })),
+    sevenDayTrend:   stsDashboardMock.sevenDayTrend.map(r => ({ ...r, activeUsers: Math.round(r.activeUsers * 0.22), dailyRevenue: Math.round(r.dailyRevenue * 0.22) })),
+  },
+  voxi: { ...stsDashboardMock, lastRefreshed: 'Today, 08:00',
+    totals: { totalUsers: 1550, activeUsers: 1140, inactiveUsers: 410, subscriberChange: 25 },
+    revenue: { dailyRevenue: 7980, monthlyRunRate: 239400, lostDailyRevenue: 280, billingRiskUsers: 120 },
+    statusBreakdown: stsDashboardMock.statusBreakdown.map(r => ({ ...r, users: Math.round(r.users * 0.14) })),
+    dailyMovement:   stsDashboardMock.dailyMovement.map(r => ({ ...r, value: Math.round(r.value * 0.14) })),
+    sevenDayTrend:   stsDashboardMock.sevenDayTrend.map(r => ({ ...r, activeUsers: Math.round(r.activeUsers * 0.14), dailyRevenue: Math.round(r.dailyRevenue * 0.14) })),
+  },
 }

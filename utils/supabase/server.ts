@@ -9,6 +9,11 @@ export const createClient = (cookieStore: Awaited<ReturnType<typeof cookies>>) =
     supabaseUrl!,
     supabaseKey!,
     {
+      global: {
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+        },
+      },
       auth: {
         experimental: {
           passkey: true

@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.gitignore
+*.tsbuildinfo
+next-env.d.ts
+.env.local
+.env.*.local
+coverage
+.DS_Store
+*.log
+README.md
+CLAUDE.md
+AGENTS.md
+data/note.md
+proxy.ts
+components/ui/

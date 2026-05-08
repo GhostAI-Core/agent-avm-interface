@@ -72,7 +72,7 @@ const INACTIVITY_LIMIT = 15 * 60 * 1000 // 15 minutes
 
 export default function Page() {
   const [mounted,         setMounted]         = useState(false)
-  const [auth,            setAuth]            = useState(false)
+  const [auth,            setAuth]            = useState(process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === 'true')
   const [role,            setRole]            = useState<'admin' | 'engineer'>('admin')
   const [view,        setView]        = useState('dashboard')
   const [sideOpen,    setSideOpen]    = useState(false)

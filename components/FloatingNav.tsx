@@ -4,11 +4,12 @@ import Box from '@mui/material/Box'
 import { colors, semantic } from '@/lib/tokens'
 
 const NAV = [
-  { id: 'dashboard', label: 'Dashboard', icon: '◈' },
+  { id: 'dashboard', label: 'Overview', icon: '◈' },
+  { id: 'sts', label: 'STS', icon: '📡' },
   { id: 'campaigns', label: 'Campaigns', icon: '⚡' },
   { id: 'reports', label: 'Report', icon: '📊' },
+  { id: 'quality', label: 'Quality', icon: '🎯' },
   { id: 'security', label: 'Security', icon: '🛡' },
-  { id: 'sts', label: 'STS', icon: '📡' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ]
 

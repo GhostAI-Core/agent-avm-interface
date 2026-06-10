@@ -14,16 +14,17 @@ const NAV_GROUPS = [
   {
     label: 'Campaigns',
     items: [
-      { id: 'dashboard', label: 'Dashboard'       },
+      { id: 'dashboard', label: 'Overview'        },
+      { id: 'sts',       label: 'STS Dashboard'   },
       { id: 'campaigns', label: 'Campaigns'       },
       { id: 'reports',   label: 'Campaign Report' },
+      { id: 'quality',   label: 'Call Quality'    },
     ],
   },
   {
     label: 'Operations',
     items: [
       { id: 'security', label: 'Security Audit' },
-      { id: 'sts',      label: 'STS Dashboard'  },
     ],
   },
   {

@@ -87,7 +87,7 @@ cd /opt/docker/production/evra_avm
 docker compose up -d
 ```
 
-Prefer re-running a prior successful GitHub Actions deploy from a known-good commit on `main`.
+Prefer re-running a prior successful GitHub Actions deploy from a known-good commit on `production`.
 
 ## Debugging without host ports
 

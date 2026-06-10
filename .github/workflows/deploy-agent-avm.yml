@@ -1,3 +1,4 @@
+# Repository secret DEPLOY_PATH: /opt/docker/production/evra_avm
 name: Deploy Agent AVM
 
 on:

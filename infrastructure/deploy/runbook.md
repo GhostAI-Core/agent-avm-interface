@@ -7,7 +7,7 @@
 | `PROJECT_SLUG` | `agent-avm` |
 | `TIER` | `web` |
 | `COMPOSE_DIR` | `.` (repo root) |
-| `DEPLOY_PATH` | `/opt/docker/agent-avm` |
+| `DEPLOY_PATH` | `/opt/docker/production/evra_avm` |
 | `DEPLOY_USER` | `deploy` |
 | `CONCURRENCY_GROUP` | `agent-avm-deploy` |
 | `PUBLIC_DOMAIN` | Confirm with ops (e.g. `vas.inc`) |
@@ -37,22 +37,22 @@ Target must match the compose **service name** and **expose** port exactly.
 | `DEPLOY_SSH_PRIVATE_KEY` | Deploy user private key |
 | `DEPLOY_HOST` | Server hostname or IP |
 | `DEPLOY_USER` | `deploy` |
-| `DEPLOY_PATH` | `/opt/docker/agent-avm` |
+| `DEPLOY_PATH` | `/opt/docker/production/evra_avm` |
 
 ## First deploy (manual bootstrap)
 
 ```bash
 # On server — one time
-sudo mkdir -p /opt/docker/agent-avm
-sudo chown -R deploy:deploy /opt/docker/agent-avm
+sudo mkdir -p /opt/docker/production/evra_avm
+sudo chown -R deploy:deploy /opt/docker/production/evra_avm
 
 # After first rsync or clone
-cp /opt/docker/agent-avm/.env.example /opt/docker/agent-avm/.env
-nano /opt/docker/agent-avm/.env   # fill Supabase keys
+cp /opt/docker/production/evra_avm/.env.example /opt/docker/production/evra_avm/.env
+nano /opt/docker/production/evra_avm/.env   # fill Supabase keys
 
 docker network inspect shared     # must exist; create outside this project if missing
 
-cd /opt/docker/agent-avm
+cd /opt/docker/production/evra_avm
 docker compose up -d --build
 ```
 
@@ -61,7 +61,7 @@ docker compose up -d --build
 ## Post-deploy validation
 
 ```bash
-cd /opt/docker/agent-avm
+cd /opt/docker/production/evra_avm
 
 docker compose ps
 # Confirm no 0.0.0.0 or 127.0.0.1 port mappings
@@ -83,7 +83,7 @@ curl -sf https://agent-avm.{PUBLIC_DOMAIN}/api/health
 ## Rollback
 
 ```bash
-cd /opt/docker/agent-avm
+cd /opt/docker/production/evra_avm
 docker compose up -d
 ```
 

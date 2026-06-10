@@ -57,7 +57,7 @@ export default function SettingsView({ role, providers, setProviders }: Settings
         <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>VoIP Provider Integration</Typography>
 
         {/* Add new provider */}
-        <Box sx={{ p: 2, mb: 3, border: '1px dashed rgba(255,255,255,0.15)', borderRadius: 2 }}>
+        <Box sx={{ p: 2, mb: 3, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
           <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mb: 1.5, display: 'block' }}>ADD NEW GATEWAY</Typography>
           <Stack sx={{ gap: 2 }}>
             <TextField label="Provider Name (e.g. Twilio Production)" size="small" fullWidth value={newProv.name} onChange={set('name')} />
@@ -78,7 +78,7 @@ export default function SettingsView({ role, providers, setProviders }: Settings
         {/* Provider list */}
         <Stack sx={{ gap: 2 }}>
           {providers.map(p => (
-            <Box key={p.id} sx={{ p: 2, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 }}>
+            <Box key={p.id} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
               <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography sx={{ fontWeight: 700 }}>{p.name}</Typography>
                 <Chip label="ACTIVE" size="small" color="success" variant="outlined" sx={{ fontSize: '0.7rem' }} />

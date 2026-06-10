@@ -44,22 +44,6 @@ import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
 import GlassCard from '@/components/ui/GlassCard'
 import type { Campaign, CampaignReport } from '@/types'
-
-// Tokens still used by child components that haven't been migrated yet
-const C = {
-  glass:   'rgba(30,41,59,0.75)',
-  border:  'rgba(255,255,255,0.10)',
-  accent:  '#3b82f6',
-  success: '#10b981',
-  warn:    '#f59e0b',
-  danger:  '#ef4444',
-  muted:   '#94a3b8',
-  text:    '#f8fafc',
-}
-
-const glass = { background: C.glass, backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)', border:`1px solid ${C.border}`, boxShadow:'0 8px 32px rgba(0,0,0,0.3)' }
-const inputStyle: React.CSSProperties = { width:'100%', padding:'0.65rem 0.9rem', background:'rgba(0,0,0,0.25)', border:`1px solid ${C.border}`, borderRadius:8, color:'white', fontFamily:'inherit', fontSize:'0.875rem', outline:'none' }
-
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Dashboard Overview',
   campaigns: 'Campaigns',
@@ -229,25 +213,25 @@ export default function Page() {
 
   if (!authChecked) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#0f172a', color: C.muted }}>
+      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', color: 'text.secondary' }}>
         <Typography variant="body2">Loading…</Typography>
       </Box>
     )
   }
 
   if (!auth) {
-    return <AuthView onAuth={(v, r) => { setAuth(v); setRole(r) }} C={C} glass={glass} inputStyle={inputStyle} mounted={mounted} isSecure={isSecure} />
+    return <AuthView onAuth={(v, r) => { setAuth(v); setRole(r) }} isSecure={isSecure} />
   }
 
   const activeCount = campaigns.filter(c => c.status === 'running' || c.status === 'paused').length
 
 
   return (
-    <div style={{ minHeight:'100vh', display:'flex', background:'#0f172a', color:C.text, fontFamily:"'Inter', sans-serif" }}>
+    <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: 'background.default', color: 'text.primary' }}>
       <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} />
-      <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <TopBar title={VIEW_TITLES[view]} onMenu={() => setSideOpen(true)} onLogout={handleLogout} />
-        <main style={{ flex:1, padding:'1.5rem', paddingBottom:'6rem', overflowY:'auto' }}>
+        <Box component="main" sx={{ flex: 1, p: 3, pb: '6rem', overflowY: 'auto' }}>
           
           {/* ── DASHBOARD ── */}
           {view === 'dashboard' && (
@@ -365,7 +349,7 @@ export default function Page() {
                     <TableHead>
                       <TableRow>
                         {['Campaign','Dialed','Connected','Qualified','Voicemail','No Speech','Hangup','NI','DNQ','Callback','NA','Busy','Failed','Duration','CPL','Spent'].map(h => (
-                          <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', color: 'text.secondary', bgcolor: 'rgba(0,0,0,0.2)', whiteSpace: 'nowrap' }}>{h}</TableCell>
+                          <TableCell key={h} sx={{ whiteSpace: 'nowrap' }}>{h}</TableCell>
                         ))}
                       </TableRow>
                     </TableHead>
@@ -376,10 +360,10 @@ export default function Page() {
                             <AgentChip agent={r.campaign?.agent ?? ''} />
                             <Typography variant="caption" sx={{ display: 'block' }}>{r.campaign?.name}</Typography>
                           </TableCell>
-                          {REPORT_KEYS.map(k => <TableCell key={k} sx={{ fontSize: '0.82rem' }}>{Number(r[k]).toLocaleString()}</TableCell>)}
-                          <TableCell sx={{ fontSize: '0.82rem' }}>{r.duration}</TableCell>
-                          <TableCell sx={{ fontSize: '0.82rem' }}>R{r.cpl.toFixed(2)}</TableCell>
-                          <TableCell sx={{ fontSize: '0.82rem', color: 'success.main', fontWeight: 600 }}>R{r.total_spent.toLocaleString()}</TableCell>
+                          {REPORT_KEYS.map(k => <TableCell key={k} className="mono" sx={{ fontSize: '0.82rem' }}>{Number(r[k]).toLocaleString()}</TableCell>)}
+                          <TableCell className="mono" sx={{ fontSize: '0.82rem' }}>{r.duration}</TableCell>
+                          <TableCell className="mono" sx={{ fontSize: '0.82rem' }}>R{r.cpl.toFixed(2)}</TableCell>
+                          <TableCell className="mono" sx={{ fontSize: '0.82rem', color: 'success.main', fontWeight: 600 }}>R{r.total_spent.toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -401,8 +385,8 @@ export default function Page() {
           {/* ── PROFILE ── */}
           {view === 'profile' && <ProfileView role={role} />}
 
-        </main>
-      </div>
+        </Box>
+      </Box>
 
       <Dialog open={!!selectedCampaign} onClose={() => setSelectedCampaign(null)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 800 }}>
@@ -415,16 +399,16 @@ export default function Page() {
               <TableHead>
                 <TableRow>
                   {['Phone Number', 'Outcome', 'Duration', 'Timestamp'].map(h => (
-                    <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.75rem', bgcolor: 'rgba(0,0,0,0.2)', color: 'text.secondary' }}>{h}</TableCell>
+                    <TableCell key={h}>{h}</TableCell>
                   ))}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {detailedLogs.map(log => (
                   <TableRow key={log.id}>
-                    <TableCell sx={{ fontSize: '0.85rem' }}>{maskPhone(log.phone)}</TableCell>
+                    <TableCell className="mono" sx={{ fontSize: '0.85rem' }}>{maskPhone(log.phone)}</TableCell>
                     <TableCell><StatusChip status={log.outcome} /></TableCell>
-                    <TableCell sx={{ fontSize: '0.85rem' }}>{log.duration}</TableCell>
+                    <TableCell className="mono" sx={{ fontSize: '0.85rem' }}>{log.duration}</TableCell>
                     <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>{new Date(log.called_at).toLocaleString()}</TableCell>
                   </TableRow>
                 ))}
@@ -487,6 +471,6 @@ export default function Page() {
 
       {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} />}
       <FloatingNav view={view} setView={setView} />
-    </div>
+    </Box>
   )
 }

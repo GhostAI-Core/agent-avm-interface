@@ -1,9 +1,13 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Michroma } from 'next/font/google'
 import Providers from '@/components/Providers'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const michroma = Michroma({
+  subsets: ['latin'],
+  weight: '400',
+  variable: '--font-display',
+})
 
 export const metadata: Metadata = {
   title: 'Agent AVM Interface',
@@ -12,7 +16,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.className}>
+    <html lang="en" className={michroma.variable}>
       <body>
         <Providers>{children}</Providers>
       </body>

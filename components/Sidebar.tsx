@@ -6,10 +6,10 @@ import ListItemText from '@mui/material/ListItemText'
 import ListSubheader from '@mui/material/ListSubheader'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
+import { agentColors, colors } from '@/lib/tokens'
 
 const WIDTH = 260
 
-// Grouped nav — view string keys must not change
 const NAV_GROUPS = [
   {
     label: 'Campaigns',
@@ -36,12 +36,11 @@ const NAV_GROUPS = [
 ]
 
 const AGENTS = [
-  { label: 'Seeker',  color: '#3b82f6' },
-  { label: 'Grace',   color: '#a855f7' },
-  { label: 'Sangoma', color: '#f97316' },
+  { label: 'Seeker',  color: agentColors.seeker },
+  { label: 'Grace',   color: agentColors.grace },
+  { label: 'Sangoma', color: agentColors.sangoma },
 ]
 
-// Shared interior — rendered inside both desktop and mobile drawers
 function SidebarContent({ view, setView, onClose }: {
   view: string
   setView: (v: string) => void
@@ -50,17 +49,24 @@ function SidebarContent({ view, setView, onClose }: {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-      {/* Logo */}
-      <Box sx={{ p: 3, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Box component="img" src="/logo.png" alt="VAS Inc"
-          sx={{ height: 96, objectFit: 'contain', filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.4))' }}
+      <Box sx={{ p: 3, borderBottom: `1px solid ${colors.border1}`, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Box component="img" src="/evra_trans.png" alt="EVRA"
+          sx={{
+            height: 96,
+            width: 'auto',
+            objectFit: 'contain',
+            filter: 'drop-shadow(0 0 12px rgba(91, 232, 190, 0.45))',
+          }}
         />
-        <Typography variant="caption" sx={{ display: 'block', mt: 1.5, fontWeight: 700, letterSpacing: '0.1em', color: 'text.secondary' }}>
+        <Typography
+          variant="caption"
+          className="logo-wordmark"
+          sx={{ display: 'block', mt: 1.5, fontWeight: 400, letterSpacing: '0.1em', fontSize: '0.65rem' }}
+        >
           AGENT AVM | SOUTH AFRICA
         </Typography>
       </Box>
 
-      {/* Grouped nav */}
       <List sx={{ px: 1.5, pt: 1 }} dense>
         {NAV_GROUPS.map(group => (
           <Box key={group.label}>
@@ -72,12 +78,7 @@ function SidebarContent({ view, setView, onClose }: {
                 key={id}
                 selected={view === id}
                 onClick={() => { setView(id); onClose() }}
-                sx={{
-                  borderRadius: 2,
-                  mb: 0.25,
-                  '&.Mui-selected': { bgcolor: 'rgba(59,130,246,0.12)', color: 'primary.main' },
-                  '&.Mui-selected:hover': { bgcolor: 'rgba(59,130,246,0.18)' },
-                }}
+                sx={{ borderRadius: 1, mb: 0.25 }}
               >
                 <ListItemText primary={label} slotProps={{ primary: { sx: { fontSize: '0.9rem', fontWeight: 500 } } }} />
               </ListItemButton>
@@ -86,8 +87,7 @@ function SidebarContent({ view, setView, onClose }: {
         ))}
       </List>
 
-      {/* Agent legend */}
-      <Box sx={{ mt: 'auto', p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+      <Box sx={{ mt: 'auto', p: 2, borderTop: `1px solid ${colors.border1}` }}>
         {AGENTS.map(a => (
           <Box key={a.label} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
             <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: a.color, flexShrink: 0 }} />
@@ -112,19 +112,17 @@ export default function Sidebar({ view, setView, isOpen, onClose }: {
     '& .MuiDrawer-paper': {
       width: WIDTH,
       boxSizing: 'border-box',
-      bgcolor: 'rgba(30,41,59,0.75)',
-      borderRight: '1px solid rgba(255,255,255,0.1)',
+      bgcolor: colors.bg1,
+      borderRight: `1px solid ${colors.border1}`,
     },
   }
 
   return (
     <>
-      {/* Desktop — always visible, part of the page flow */}
       <Drawer variant="permanent" sx={{ ...drawerSx, display: { xs: 'none', lg: 'block' } }}>
         <SidebarContent view={view} setView={setView} onClose={() => {}} />
       </Drawer>
 
-      {/* Mobile — slides in over the content */}
       <Drawer variant="temporary" open={isOpen} onClose={onClose}
         sx={{ ...drawerSx, display: { xs: 'block', lg: 'none' } }}
         ModalProps={{ keepMounted: true }}

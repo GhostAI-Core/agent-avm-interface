@@ -1,17 +1,200 @@
-/* Tailwind base import — kept only for its reset/preflight layer.
-   MUI CssBaseline is the primary reset; Tailwind utilities are not used. */
 @import "tailwindcss";
 
-/* Keyboard focus ring — visible on all focusable elements for a11y */
+:root {
+  /* Brand */
+  --evra-green: #37A660;
+  --evra-green-bright: #60BC84;
+  --evra-green-deep: #1F6F35;
+  --evra-green-ink: #0E2014;
+  --evra-glow: #5BE8BE;
+
+  /* Backgrounds / surfaces */
+  --evra-bg-0: #1F1F1F;
+  --evra-bg-1: #292929;
+  --evra-bg-2: #141414;
+  --evra-bg-3: #383838;
+  --evra-bg-4: #5C5C5C;
+
+  /* Text */
+  --evra-fg-1: #FFFFFF;
+  --evra-fg-2: #C8C8C8;
+  --evra-fg-3: #909090;
+  --evra-fg-4: #606060;
+
+  /* Borders */
+  --evra-border-1: #1A1A1A;
+  --evra-border-2: #3A3A3A;
+  --evra-border-3: #4A4A4A;
+
+  /* Semantic */
+  --evra-positive: #37A660;
+  --evra-negative: #E0524F;
+  --evra-warning: #C99A2D;
+  --evra-info: #6DC2FF;
+
+  /* Convenience aliases */
+  --bg: var(--evra-bg-0);
+  --surface: var(--evra-bg-1);
+  --surface-deep: var(--evra-bg-2);
+  --surface-hover: var(--evra-bg-3);
+  --border-subtle: var(--evra-border-1);
+  --border: var(--evra-border-2);
+  --text: var(--evra-fg-1);
+  --text-muted: var(--evra-fg-2);
+  --text-soft: var(--evra-fg-3);
+  --text-disabled: var(--evra-fg-4);
+  --accent: var(--evra-green);
+  --accent-bright: var(--evra-green-bright);
+  --accent-deep: var(--evra-green-deep);
+  --accent-glow: var(--evra-glow);
+  --danger: var(--evra-negative);
+  --warning: var(--evra-warning);
+  --info: var(--evra-info);
+
+  /* Typography — display set via next/font variable on html */
+  --font-body:
+    -apple-system,
+    BlinkMacSystemFont,
+    'SF Pro Text',
+    'SF Pro Display',
+    'DM Sans',
+    'Segoe UI',
+    system-ui,
+    sans-serif;
+
+  --font-mono:
+    ui-monospace,
+    'SF Mono',
+    'JetBrains Mono',
+    Menlo,
+    Consolas,
+    monospace;
+
+  /* Type scale */
+  --t-xs: 11px;
+  --t-sm: 13px;
+  --t-md: 15px;
+  --t-lg: 18px;
+  --t-xl: 22px;
+  --t-2xl: 28px;
+  --t-3xl: 40px;
+  --t-4xl: 56px;
+  --t-5xl: 80px;
+  --t-6xl: 120px;
+
+  --lh-tight: 1.05;
+  --lh-snug: 1.2;
+  --lh-body: 1.5;
+
+  /* Radius */
+  --r-xs: 2px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-pill: 999px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* Chart visual system */
+  --chart-bg: #252525;
+  --chart-plot-bg: #202020;
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --chart-axis: #A8A8A8;
+  --chart-text: #EDEDED;
+  --chart-muted: #7E7E7E;
+  --chart-connected: #47D16A;
+  --chart-qualified: #5BE8BE;
+  --chart-voicemail: #E0B13F;
+  --chart-no-speech: #A3A3A3;
+  --chart-hangup: #F25F5C;
+  --chart-ni: #72D6A5;
+  --chart-dnq: #67B7FF;
+  --chart-callback: #2FAE5F;
+  --chart-failed: #4A4A4A;
+  --chart-spent: #C85A5A;
+  --chart-cpl: #4FD17B;
+  --chart-glow-connected: rgba(71, 209, 106, 0.22);
+  --chart-glow-qualified: rgba(91, 232, 190, 0.20);
+  --chart-glow-voicemail: rgba(224, 177, 63, 0.18);
+  --chart-glow-hangup: rgba(242, 95, 92, 0.18);
+  --chart-glow-dnq: rgba(103, 183, 255, 0.18);
+  --chart-glow-neutral: rgba(255, 255, 255, 0.08);
+
+  /* Spacing */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 32px;
+  --s-8: 40px;
+  --s-9: 56px;
+  --s-10: 80px;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.input {
+  background: var(--surface-deep);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+
+.button-primary {
+  background: var(--accent);
+  color: var(--evra-green-ink);
+  border: 1px solid var(--accent-deep);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+}
+
+.button-secondary {
+  background: var(--evra-bg-4);
+  color: #FFFFFF;
+  border: 1px solid #6E6E6E;
+  border-radius: var(--radius-sm);
+}
+
+.logo-wordmark {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #FFFFFF;
+  text-shadow:
+    0 0 10px rgba(91, 232, 190, 0.55),
+    0 0 28px rgba(91, 232, 190, 0.22);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 :focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--accent-bright);
   outline-offset: 2px;
 }
 
 @keyframes livePulse { 0%,100%{ opacity:1; } 50%{ opacity:0.25; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Custom scrollbars — not provided by MUI */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: var(--evra-bg-3); border-radius: 4px; }

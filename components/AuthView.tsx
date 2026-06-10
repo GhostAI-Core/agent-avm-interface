@@ -13,10 +13,11 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import { createClient } from '@/utils/supabase/client'
 import { resolveUserRole, userMetaFromSession, type AppRole } from '@/lib/roles'
 import { withTimeout } from '@/lib/async'
+import { semantic } from '@/lib/tokens'
 
 interface AuthViewProps {
   onAuth: (auth: boolean, role: AppRole) => void
-  C?: any; glass?: any; inputStyle?: any; mounted?: boolean; isSecure: boolean
+  isSecure: boolean
 }
 
 const bufferToBase64 = (buffer: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(buffer)))
@@ -51,7 +52,6 @@ export default function AuthView({ onAuth, isSecure }: AuthViewProps) {
       const role: AppRole = meta.role === 'admin' ? 'admin' : 'engineer'
       onAuth(true, role)
 
-      // Profile sync in background — must not block the login button
       void resolveUserRole(supabase, data.session.user.id, meta).catch(err => {
         console.warn('Profile sync failed:', err)
       })
@@ -91,17 +91,17 @@ export default function AuthView({ onAuth, isSecure }: AuthViewProps) {
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default',
-      backgroundImage: 'radial-gradient(circle at top right, rgba(59,130,246,0.15), transparent 500px)', p: 2 }}>
+      backgroundImage: `radial-gradient(circle at top right, rgba(55,166,96,0.12), transparent 500px)`, p: 2 }}>
       <Container maxWidth="xs">
 
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-          <Box component="img" src="/logo.png" alt="VAS Inc"
-            sx={{ height: { xs: 80, sm: 110 }, objectFit: 'contain', filter: 'drop-shadow(0 0 25px rgba(59,130,246,0.5))' }}
+          <Box component="img" src="/evra_trans.png" alt="EVRA"
+            sx={{ height: { xs: 80, sm: 110 }, width: 'auto', objectFit: 'contain', filter: `drop-shadow(0 0 20px ${semantic.accentGlow}88)` }}
           />
         </Box>
 
         <Paper sx={{ p: { xs: 3, sm: 4 }, position: 'relative', overflow: 'hidden' }}>
-          <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', fontWeight: 700, letterSpacing: '0.1em', color: 'text.secondary', mb: 2 }}>
+          <Typography variant="caption" className="logo-wordmark" sx={{ display: 'block', textAlign: 'center', fontSize: '0.65rem', mb: 2 }}>
             SECURE IDENTITY PORTAL
           </Typography>
 
@@ -145,8 +145,6 @@ export default function AuthView({ onAuth, isSecure }: AuthViewProps) {
           </Typography>
         </Paper>
       </Container>
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </Box>
   )
 }

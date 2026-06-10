@@ -3,12 +3,12 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import GlassCard from '@/components/ui/GlassCard'
 import type { CampaignReport } from '@/types'
+import { toneColors } from '@/lib/tokens'
 
 function sum(rows: CampaignReport[], key: keyof CampaignReport) {
   return rows.reduce((a, r) => a + (Number(r[key]) || 0), 0)
 }
 function pct(n: number, d: number) { return d ? `${((n / d) * 100).toFixed(1)}%` : '—' }
-// Deterministic en-ZA formatting — avoids SSR/client Intl mismatch (Node vs browser)
 function fmtNumberZA(n: number, fractionDigits = 0): string {
   const sign = n < 0 ? '-' : ''
   const abs = Math.abs(n)
@@ -18,8 +18,6 @@ function fmtNumberZA(n: number, fractionDigits = 0): string {
 }
 function fmtN(n: number) { return fmtNumberZA(n, 0) }
 function fmtR(n: number) { return `R${fmtNumberZA(n, 2)}` }
-
-const TONE_COLOR = { pos: '#10b981', neg: '#ef4444', neu: '#94a3b8' }
 
 export default function KpiStrip({ reports }: { reports: CampaignReport[] }) {
   const dialed    = sum(reports, 'dialed')
@@ -33,7 +31,7 @@ export default function KpiStrip({ reports }: { reports: CampaignReport[] }) {
     return cpls.length ? cpls.reduce((a, b) => a + b, 0) / cpls.length : 0
   })()
 
-  const kpis: { label: string; value: string; delta: string; tone: keyof typeof TONE_COLOR }[] = [
+  const kpis: { label: string; value: string; delta: string; tone: keyof typeof toneColors }[] = [
     { label: 'Dialed',       value: fmtN(dialed),    delta: 'Total across campaigns',             tone: 'neu' },
     { label: 'Connected',    value: fmtN(connected), delta: pct(connected, dialed) + ' connect',  tone: 'pos' },
     { label: 'Qualified',    value: fmtN(qualified), delta: pct(qualified, connected) + ' of conn', tone: 'pos' },
@@ -52,10 +50,10 @@ export default function KpiStrip({ reports }: { reports: CampaignReport[] }) {
             <Typography variant="caption" sx={{ textTransform: 'uppercase', letterSpacing: '0.06em', color: 'text.secondary', display: 'block', mb: 0.5 }}>
               {k.label}
             </Typography>
-            <Typography sx={{ fontSize: '1.85rem', fontWeight: 700, letterSpacing: '-1px', lineHeight: 1.1 }}>
+            <Typography className="mono" sx={{ fontSize: '1.85rem', fontWeight: 700, letterSpacing: '-1px', lineHeight: 1.1 }}>
               {k.value}
             </Typography>
-            <Box sx={{ color: TONE_COLOR[k.tone], fontSize: '0.72rem', mt: 0.5 }}>{k.delta}</Box>
+            <Box sx={{ color: toneColors[k.tone], fontSize: '0.72rem', mt: 0.5 }}>{k.delta}</Box>
           </GlassCard>
         </Grid>
       ))}

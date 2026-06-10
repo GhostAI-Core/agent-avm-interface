@@ -1,12 +1,12 @@
-import type { Campaign, CampaignReport } from '@/types'
+import type { Campaign, CampaignReport, CallRecord, IntentStat, IntentWaterfall } from '@/types'
 
 export const DEMO_CAMPAIGNS: Campaign[] = [
-  { id:1, name:'1Life BMI AI V4.2',               agent:'seeker',  status:'running', dialing_speed:2, time_window_start:'08:00', time_window_end:'20:00' },
-  { id:2, name:'1Life Funeral BMI AI V4.3',        agent:'grace',   status:'running', dialing_speed:1, time_window_start:'08:00', time_window_end:'20:00' },
-  { id:3, name:'3Way Miway STI AI NEW',            agent:'sangoma', status:'running', dialing_speed:2, time_window_start:'08:00', time_window_end:'20:00' },
-  { id:4, name:'Miway STI UGOC AI V4.3 Male',      agent:'seeker',  status:'paused',  dialing_speed:2, time_window_start:'08:00', time_window_end:'20:00' },
-  { id:5, name:'Ivyze STI Old Mutual Vantage Male', agent:'grace',   status:'running', dialing_speed:1, time_window_start:'08:00', time_window_end:'20:00' },
-  { id:6, name:'Metropolitan Funeral UGOC AI V4.3', agent:'sangoma', status:'paused',  dialing_speed:1, time_window_start:'08:00', time_window_end:'20:00' },
+  { id:1, name:'1Life BMI AI V4.2',               agent:'seeker',  company:'1Life',        status:'running', dialing_speed:2, time_window_start:'08:00', time_window_end:'20:00' },
+  { id:2, name:'1Life Funeral BMI AI V4.3',        agent:'grace',   company:'1Life',        status:'running', dialing_speed:1, time_window_start:'08:00', time_window_end:'20:00' },
+  { id:3, name:'3Way Miway STI AI NEW',            agent:'sangoma', company:'Miway',        status:'running', dialing_speed:2, time_window_start:'08:00', time_window_end:'20:00' },
+  { id:4, name:'Miway STI UGOC AI V4.3 Male',      agent:'seeker',  company:'Miway',        status:'paused',  dialing_speed:2, time_window_start:'08:00', time_window_end:'20:00' },
+  { id:5, name:'Ivyze STI Old Mutual Vantage Male', agent:'grace',   company:'Old Mutual',   status:'running', dialing_speed:1, time_window_start:'08:00', time_window_end:'20:00' },
+  { id:6, name:'Metropolitan Funeral UGOC AI V4.3', agent:'sangoma', company:'Metropolitan', status:'paused',  dialing_speed:1, time_window_start:'08:00', time_window_end:'20:00' },
 ]
 
 export const DEMO_REPORTS: CampaignReport[] = [
@@ -25,3 +25,85 @@ export const DEMO_SECURITY_LOGS = [
   { id: 4, event_type: 'login', agent_name: 'Voice Engineer', ip_address: '10.0.0.45', details: 'Biometric Face ID authentication successful', created_at: new Date(Date.now() - 90000000).toISOString() },
   { id: 5, event_type: 'config_change', agent_name: 'Voice Engineer', ip_address: '10.0.0.45', details: 'Switched environment to Staging for "Life Cover AI"', created_at: new Date(Date.now() - 120000000).toISOString() },
 ]
+
+// Per-campaign individual call records — deterministic fallback (seeded by campaign id)
+// used when the call_records table isn't reachable. Mirrors the SQL seed's distribution.
+const CALL_OUTCOMES: { outcome: string; threshold: number }[] = [
+  { outcome: 'qualified', threshold: 0.02 },
+  { outcome: 'connected', threshold: 0.20 },
+  { outcome: 'voicemail', threshold: 0.45 },
+  { outcome: 'no_speech', threshold: 0.55 },
+  { outcome: 'hangup',    threshold: 0.68 },
+  { outcome: 'callback',  threshold: 0.72 },
+  { outcome: 'ni',        threshold: 0.74 },
+  { outcome: 'dnq',       threshold: 0.76 },
+  { outcome: 'no_answer', threshold: 0.88 },
+  { outcome: 'busy',      threshold: 0.94 },
+  { outcome: 'failed',    threshold: 1.01 },
+]
+
+function talkFor(outcome: string, rnd: number): number {
+  switch (outcome) {
+    case 'qualified': return 120 + Math.floor(rnd * 240)
+    case 'connected': return 30 + Math.floor(rnd * 180)
+    case 'callback':  return 20 + Math.floor(rnd * 60)
+    case 'voicemail': return 5 + Math.floor(rnd * 25)
+    case 'no_speech': return 3 + Math.floor(rnd * 12)
+    case 'ni':        return 10 + Math.floor(rnd * 40)
+    case 'dnq':       return 10 + Math.floor(rnd * 30)
+    case 'hangup':    return 1 + Math.floor(rnd * 8)
+    default:          return 0
+  }
+}
+
+export function demoCallsFor(campaignId: number, count = 60): CallRecord[] {
+  let seed = ((campaignId || 1) * 7919) & 0x7fffffff
+  const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff }
+  const now = Date.now()
+  const calls: CallRecord[] = []
+  for (let i = 0; i < count; i++) {
+    const r = rand()
+    const outcome = CALL_OUTCOMES.find(o => r < o.threshold)!.outcome
+    const talk = talkFor(outcome, rand())
+    const phone = `+27 ${60 + Math.floor(rand() * 30)} ${String(Math.floor(rand() * 1000)).padStart(3, '0')} ${String(Math.floor(rand() * 10000)).padStart(4, '0')}`
+    calls.push({
+      id: campaignId * 1000 + i,
+      campaign_id: campaignId,
+      phone,
+      outcome,
+      talk_seconds: talk,
+      cost: Math.round((talk * 0.15 + 0.5) * 100) / 100,
+      transferred: outcome === 'qualified' && rand() < 0.6,
+      recording_url: talk > 0 ? `https://recordings.local/${campaignId}/${i}.mp3` : null,
+      called_at: new Date(now - Math.floor(rand() * 14 * 24 * 3600 * 1000)).toISOString(),
+    })
+  }
+  return calls.sort((a, b) => +new Date(b.called_at) - +new Date(a.called_at))
+}
+
+// Intent waterfall — deterministic per campaign + date, used when intent_stats
+// isn't reachable. Mirrors the SQL seed's decaying-by-step distribution.
+const INTENT_FLOW: string[] = [
+  'Greeting', 'Hello', 'Intro', 'CallPositioning', 'AlreadyCoveredHandling',
+  'CanIContinue', 'CallbackHandling', 'CallbackGoodbye', 'DidNotQualify', 'FallbackGoodbye',
+  'NotInterestedHandling', 'NotInterestedGoodbye', 'UnemployedGoodbye', 'PopiInfo', 'WhoYou',
+  'QuesRSA', 'QuesAge', 'QuesSalary', 'FinalContinue', 'QualifiedGoodbye',
+]
+
+function hashStr(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) }
+  return h >>> 0
+}
+
+export function demoIntentsFor(campaignId: number, date: string): IntentWaterfall {
+  let seed = (((campaignId || 1) * 7919) ^ hashStr(date || '')) >>> 0
+  const rand = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 0xffffffff }
+  const connectedTotal = 4000 + Math.floor(rand() * 8000)
+  const intents: IntentStat[] = INTENT_FLOW.map((intent_name, idx) => {
+    const step = idx + 1
+    const reached = Math.max(0, Math.floor((1500 / step) * (0.5 + rand())))
+    return { intent_name, step, reached }
+  })
+  return { day: date, connectedTotal, intents }
+}

@@ -6,15 +6,17 @@ import { resolveUserRole, userMetaFromSession, type AppRole } from '@/lib/roles'
 import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
 import FloatingNav from '@/components/FloatingNav'
-import KpiStrip from '@/components/KpiStrip'
+import InsightDashboard from '@/components/InsightDashboard'
 import CampaignModal from '@/components/CampaignModal'
 import AuthView from '@/components/AuthView'
 import SecurityView from '@/components/SecurityView'
 import SettingsView from '@/components/SettingsView'
 import { OutcomeDonut, CampaignBar, SpendChart, FunnelChart } from '@/components/Charts'
-import { maskPhone } from '@/lib/security'
 import STSDashboard from '@/components/STSDashboard'
 import ProfileView from '@/components/ProfileView'
+import CampaignDetail from '@/components/CampaignDetail'
+import CallQuality from '@/components/CallQuality'
+import CampaignActionDialog from '@/components/CampaignActionDialog'
 import Grid from '@mui/material/Grid'
 import Stack from '@mui/material/Stack'
 import Box from '@mui/material/Box'
@@ -23,6 +25,12 @@ import Button from '@mui/material/Button'
 import MuiIconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import OpenInFullIcon from '@mui/icons-material/OpenInFull'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import PauseIcon from '@mui/icons-material/Pause'
+import StopIcon from '@mui/icons-material/Stop'
+import EditIcon from '@mui/icons-material/Edit'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import ArchiveIcon from '@mui/icons-material/Archive'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import CardActions from '@mui/material/CardActions'
@@ -45,9 +53,10 @@ import StatusChip from '@/components/ui/StatusChip'
 import GlassCard from '@/components/ui/GlassCard'
 import type { Campaign, CampaignReport } from '@/types'
 const VIEW_TITLES: Record<string, string> = {
-  dashboard: 'Dashboard Overview',
+  dashboard: 'Overview',
   campaigns: 'Campaigns',
   reports:   'Campaign Report',
+  quality:   'Call Quality',
   security:  'Security Audit Log',
   sts:       'STS Dashboard',
   settings:  'System Settings',
@@ -68,6 +77,8 @@ export default function Page() {
   const [showModal,   setShowModal]   = useState(false)
   const [campaigns,   setCampaigns]   = useState<Campaign[]>([])
   const [reports,     setReports]     = useState<CampaignReport[]>([])
+  const [allCalls,    setAllCalls]    = useState<any[]>([])
+  const [allIntents,  setAllIntents]  = useState<any[]>([])
   const [providers,         setProviders]         = useState<any[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignReport | null>(null)
   const [detailedLogs,     setDetailedLogs]     = useState<any[]>([])
@@ -77,6 +88,9 @@ export default function Page() {
   const [filterDate,       setFilterDate]       = useState('')
   const [expandedChart,    setExpandedChart]    = useState<string | null>(null)
   const [expandCampaign,   setExpandCampaign]   = useState<string>('')  // '' = collective
+  const [companyFilter,    setCompanyFilter]    = useState('')          // '' = all companies
+  const [campaignFilter,   setCampaignFilter]   = useState('')          // '' = all campaigns in scope
+  const [campaignAction,   setCampaignAction]   = useState<{ mode: 'edit' | 'reuse'; campaign: Campaign } | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -163,6 +177,9 @@ export default function Page() {
       const resR = await fetch(`/api/reports?${p}`); const jR = await resR.json(); if (active) setReports(jR.reports ?? [])
       const resP = await fetch('/api/providers'); const jP = await resP.json(); if (active) setProviders(jP.providers ?? [])
       const resS = await fetch('/api/security'); const jS = await resS.json(); if (active) setSecurityLogs(jS.logs ?? [])
+      const resL = await fetch('/api/logs'); const jL = await resL.json(); if (active) setAllCalls(jL.logs ?? [])
+      const today = new Date().toISOString().slice(0, 10)
+      const resI = await fetch(`/api/intents?date=${today}`); const jI = await resI.json(); if (active) setAllIntents(jI.intents ?? [])
     }
     init()
     return () => { active = false }
@@ -205,9 +222,6 @@ export default function Page() {
     fetchData()
   }
 
-  async function deleteCampaign(id: number) {
-    await fetch(`/api/campaigns/${id}`, { method:'DELETE' }); fetchData()
-  }
 
   const isSecure = mounted && (window.isSecureContext || window.location.hostname === 'localhost')
 
@@ -225,6 +239,18 @@ export default function Page() {
 
   const activeCount = campaigns.filter(c => c.status === 'running' || c.status === 'paused').length
 
+  // Company selector (Dashboard) — '' shows everything; otherwise scope every widget to the company
+  const companies = Array.from(new Set(campaigns.map(c => c.company).filter(Boolean) as string[])).sort()
+  // Campaigns available to pick (narrowed by the company selector)
+  const companyCampaigns = companyFilter ? campaigns.filter(c => c.company === companyFilter) : campaigns
+  // Effective scope: a single campaign if picked, else the company set, else everything
+  const dashCampaigns = campaignFilter ? companyCampaigns.filter(c => String(c.id) === campaignFilter) : companyCampaigns
+  const dashCampaignIds = new Set(dashCampaigns.map(c => c.id))
+  const scoped = !!(companyFilter || campaignFilter)
+  const dashReports = scoped ? reports.filter(r => dashCampaignIds.has(r.campaign_id)) : reports
+  const dashCalls = scoped ? allCalls.filter(c => dashCampaignIds.has(c.campaign_id)) : allCalls
+  const dashIntents = scoped ? allIntents.filter(i => dashCampaignIds.has(i.campaign_id)) : allIntents
+
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: 'background.default', color: 'text.primary' }}>
@@ -236,38 +262,39 @@ export default function Page() {
           {/* ── DASHBOARD ── */}
           {view === 'dashboard' && (
             <>
-              <KpiStrip reports={reports} />
-
-              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>Live Active Calls</Typography>
-                <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75 }}>
-                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main', animation: 'livePulse 1.4s infinite' }} />
-                  <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 600 }}>Monitoring Live Streams</Typography>
+              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    {campaignFilter ? (dashCampaigns[0]?.name ?? 'Campaign') : (companyFilter || 'All Companies')}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {campaignFilter
+                      ? `Single campaign${companyFilter ? ` · ${companyFilter}` : ''}`
+                      : companyFilter ? `Company overview · ${dashCampaigns.length} campaigns` : 'Company-wide overview'}
+                  </Typography>
+                </Box>
+                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                  <Select size="small" value={companyFilter} onChange={e => { setCompanyFilter(e.target.value); setCampaignFilter('') }} displayEmpty sx={{ minWidth: 180 }}>
+                    <MenuItem value="">All Companies</MenuItem>
+                    {companies.map(co => <MenuItem key={co} value={co}>{co}</MenuItem>)}
+                  </Select>
+                  <Select size="small" value={campaignFilter} onChange={e => setCampaignFilter(e.target.value)} displayEmpty sx={{ minWidth: 200 }}>
+                    <MenuItem value="">All Campaigns</MenuItem>
+                    {companyCampaigns.map(c => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}
+                  </Select>
                 </Stack>
               </Stack>
 
-              <Grid container spacing={2}>
-                {[
-                  { id: 'outcome',  title: 'Call Outcome Breakdown', chart: <OutcomeDonut reports={reports} />,   metrics: ['Connected','Voicemail','No Speech','Hangup','NI','DNQ','Callback','NA+Busy+Failed'] },
-                  { id: 'campaign', title: 'Campaign Comparison',    chart: <CampaignBar reports={reports} />,    metrics: ['Connected','Qualified'] },
-                  { id: 'spend',    title: 'Spend & CPL',            chart: <SpendChart reports={reports} />,     metrics: ['Spent','CPL'] },
-                  { id: 'funnel',   title: 'Dialling Funnel',        chart: <FunnelChart reports={reports} />,    metrics: ['Dialed','Connected','Voicemail','No Speech','Hangup','Qualified'] },
-                ].map(({ id, title, chart, metrics }) => (
-                  <Grid key={id} size={{ xs: 12, md: 6 }}>
-                    <GlassCard>
-                      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{title}</Typography>
-                        <Tooltip title="Expand">
-                          <MuiIconButton size="small" aria-label={`Expand ${title}`} onClick={() => setExpandedChart(id)}>
-                            <OpenInFullIcon sx={{ fontSize: 16 }} />
-                          </MuiIconButton>
-                        </Tooltip>
-                      </Stack>
-                      <Box sx={{ height: 180 }}>{chart}</Box>
-                    </GlassCard>
-                  </Grid>
-                ))}
-              </Grid>
+              <InsightDashboard ctx={{
+                reports: dashReports, calls: dashCalls, intents: dashIntents, campaigns: dashCampaigns,
+                actions: {
+                  onPlayPause: c => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running'),
+                  onStop: c => updateStatus(c.id, 'completed'),
+                  onEdit: c => setCampaignAction({ mode: 'edit', campaign: c }),
+                  onReuse: c => setCampaignAction({ mode: 'reuse', campaign: c }),
+                  onArchive: c => updateStatus(c.id, 'archived'),
+                },
+              }} />
             </>
           )}
 
@@ -305,16 +332,22 @@ export default function Page() {
                       <Divider />
 
                       <CardActions sx={{ px: 2, py: 1 }}>
-                        <Tooltip title={c.status === 'running' ? 'Pause' : 'Resume'}>
-                          <MuiIconButton size="small" aria-label={c.status === 'running' ? `Pause ${c.name}` : `Resume ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>
-                            {c.status === 'running' ? '⏸' : '▶'}
+                        <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}>
+                          <MuiIconButton size="small" color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>
+                            {c.status === 'running' ? <PauseIcon sx={{ fontSize: 19 }} /> : <PlayArrowIcon sx={{ fontSize: 19 }} />}
                           </MuiIconButton>
                         </Tooltip>
                         <Tooltip title="Stop">
-                          <MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}>⏹</MuiIconButton>
+                          <MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}><StopIcon sx={{ fontSize: 19 }} /></MuiIconButton>
                         </Tooltip>
-                        <Tooltip title="Delete">
-                          <MuiIconButton size="small" aria-label={`Delete ${c.name}`} onClick={() => deleteCampaign(c.id)} sx={{ ml: 'auto', color: 'error.main' }}>🗑</MuiIconButton>
+                        <Tooltip title="Edit (change MP4)">
+                          <MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 18 }} /></MuiIconButton>
+                        </Tooltip>
+                        <Tooltip title="Reuse as template">
+                          <MuiIconButton size="small" aria-label={`Reuse ${c.name}`} onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })}><ContentCopyIcon sx={{ fontSize: 18 }} /></MuiIconButton>
+                        </Tooltip>
+                        <Tooltip title="Archive">
+                          <MuiIconButton size="small" aria-label={`Archive ${c.name}`} onClick={() => updateStatus(c.id, 'archived')} sx={{ ml: 'auto', color: 'warning.main' }}><ArchiveIcon sx={{ fontSize: 18 }} /></MuiIconButton>
                         </Tooltip>
                       </CardActions>
                     </Card>
@@ -325,7 +358,11 @@ export default function Page() {
           )}
 
           {/* ── REPORTS ── */}
-          {view === 'reports' && (
+          {view === 'reports' && selectedCampaign && (
+            <CampaignDetail report={selectedCampaign} calls={detailedLogs} onBack={() => setSelectedCampaign(null)} />
+          )}
+
+          {view === 'reports' && !selectedCampaign && (
             <>
               <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1.5 }}>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>Campaign Report</Typography>
@@ -362,8 +399,8 @@ export default function Page() {
                           </TableCell>
                           {REPORT_KEYS.map(k => <TableCell key={k} className="mono" sx={{ fontSize: '0.82rem' }}>{Number(r[k]).toLocaleString()}</TableCell>)}
                           <TableCell className="mono" sx={{ fontSize: '0.82rem' }}>{r.duration}</TableCell>
-                          <TableCell className="mono" sx={{ fontSize: '0.82rem' }}>R{r.cpl.toFixed(2)}</TableCell>
-                          <TableCell className="mono" sx={{ fontSize: '0.82rem', color: 'success.main', fontWeight: 600 }}>R{r.total_spent.toLocaleString()}</TableCell>
+                          <TableCell className="mono" sx={{ fontSize: '0.82rem' }}>R{Number(r.cpl).toFixed(2)}</TableCell>
+                          <TableCell className="mono" sx={{ fontSize: '0.82rem', color: 'success.main', fontWeight: 600 }}>R{Number(r.total_spent).toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -372,6 +409,9 @@ export default function Page() {
               </GlassCard>
             </>
           )}
+
+          {/* ── CALL QUALITY ── */}
+          {view === 'quality' && <CallQuality campaigns={campaigns} />}
 
           {/* ── SECURITY ── */}
           {view === 'security' && <SecurityView securityLogs={securityLogs} />}
@@ -387,39 +427,6 @@ export default function Page() {
 
         </Box>
       </Box>
-
-      <Dialog open={!!selectedCampaign} onClose={() => setSelectedCampaign(null)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800 }}>
-          {selectedCampaign?.campaign?.name}
-          <Typography variant="body2" color="text.secondary">Individual Call Records</Typography>
-        </DialogTitle>
-        <DialogContent sx={{ p: 0 }}>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  {['Phone Number', 'Outcome', 'Duration', 'Timestamp'].map(h => (
-                    <TableCell key={h}>{h}</TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {detailedLogs.map(log => (
-                  <TableRow key={log.id}>
-                    <TableCell className="mono" sx={{ fontSize: '0.85rem' }}>{maskPhone(log.phone)}</TableCell>
-                    <TableCell><StatusChip status={log.outcome} /></TableCell>
-                    <TableCell className="mono" sx={{ fontSize: '0.85rem' }}>{log.duration}</TableCell>
-                    <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>{new Date(log.called_at).toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSelectedCampaign(null)}>Close</Button>
-        </DialogActions>
-      </Dialog>
 
       {/* ── CHART EXPAND DIALOG ── */}
       {(() => {
@@ -470,6 +477,14 @@ export default function Page() {
       })()}
 
       {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} />}
+      {campaignAction && (
+        <CampaignActionDialog
+          mode={campaignAction.mode}
+          campaign={campaignAction.campaign}
+          onClose={() => setCampaignAction(null)}
+          onDone={fetchData}
+        />
+      )}
       <FloatingNav view={view} setView={setView} />
     </Box>
   )

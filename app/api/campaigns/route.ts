@@ -11,16 +11,19 @@ export async function GET() {
     
     const { data, error } = await supabase
       .from('campaigns')
-      .select('*')
+      .select('*, company:companies(name)')
       .neq('status','deleted')
+      .neq('status','archived')
       .order('created_at', { ascending: false })
-    
+
     if (error) {
       console.error('Supabase error:', error)
       return NextResponse.json({ campaigns: DEMO_CAMPAIGNS, demo: true })
     }
-    
-    return NextResponse.json({ campaigns: data })
+
+    // Flatten the joined company to a plain name for the client
+    const campaigns = (data ?? []).map((c: any) => ({ ...c, company: c.company?.name ?? null }))
+    return NextResponse.json({ campaigns })
   } catch (err) {
     console.error('API Route Error:', err)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

@@ -1,14 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 import { DEMO_CAMPAIGNS } from '@/lib/demo-data'
+import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
+    const { supabase, user } = await getAuthUser()
+    if (!user) return unauthorized()
     
     const { data, error } = await supabase
       .from('campaigns')
@@ -30,9 +29,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
-    
+    const { supabase, user } = await getAuthUser()
+    if (!user) return unauthorized()
+
     const body = await req.json()
     const { name, agent, dialing_speed, window_start, window_end, voice_recording_url, contacts } = body
 

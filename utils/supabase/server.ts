@@ -14,11 +14,6 @@ export const createClient = (cookieStore: Awaited<ReturnType<typeof cookies>>) =
           'ngrok-skip-browser-warning': 'true',
         },
       },
-      auth: {
-        experimental: {
-          passkey: true
-        }
-      },
       cookies: {
         getAll() {
           return cookieStore.getAll()

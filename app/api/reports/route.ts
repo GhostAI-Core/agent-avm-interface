@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-import { cookies } from 'next/headers'
 import { DEMO_REPORTS } from '@/lib/demo-data'
+import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,8 +10,8 @@ export async function GET(req: NextRequest) {
     const agent = searchParams.get('agent')
     const date  = searchParams.get('date')
 
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
+    const { supabase, user } = await getAuthUser()
+    if (!user) return unauthorized()
 
     let query = supabase
       .from('call_logs')

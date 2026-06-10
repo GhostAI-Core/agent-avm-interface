@@ -29,6 +29,7 @@
 
 # env files (NEVER COMMIT THESE)
 
+.env
 .env.local
 .env.development.local
 .env.test.local
@@ -46,7 +47,6 @@ next.config.js
 
 # scratch / local-only files
 data/note.md
-proxy.ts
 
 # Claude / AI agent artifacts
 pull_request.md

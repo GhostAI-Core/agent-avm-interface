@@ -132,21 +132,3 @@ CREATE POLICY "users_update_own_profile" ON profiles FOR UPDATE TO authenticated
 
 DROP POLICY IF EXISTS "admin_all_profiles" ON profiles;
 CREATE POLICY "admin_all_profiles" ON profiles FOR ALL TO authenticated USING (true) WITH CHECK (true);
-
--- 6. Auto-create profiles when auth users are provisioned (invite-only)
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE assigned_role TEXT;
-BEGIN
-  assigned_role := COALESCE(NEW.raw_user_meta_data->>'role', 'engineer');
-  IF assigned_role NOT IN ('admin', 'engineer') THEN assigned_role := 'engineer'; END IF;
-  INSERT INTO public.profiles (id, full_name, role)
-  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email), assigned_role)
-  ON CONFLICT (id) DO NOTHING;
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();

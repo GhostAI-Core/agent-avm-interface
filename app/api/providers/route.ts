@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-import { cookies } from 'next/headers'
+import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(req: NextRequest) {
-  const cookieStore = await cookies()
-  const supabase = createClient(cookieStore)
+export async function GET() {
+  const { supabase, user } = await getAuthUser()
+  if (!user) return unauthorized()
 
   const { data, error } = await supabase.from('voip_providers').select('*').order('created_at', { ascending: false })
   
@@ -24,8 +23,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const cookieStore = await cookies()
-  const supabase = createClient(cookieStore)
+  const { supabase, user } = await getAuthUser()
+  if (!user) return unauthorized()
   const body = await req.json()
   const { name, api_key, api_secret } = body
 

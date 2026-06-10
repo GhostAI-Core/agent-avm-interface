@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { supabase, DEMO_MODE } from '@/lib/supabase'
+import { NextResponse } from 'next/server'
+import { DEMO_MODE } from '@/lib/supabase'
+import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -9,7 +10,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const payload = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)))
     if (!Object.keys(payload).length) return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
     if (DEMO_MODE) return NextResponse.json({ campaign: { id, ...payload }, demo: true })
-    const { data, error } = await supabase!.from('campaigns').update(payload).eq('id', id).select().single()
+
+    const { supabase, user } = await getAuthUser()
+    if (!user) return unauthorized()
+    const { data, error } = await supabase.from('campaigns').update(payload).eq('id', id).select().single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ campaign: data })
   } catch (err) {
@@ -21,7 +25,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    if (!DEMO_MODE) await supabase!.from('campaigns').update({ status: 'deleted' }).eq('id', id)
+    if (!DEMO_MODE) {
+      const { supabase, user } = await getAuthUser()
+      if (!user) return unauthorized()
+      await supabase.from('campaigns').update({ status: 'deleted' }).eq('id', id)
+    }
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('API DELETE Error:', err)

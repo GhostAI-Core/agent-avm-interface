@@ -14,17 +14,22 @@ import InputLabel from '@mui/material/InputLabel'
 import FormControl from '@mui/material/FormControl'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
+import Alert from '@mui/material/Alert'
 
 interface Props { onClose: () => void; onCreated: () => void }
 
 export default function CampaignModal({ onClose, onCreated }: Props) {
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
+    setError('')
     const formData = new FormData(e.currentTarget)
     const payload: any = Object.fromEntries(formData.entries())
+    delete payload.csv_file
+    delete payload.voice_file
 
     const csvFile = formData.get('csv_file') as File
     if (csvFile && csvFile.size > 0) {
@@ -39,8 +44,13 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
       }).filter(c => c.phone)
     }
 
-    await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    const res = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    const json = await res.json().catch(() => ({}))
     setLoading(false)
+    if (!res.ok) {
+      setError(json.error || 'Failed to create campaign')
+      return
+    }
     onCreated()
     onClose()
   }
@@ -52,6 +62,7 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
       <form onSubmit={handleSubmit}>
         <DialogContent sx={{ pt: 1 }}>
           <Stack sx={{ gap: 2 }}>
+            {error && <Alert severity="error">{error}</Alert>}
 
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 8 }}>

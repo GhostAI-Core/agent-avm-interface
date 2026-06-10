@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-import { cookies } from 'next/headers'
+import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,8 +7,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const campaignId = searchParams.get('campaignId')
 
-  const cookieStore = await cookies()
-  const supabase = createClient(cookieStore)
+  const { supabase, user } = await getAuthUser()
+  if (!user) return unauthorized()
 
   const { data, error } = await supabase
     .from('call_logs')

@@ -8,8 +8,16 @@ function sum(rows: CampaignReport[], key: keyof CampaignReport) {
   return rows.reduce((a, r) => a + (Number(r[key]) || 0), 0)
 }
 function pct(n: number, d: number) { return d ? `${((n / d) * 100).toFixed(1)}%` : '—' }
-function fmtN(n: number) { return n.toLocaleString('en-ZA') }
-function fmtR(n: number) { return `R${n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
+// Deterministic en-ZA formatting — avoids SSR/client Intl mismatch (Node vs browser)
+function fmtNumberZA(n: number, fractionDigits = 0): string {
+  const sign = n < 0 ? '-' : ''
+  const abs = Math.abs(n)
+  const [intPart, decPart] = abs.toFixed(fractionDigits).split('.')
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f')
+  return fractionDigits > 0 ? `${sign}${grouped},${decPart}` : `${sign}${grouped}`
+}
+function fmtN(n: number) { return fmtNumberZA(n, 0) }
+function fmtR(n: number) { return `R${fmtNumberZA(n, 2)}` }
 
 const TONE_COLOR = { pos: '#10b981', neg: '#ef4444', neu: '#94a3b8' }
 

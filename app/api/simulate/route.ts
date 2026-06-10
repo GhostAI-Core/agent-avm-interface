@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
-import { cookies } from 'next/headers'
+import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,8 +25,8 @@ function getRandomOutcome() {
 export async function POST(req: NextRequest) {
   try {
     const { campaignId } = await req.json()
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
+    const { supabase, user } = await getAuthUser()
+    if (!user) return unauthorized()
 
     // 1. Fetch Campaign
     const { data: campaign, error: cErr } = await supabase

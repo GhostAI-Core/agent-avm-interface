@@ -13,11 +13,6 @@ export const updateSession = async (request: NextRequest) => {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
-      auth: {
-        experimental: {
-          passkey: true
-        }
-      },
       cookies: {
         getAll() {
           return request.cookies.getAll()
@@ -35,9 +30,8 @@ export const updateSession = async (request: NextRequest) => {
     }
   );
 
-  // This will refresh session if expired - required for Server Components
-  // https://supabase.com/docs/guides/auth/server-side/nextjs
-  await supabase.auth.getUser();
+  // Refresh session cookies without a blocking network round-trip (getUser can deadlock with client auth)
+  await supabase.auth.getSession();
 
   return supabaseResponse;
 };

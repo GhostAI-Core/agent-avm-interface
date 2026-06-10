@@ -1,5 +1,8 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { createClient } from '@/utils/supabase/client'
+import { withTimeout } from '@/lib/async'
+import { resolveUserRole, userMetaFromSession, type AppRole } from '@/lib/roles'
 import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
 import FloatingNav from '@/components/FloatingNav'
@@ -71,9 +74,11 @@ const REPORT_KEYS: (keyof CampaignReport)[] = ['dialed','connected','qualified',
 const INACTIVITY_LIMIT = 15 * 60 * 1000 // 15 minutes
 
 export default function Page() {
+  const supabase = useMemo(() => createClient(), [])
   const [mounted,         setMounted]         = useState(false)
-  const [auth,            setAuth]            = useState(process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === 'true')
-  const [role,            setRole]            = useState<'admin' | 'engineer'>('admin')
+  const [authChecked,     setAuthChecked]     = useState(false)
+  const [auth,            setAuth]            = useState(false)
+  const [role,            setRole]            = useState<AppRole>('engineer')
   const [view,        setView]        = useState('dashboard')
   const [sideOpen,    setSideOpen]    = useState(false)
   const [showModal,   setShowModal]   = useState(false)
@@ -91,6 +96,59 @@ export default function Page() {
 
   useEffect(() => { setMounted(true) }, [])
 
+  useEffect(() => {
+    let active = true
+
+    // Safety net: never leave the loading screen if auth init stalls (e.g. extension blocking storage)
+    const fallback = setTimeout(() => {
+      if (active) setAuthChecked(true)
+    }, 4000)
+
+    const finishAuthCheck = () => {
+      clearTimeout(fallback)
+      if (active) setAuthChecked(true)
+    }
+
+    const applySession = async (session: { user: { id: string; email?: string; user_metadata?: Record<string, unknown> } } | null) => {
+      if (!session?.user) {
+        setAuth(false)
+        return
+      }
+      const meta = userMetaFromSession(session.user)
+      const fallback: AppRole = meta.role === 'admin' ? 'admin' : 'engineer'
+      let r = fallback
+      try {
+        r = await withTimeout(
+          resolveUserRole(supabase, session.user.id, meta),
+          8000,
+          'Profile sync timed out',
+        )
+      } catch {
+        // Keep fallback role so login is not blocked by profiles query
+      }
+      setAuth(true)
+      setRole(r)
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!active) return
+      try {
+        await applySession(session)
+      } catch (err) {
+        console.error('Session init failed:', err)
+        setAuth(false)
+      } finally {
+        finishAuthCheck()
+      }
+    })
+
+    return () => {
+      active = false
+      clearTimeout(fallback)
+      subscription.unsubscribe()
+    }
+  }, [supabase])
+
   const fetchData = useCallback(async () => {
     const resC = await fetch('/api/campaigns'); const jC = await resC.json(); setCampaigns(jC.campaigns ?? [])
     const p = new URLSearchParams(); if (filterAgent) p.set('agent', filterAgent); if (filterDate) p.set('date', filterDate)
@@ -102,14 +160,18 @@ export default function Page() {
     let timeout: NodeJS.Timeout
     const resetTimer = () => {
       clearTimeout(timeout)
-      timeout = setTimeout(() => { setAuth(false) }, INACTIVITY_LIMIT)
+      timeout = setTimeout(async () => {
+        await supabase.auth.signOut()
+        setAuth(false)
+      }, INACTIVITY_LIMIT)
     }
     window.addEventListener('mousemove', resetTimer); window.addEventListener('keydown', resetTimer)
     resetTimer()
     return () => { clearTimeout(timeout); window.removeEventListener('mousemove', resetTimer); window.removeEventListener('keydown', resetTimer) }
-  }, [auth])
+  }, [auth, supabase])
 
   useEffect(() => {
+    if (!auth) return
     let active = true
     const init = async () => {
       const resC = await fetch('/api/campaigns'); const jC = await resC.json(); if (active) setCampaigns(jC.campaigns ?? [])
@@ -120,7 +182,12 @@ export default function Page() {
     }
     init()
     return () => { active = false }
-  }, [filterAgent, filterDate])
+  }, [auth, filterAgent, filterDate])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setAuth(false)
+  }
 
   const handleExportCSV = () => {
     if (!reports.length) return
@@ -160,6 +227,14 @@ export default function Page() {
 
   const isSecure = mounted && (window.isSecureContext || window.location.hostname === 'localhost')
 
+  if (!authChecked) {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#0f172a', color: C.muted }}>
+        <Typography variant="body2">Loading…</Typography>
+      </Box>
+    )
+  }
+
   if (!auth) {
     return <AuthView onAuth={(v, r) => { setAuth(v); setRole(r) }} C={C} glass={glass} inputStyle={inputStyle} mounted={mounted} isSecure={isSecure} />
   }
@@ -171,7 +246,7 @@ export default function Page() {
     <div style={{ minHeight:'100vh', display:'flex', background:'#0f172a', color:C.text, fontFamily:"'Inter', sans-serif" }}>
       <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} />
       <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
-        <TopBar title={VIEW_TITLES[view]} onMenu={() => setSideOpen(true)} onLogout={() => setAuth(false)} />
+        <TopBar title={VIEW_TITLES[view]} onMenu={() => setSideOpen(true)} onLogout={handleLogout} />
         <main style={{ flex:1, padding:'1.5rem', paddingBottom:'6rem', overflowY:'auto' }}>
           
           {/* ── DASHBOARD ── */}

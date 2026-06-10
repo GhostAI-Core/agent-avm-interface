@@ -13,10 +13,5 @@ export const createClient = () =>
           'ngrok-skip-browser-warning': 'true',
         },
       },
-      auth: {
-        experimental: {
-          passkey: true
-        }
-      }
     }
   );

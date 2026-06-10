@@ -51,9 +51,10 @@ import DialogActions from '@mui/material/DialogActions'
 import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
 import GlassCard from '@/components/ui/GlassCard'
-import type { Campaign, CampaignReport } from '@/types'
+import type { Campaign, CampaignReport, Company } from '@/types'
 const VIEW_TITLES: Record<string, string> = {
-  dashboard: 'Overview',
+  dashboard: 'Control Room',
+  companies: 'Companies',
   campaigns: 'Campaigns',
   reports:   'Campaign Report',
   quality:   'Call Quality',
@@ -90,6 +91,9 @@ export default function Page() {
   const [expandCampaign,   setExpandCampaign]   = useState<string>('')  // '' = collective
   const [companyFilter,    setCompanyFilter]    = useState('')          // '' = all companies
   const [campaignFilter,   setCampaignFilter]   = useState('')          // '' = all campaigns in scope
+  const [companiesList,    setCompaniesList]    = useState<Company[]>([])
+  const [showCompanyModal, setShowCompanyModal] = useState(false)
+  const [newCompanyName,   setNewCompanyName]   = useState('')
   const [campaignAction,   setCampaignAction]   = useState<{ mode: 'edit' | 'reuse'; campaign: Campaign } | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
@@ -177,6 +181,7 @@ export default function Page() {
       const resR = await fetch(`/api/reports?${p}`); const jR = await resR.json(); if (active) setReports(jR.reports ?? [])
       const resP = await fetch('/api/providers'); const jP = await resP.json(); if (active) setProviders(jP.providers ?? [])
       const resS = await fetch('/api/security'); const jS = await resS.json(); if (active) setSecurityLogs(jS.logs ?? [])
+      const resCo = await fetch('/api/companies'); const jCo = await resCo.json(); if (active) setCompaniesList(jCo.companies ?? [])
       const resL = await fetch('/api/logs'); const jL = await resL.json(); if (active) setAllCalls(jL.logs ?? [])
       const today = new Date().toISOString().slice(0, 10)
       const resI = await fetch(`/api/intents?date=${today}`); const jI = await resI.json(); if (active) setAllIntents(jI.intents ?? [])
@@ -240,9 +245,40 @@ export default function Page() {
   const activeCount = campaigns.filter(c => c.status === 'running' || c.status === 'paused').length
 
   // Company selector (Dashboard) — '' shows everything; otherwise scope every widget to the company
-  const companies = Array.from(new Set(campaigns.map(c => c.company).filter(Boolean) as string[])).sort()
+  // Company options: the real companies table when available, else derived from campaigns
+  const companies = (companiesList.length ? companiesList.map(c => c.name) : Array.from(new Set(campaigns.map(c => c.company).filter(Boolean) as string[]))).sort()
   // Campaigns available to pick (narrowed by the company selector)
   const companyCampaigns = companyFilter ? campaigns.filter(c => c.company === companyFilter) : campaigns
+
+  // Open the Control Room with filters preset (from a campaign/company card click)
+  const openInControlRoom = (company: string, campaignId?: string) => {
+    setCompanyFilter(company || '')
+    setCampaignFilter(campaignId ?? '')
+    setView('dashboard')
+  }
+
+  // Per-company stats for the Companies view
+  const companyStats = companies.map(name => {
+    const camps = campaigns.filter(c => c.company === name)
+    const ids = new Set(camps.map(c => c.id))
+    const reps = reports.filter(r => ids.has(r.campaign_id))
+    const spent = reps.reduce((a, r) => a + Number(r.total_spent || 0), 0)
+    const qualified = reps.reduce((a, r) => a + Number(r.qualified || 0), 0)
+    return {
+      name,
+      active: camps.filter(c => c.status === 'running' || c.status === 'paused').length,
+      total: camps.length,
+      cpl: qualified ? spent / qualified : 0,
+    }
+  })
+
+  async function createCompany() {
+    const name = newCompanyName.trim()
+    if (!name) return
+    await fetch('/api/companies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+    setNewCompanyName(''); setShowCompanyModal(false)
+    const res = await fetch('/api/companies'); const j = await res.json(); setCompaniesList(j.companies ?? [])
+  }
   // Effective scope: a single campaign if picked, else the company set, else everything
   const dashCampaigns = campaignFilter ? companyCampaigns.filter(c => String(c.id) === campaignFilter) : companyCampaigns
   const dashCampaignIds = new Set(dashCampaigns.map(c => c.id))
@@ -256,7 +292,7 @@ export default function Page() {
     <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: 'background.default', color: 'text.primary' }}>
       <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} />
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <TopBar title={VIEW_TITLES[view]} onMenu={() => setSideOpen(true)} onLogout={handleLogout} />
+        <TopBar title={VIEW_TITLES[view]} campaigns={dashCampaigns} onMenu={() => setSideOpen(true)} onLogout={handleLogout} />
         <Box component="main" sx={{ flex: 1, p: 3, pb: '6rem', overflowY: 'auto' }}>
           
           {/* ── DASHBOARD ── */}
@@ -299,6 +335,49 @@ export default function Page() {
           )}
 
           {/* ── CAMPAIGNS ── */}
+          {/* ── COMPANIES ── */}
+          {view === 'companies' && (
+            <>
+              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>Companies</Typography>
+                  <Typography variant="caption" color="text.secondary">{companyStats.length} total</Typography>
+                </Stack>
+                <Button variant="contained" onClick={() => setShowCompanyModal(true)}>+ New Company</Button>
+              </Stack>
+
+              <Grid container spacing={2}>
+                {companyStats.map(co => (
+                  <Grid key={co.name} size={{ xs: 12, sm: 6, lg: 4 }}>
+                    <Card sx={{ height: '100%', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }} onClick={() => openInControlRoom(co.name)}>
+                      <CardContent>
+                        <Typography sx={{ fontWeight: 700, mb: 1.5 }}>{co.name}</Typography>
+                        <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Active</Typography>
+                            <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem', color: 'success.main' }}>{co.active}</Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total Camps</Typography>
+                            <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>{co.total}</Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total CPL</Typography>
+                            <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>R{co.cpl.toFixed(2)}</Typography>
+                          </Box>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+                {!companyStats.length && (
+                  <Grid size={{ xs: 12 }}><Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No companies yet — add one to get started.</Typography></Grid>
+                )}
+              </Grid>
+            </>
+          )}
+
+          {/* ── CAMPAIGNS ── */}
           {view === 'campaigns' && (
             <>
               <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -313,7 +392,10 @@ export default function Page() {
                 {campaigns.map(c => (
                   <Grid key={c.id} size={{ xs: 12, sm: 6, lg: 4 }}>
                     <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                      <CardContent sx={{ flexGrow: 1 }}>
+                      <CardContent
+                        sx={{ flexGrow: 1, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' } }}
+                        onClick={() => openInControlRoom(c.company || '', String(c.id))}
+                      >
                         <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                           <Box>
                             <Typography sx={{ fontWeight: 600 }}>{c.name}</Typography>
@@ -322,6 +404,9 @@ export default function Page() {
                           <StatusChip status={c.status} />
                         </Stack>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                          <strong>Company:</strong> {c.company || '—'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
                           <strong>Speed:</strong> {c.dialing_speed} calls/sec
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -477,6 +562,20 @@ export default function Page() {
       })()}
 
       {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} />}
+      <Dialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>New Company</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth size="small" label="Company name" value={newCompanyName}
+            onChange={e => setNewCompanyName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') createCompany() }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCompanyModal(false)}>Cancel</Button>
+          <Button variant="contained" onClick={createCompany} disabled={!newCompanyName.trim()}>Create</Button>
+        </DialogActions>
+      </Dialog>
       {campaignAction && (
         <CampaignActionDialog
           mode={campaignAction.mode}

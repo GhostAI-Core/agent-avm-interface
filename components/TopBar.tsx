@@ -23,6 +23,8 @@ export default function TopBar({ title, campaigns = [], onMenu, onLogout }: {
   onLogout?: () => void
 }) {
   const active = campaigns.filter(c => c.status === 'running' || c.status === 'paused')
+  const agentsPresent = Array.from(new Set(active.map(c => c.agent)))
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
   return (
     <Box sx={{ flexShrink: 0 }}>
@@ -56,6 +58,18 @@ export default function TopBar({ title, campaigns = [], onMenu, onLogout }: {
             <Typography variant="caption" sx={{ color: 'text.disabled', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', flexShrink: 0 }}>
               Active Monitor
             </Typography>
+
+            {/* Agent legend — only agents currently in play */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexShrink: 0 }}>
+              {agentsPresent.map(ag => (
+                <Box key={ag} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: AGENT_COLOR[ag] ?? 'text.secondary' }} />
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>{cap(ag)}</Typography>
+                </Box>
+              ))}
+            </Box>
+            <Box sx={{ width: '1px', height: 20, bgcolor: colors.border2, flexShrink: 0 }} />
+
             {active.map((c, i) => (
               <Box key={c.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
                 {i > 0 && <Box sx={{ width: '1px', height: 20, bgcolor: colors.border2 }} />}

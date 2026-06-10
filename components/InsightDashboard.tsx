@@ -10,7 +10,7 @@ import AddIcon from '@mui/icons-material/Add'
 import InsightCard from '@/components/InsightCard'
 import { INSIGHTS, DEFAULT_INSIGHTS, type InsightCtx, type InsightSize } from '@/lib/dashboardInsights'
 
-const LS_KEY = 'avm.dash.layout.v2'
+const LS_KEY = 'avm.dash.layout.v3'
 const ALL_IDS = INSIGHTS.map(i => i.id)
 const ADDON_IDS = ALL_IDS.filter(id => !DEFAULT_INSIGHTS.includes(id))
 const SPAN: Record<InsightSize, { xs: number; sm: number; md: number }> = {

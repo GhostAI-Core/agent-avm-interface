@@ -131,9 +131,9 @@ const isOutcome = (o: string) => (c: DashCall) => c.outcome === o
 // Default arrangement (the original dashboard look). Everything else is an
 // opt-in add-on selectable from the "Add insight" dropdown.
 export const DEFAULT_INSIGHTS = [
+  'campaigns-table',
   'dialed', 'connected', 'qualified', 'avg-talk', 'hangup', 'callback', 'avg-cpl', 'total-spent',
   'outcome-donut', 'campaign-compare', 'spend-cpl', 'funnel',
-  'campaigns-table',
 ]
 
 // ── registry ────────────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import ListItemText from '@mui/material/ListItemText'
 import ListSubheader from '@mui/material/ListSubheader'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
-import { agentColors, colors } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 
 const WIDTH = 260
 
@@ -14,8 +14,9 @@ const NAV_GROUPS = [
   {
     label: 'Campaigns',
     items: [
-      { id: 'dashboard', label: 'Overview'        },
+      { id: 'dashboard', label: 'Control Room'     },
       { id: 'sts',       label: 'STS Dashboard'   },
+      { id: 'companies', label: 'Companies'       },
       { id: 'campaigns', label: 'Campaigns'       },
       { id: 'reports',   label: 'Campaign Report' },
       { id: 'quality',   label: 'Call Quality'    },
@@ -34,12 +35,6 @@ const NAV_GROUPS = [
       { id: 'profile',  label: 'Profile'  },
     ],
   },
-]
-
-const AGENTS = [
-  { label: 'Seeker',  color: agentColors.seeker },
-  { label: 'Grace',   color: agentColors.grace },
-  { label: 'Sangoma', color: agentColors.sangoma },
 ]
 
 function SidebarContent({ view, setView, onClose }: {
@@ -87,15 +82,6 @@ function SidebarContent({ view, setView, onClose }: {
           </Box>
         ))}
       </List>
-
-      <Box sx={{ mt: 'auto', p: 2, borderTop: `1px solid ${colors.border1}` }}>
-        {AGENTS.map(a => (
-          <Box key={a.label} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: a.color, flexShrink: 0 }} />
-            <Typography variant="caption" color="text.secondary">{a.label}</Typography>
-          </Box>
-        ))}
-      </Box>
 
     </Box>
   )

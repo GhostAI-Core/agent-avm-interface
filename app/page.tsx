@@ -151,11 +151,33 @@ export default function Page() {
     }
   }, [supabase])
 
+  // Sign out cleanly when the session has expired (server returns 401).
+  const handleAuthFailure = useCallback(async () => {
+    try { await supabase.auth.signOut() } catch { /* already gone */ }
+    setAuth(false)
+  }, [supabase])
+
+  // Fetch + parse JSON with consistent error/401 handling.
+  // Returns null on an expired session (and logs the user out); throws on other errors.
+  const getJson = useCallback(async (url: string) => {
+    const res = await fetch(url)
+    if (res.status === 401) { await handleAuthFailure(); return null }
+    if (!res.ok) throw new Error(`${url} → ${res.status}`)
+    return res.json()
+  }, [handleAuthFailure])
+
   const fetchData = useCallback(async () => {
-    const resC = await fetch('/api/campaigns'); const jC = await resC.json(); setCampaigns(jC.campaigns ?? [])
-    const p = new URLSearchParams(); if (filterAgent) p.set('agent', filterAgent); if (filterDate) p.set('date', filterDate)
-    const resR = await fetch(`/api/reports?${p}`); const jR = await resR.json(); setReports(jR.reports ?? [])
-  }, [filterAgent, filterDate])
+    try {
+      const p = new URLSearchParams()
+      if (filterAgent) p.set('agent', filterAgent)
+      if (filterDate) p.set('date', filterDate)
+      const [jC, jR] = await Promise.all([getJson('/api/campaigns'), getJson(`/api/reports?${p}`)])
+      if (jC) setCampaigns(jC.campaigns ?? [])
+      if (jR) setReports(jR.reports ?? [])
+    } catch (err) {
+      console.error('Refresh failed:', err)
+    }
+  }, [filterAgent, filterDate, getJson])
 
   useEffect(() => {
     if (!auth) return
@@ -172,23 +194,53 @@ export default function Page() {
     return () => { clearTimeout(timeout); window.removeEventListener('mousemove', resetTimer); window.removeEventListener('keydown', resetTimer) }
   }, [auth, supabase])
 
+  // Filter-independent data — loaded in parallel (no waterfall), only on login.
   useEffect(() => {
     if (!auth) return
     let active = true
-    const init = async () => {
-      const resC = await fetch('/api/campaigns'); const jC = await resC.json(); if (active) setCampaigns(jC.campaigns ?? [])
-      const p = new URLSearchParams(); if (filterAgent) p.set('agent', filterAgent); if (filterDate) p.set('date', filterDate)
-      const resR = await fetch(`/api/reports?${p}`); const jR = await resR.json(); if (active) setReports(jR.reports ?? [])
-      const resP = await fetch('/api/providers'); const jP = await resP.json(); if (active) setProviders(jP.providers ?? [])
-      const resS = await fetch('/api/security'); const jS = await resS.json(); if (active) setSecurityLogs(jS.logs ?? [])
-      const resCo = await fetch('/api/companies'); const jCo = await resCo.json(); if (active) setCompaniesList(jCo.companies ?? [])
-      const resL = await fetch('/api/logs'); const jL = await resL.json(); if (active) setAllCalls(jL.logs ?? [])
-      const today = new Date().toISOString().slice(0, 10)
-      const resI = await fetch(`/api/intents?date=${today}`); const jI = await resI.json(); if (active) setAllIntents(jI.intents ?? [])
-    }
-    init()
+    ;(async () => {
+      try {
+        const today = new Date().toISOString().slice(0, 10)
+        const [jC, jP, jS, jCo, jL, jI] = await Promise.all([
+          getJson('/api/campaigns'),
+          getJson('/api/providers'),
+          getJson('/api/security'),
+          getJson('/api/companies'),
+          getJson('/api/logs'),
+          getJson(`/api/intents?date=${today}`),
+        ])
+        if (!active) return
+        if (jC) setCampaigns(jC.campaigns ?? [])
+        if (jP) setProviders(jP.providers ?? [])
+        if (jS) setSecurityLogs(jS.logs ?? [])
+        if (jCo) setCompaniesList(jCo.companies ?? [])
+        if (jL) setAllCalls(jL.logs ?? [])
+        if (jI) setAllIntents(jI.intents ?? [])
+      } catch (err) {
+        console.error('Dashboard load failed:', err)
+      }
+    })()
     return () => { active = false }
-  }, [auth, filterAgent, filterDate])
+  }, [auth, getJson])
+
+  // Reports depend on the agent/date filters — fetched separately so changing a
+  // filter doesn't re-pull everything else.
+  useEffect(() => {
+    if (!auth) return
+    let active = true
+    ;(async () => {
+      try {
+        const p = new URLSearchParams()
+        if (filterAgent) p.set('agent', filterAgent)
+        if (filterDate) p.set('date', filterDate)
+        const jR = await getJson(`/api/reports?${p}`)
+        if (active && jR) setReports(jR.reports ?? [])
+      } catch (err) {
+        console.error('Reports load failed:', err)
+      }
+    })()
+    return () => { active = false }
+  }, [auth, filterAgent, filterDate, getJson])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -205,7 +257,13 @@ export default function Page() {
 
   const viewDetailedLogs = async (report: CampaignReport) => {
     setSelectedCampaign(report)
-    const res = await fetch(`/api/logs?campaignId=${report.campaign_id || ''}`); const json = await res.json(); setDetailedLogs(json.logs || [])
+    try {
+      const json = await getJson(`/api/logs?campaignId=${report.campaign_id || ''}`)
+      if (json) setDetailedLogs(json.logs || [])
+    } catch (err) {
+      console.error('Failed to load call logs:', err)
+      setDetailedLogs([])
+    }
   }
 
   async function updateStatus(id: number, status: string) {
@@ -216,12 +274,25 @@ export default function Page() {
     })
 
     if (status === 'running') {
-      // Trigger a simulation burst to show live data
-      fetch('/api/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId: id })
-      }).then(() => fetchData())
+      try {
+        // Dispatch real outbound calls via the LiveKit gateway (same path as Seeker/Grace).
+        const res = await fetch(`/api/campaigns/${id}/dial`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        const j = await res.json().catch(() => ({}))
+        // Gateway not wired yet → keep the demo simulation so the dashboard shows activity.
+        if (j?.mode === 'unconfigured') {
+          await fetch('/api/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ campaignId: id }),
+          })
+        }
+      } catch (err) {
+        console.error('Dial dispatch failed:', err)
+      }
     }
 
     fetchData()

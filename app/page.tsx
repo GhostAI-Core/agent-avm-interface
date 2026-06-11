@@ -7,6 +7,9 @@ import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
 import FloatingNav from '@/components/FloatingNav'
 import InsightDashboard from '@/components/InsightDashboard'
+import SaveTemplateDialog from '@/components/SaveTemplateDialog'
+import TutorialOverlay, { TOUR_STEPS } from '@/components/TutorialOverlay'
+import { useDashboardLayout } from '@/lib/useDashboardLayout'
 import CampaignModal from '@/components/CampaignModal'
 import AuthView from '@/components/AuthView'
 import SecurityView from '@/components/SecurityView'
@@ -51,6 +54,9 @@ import DialogActions from '@mui/material/DialogActions'
 import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
 import GlassCard from '@/components/ui/GlassCard'
+import BusinessIcon from '@mui/icons-material/Business'
+import CloseIcon from '@mui/icons-material/Close'
+import { colors, semantic, radius } from '@/lib/tokens'
 import type { Campaign, CampaignReport, Company } from '@/types'
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Control Room',
@@ -94,9 +100,23 @@ export default function Page() {
   const [companiesList,    setCompaniesList]    = useState<Company[]>([])
   const [showCompanyModal, setShowCompanyModal] = useState(false)
   const [newCompanyName,   setNewCompanyName]   = useState('')
+  const [newContactName,   setNewContactName]   = useState('')
+  const [newContactEmail,  setNewContactEmail]  = useState('')
+  const [newContactPhone,  setNewContactPhone]  = useState('')
   const [campaignAction,   setCampaignAction]   = useState<{ mode: 'edit' | 'reuse'; campaign: Campaign } | null>(null)
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [templateSel,      setTemplateSel]      = useState('')
+  const [tourStep,         setTourStep]         = useState<number | null>(null)
+  const dash = useDashboardLayout()
 
   useEffect(() => { setMounted(true) }, [])
+
+  // The tour owns which view is shown; switch to a step's view as it advances.
+  useEffect(() => {
+    if (tourStep === null) return
+    const v = TOUR_STEPS[tourStep]?.view
+    if (v) setView(v)
+  }, [tourStep])
 
   useEffect(() => {
     let active = true
@@ -257,6 +277,9 @@ export default function Page() {
     setView('dashboard')
   }
 
+  // Contact details by company name (from the companies table, when available)
+  const contactByName = new Map(companiesList.map(c => [c.name, c]))
+
   // Per-company stats for the Companies view
   const companyStats = companies.map(name => {
     const camps = campaigns.filter(c => c.company === name)
@@ -266,6 +289,7 @@ export default function Page() {
     const qualified = reps.reduce((a, r) => a + Number(r.qualified || 0), 0)
     return {
       name,
+      contact: contactByName.get(name)?.contact_name ?? null,
       active: camps.filter(c => c.status === 'running' || c.status === 'paused').length,
       total: camps.length,
       cpl: qualified ? spent / qualified : 0,
@@ -275,8 +299,17 @@ export default function Page() {
   async function createCompany() {
     const name = newCompanyName.trim()
     if (!name) return
-    await fetch('/api/companies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
-    setNewCompanyName(''); setShowCompanyModal(false)
+    await fetch('/api/companies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        contact_name: newContactName.trim(),
+        contact_email: newContactEmail.trim(),
+        contact_phone: newContactPhone.trim(),
+      }),
+    })
+    setNewCompanyName(''); setNewContactName(''); setNewContactEmail(''); setNewContactPhone(''); setShowCompanyModal(false)
     const res = await fetch('/api/companies'); const j = await res.json(); setCompaniesList(j.companies ?? [])
   }
   // Effective scope: a single campaign if picked, else the company set, else everything
@@ -292,13 +325,13 @@ export default function Page() {
     <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: 'background.default', color: 'text.primary' }}>
       <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} />
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <TopBar title={VIEW_TITLES[view]} campaigns={dashCampaigns} onMenu={() => setSideOpen(true)} onLogout={handleLogout} />
+        <TopBar title={VIEW_TITLES[view]} campaigns={dashCampaigns} onMenu={() => setSideOpen(true)} onLogout={handleLogout} onTour={() => setTourStep(0)} />
         <Box component="main" sx={{ flex: 1, p: 3, pb: '6rem', overflowY: 'auto' }}>
           
           {/* ── DASHBOARD ── */}
           {view === 'dashboard' && (
             <>
-              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+              <Stack direction="row" data-tour="dash-header" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
                 <Box>
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>
                     {campaignFilter ? (dashCampaigns[0]?.name ?? 'Campaign') : (companyFilter || 'All Companies')}
@@ -308,8 +341,13 @@ export default function Page() {
                       ? `Single campaign${companyFilter ? ` · ${companyFilter}` : ''}`
                       : companyFilter ? `Company overview · ${dashCampaigns.length} campaigns` : 'Company-wide overview'}
                   </Typography>
+                  {dash.isDirty && (
+                    <Box sx={{ mt: 1 }}>
+                      <Button size="small" variant="outlined" onClick={() => setShowSaveTemplate(true)}>Save layout template</Button>
+                    </Box>
+                  )}
                 </Box>
-                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                <Stack direction="row" data-tour="dash-scope" sx={{ gap: 1, flexWrap: 'wrap' }}>
                   <Select size="small" value={companyFilter} onChange={e => { setCompanyFilter(e.target.value); setCampaignFilter('') }} displayEmpty sx={{ minWidth: 180 }}>
                     <MenuItem value="">All Companies</MenuItem>
                     {companies.map(co => <MenuItem key={co} value={co}>{co}</MenuItem>)}
@@ -318,10 +356,22 @@ export default function Page() {
                     <MenuItem value="">All Campaigns</MenuItem>
                     {companyCampaigns.map(c => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}
                   </Select>
+                  <Select
+                    size="small"
+                    value={templateSel}
+                    displayEmpty
+                    data-tour="dash-templates"
+                    onChange={e => { const id = e.target.value; setTemplateSel(id); if (id) dash.applyTemplate(id) }}
+                    renderValue={v => dash.templates.find(t => t.id === v)?.name ?? 'Layout template'}
+                    sx={{ minWidth: 180 }}
+                  >
+                    <MenuItem value="" disabled>{dash.templates.length ? 'Select a template' : 'No templates yet'}</MenuItem>
+                    {dash.templates.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
+                  </Select>
                 </Stack>
               </Stack>
 
-              <InsightDashboard ctx={{
+              <InsightDashboard dash={dash} ctx={{
                 reports: dashReports, calls: dashCalls, intents: dashIntents, campaigns: dashCampaigns,
                 actions: {
                   onPlayPause: c => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running'),
@@ -343,7 +393,7 @@ export default function Page() {
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>Companies</Typography>
                   <Typography variant="caption" color="text.secondary">{companyStats.length} total</Typography>
                 </Stack>
-                <Button variant="contained" onClick={() => setShowCompanyModal(true)}>+ New Company</Button>
+                <Button variant="contained" data-tour="new-company" onClick={() => setShowCompanyModal(true)}>+ New Company</Button>
               </Stack>
 
               <Grid container spacing={2}>
@@ -351,7 +401,12 @@ export default function Page() {
                   <Grid key={co.name} size={{ xs: 12, sm: 6, lg: 4 }}>
                     <Card sx={{ height: '100%', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }} onClick={() => openInControlRoom(co.name)}>
                       <CardContent>
-                        <Typography sx={{ fontWeight: 700, mb: 1.5 }}>{co.name}</Typography>
+                        <Typography sx={{ fontWeight: 700, mb: co.contact ? 0.25 : 1.5 }}>{co.name}</Typography>
+                        {co.contact && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                            Contact: {co.contact}
+                          </Typography>
+                        )}
                         <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
                           <Box>
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Active</Typography>
@@ -385,7 +440,7 @@ export default function Page() {
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>Active Campaigns</Typography>
                   <Typography variant="caption" color="text.secondary">{activeCount} active</Typography>
                 </Stack>
-                <Button variant="contained" onClick={() => setShowModal(true)}>+ New Campaign</Button>
+                <Button variant="contained" data-tour="new-campaign" onClick={() => setShowModal(true)}>+ New Campaign</Button>
               </Stack>
 
               <Grid container spacing={2}>
@@ -562,17 +617,43 @@ export default function Page() {
       })()}
 
       {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} />}
-      <Dialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>New Company</DialogTitle>
-        <DialogContent>
-          <TextField autoFocus fullWidth size="small" label="Company name" value={newCompanyName}
-            onChange={e => setNewCompanyName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') createCompany() }}
-            sx={{ mt: 1 }}
-          />
+      <Dialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth
+        slotProps={{ paper: { sx: { overflow: 'hidden', borderRadius: `${radius.lg}px` } } }}
+      >
+        <Box sx={{
+          position: 'relative', display: 'flex', alignItems: 'center', gap: 1.75, px: 3, pt: 2.75, pb: 2.25,
+          background: `linear-gradient(135deg, rgba(55,166,96,0.16) 0%, rgba(55,166,96,0.03) 48%, transparent 100%)`,
+          '&::after': { content: '""', position: 'absolute', left: 0, right: 0, bottom: 0, height: '1px',
+            background: `linear-gradient(90deg, ${semantic.accent} 0%, rgba(55,166,96,0.15) 40%, ${colors.border1} 100%)` },
+        }}>
+          <Box sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', width: 42, height: 42, borderRadius: `${radius.md}px`,
+            flexShrink: 0, bgcolor: 'rgba(55,166,96,0.16)', border: `1px solid rgba(55,166,96,0.4)`, color: semantic.accentBright,
+            boxShadow: `0 0 18px -4px ${semantic.accentGlow}66`,
+          }}>
+            <BusinessIcon fontSize="small" />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: 19, lineHeight: 1.2, letterSpacing: '-0.01em' }}>New Company</Typography>
+            <Typography variant="body2" color="text.secondary">Add a company and its primary contact.</Typography>
+          </Box>
+          <MuiIconButton onClick={() => setShowCompanyModal(false)} size="small" aria-label="Close" sx={{ color: semantic.textSoft, alignSelf: 'flex-start', mt: -0.5 }}>
+            <CloseIcon fontSize="small" />
+          </MuiIconButton>
+        </Box>
+        <DialogContent sx={{ pt: 3 }}>
+          <Stack sx={{ gap: 2 }}>
+            <TextField autoFocus fullWidth size="small" label="Company name" value={newCompanyName}
+              onChange={e => setNewCompanyName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') createCompany() }}
+            />
+            <TextField fullWidth size="small" label="Contact name" value={newContactName} onChange={e => setNewContactName(e.target.value)} />
+            <TextField fullWidth size="small" type="email" label="Contact email" value={newContactEmail} onChange={e => setNewContactEmail(e.target.value)} />
+            <TextField fullWidth size="small" label="Contact phone" value={newContactPhone} onChange={e => setNewContactPhone(e.target.value)} />
+          </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowCompanyModal(false)}>Cancel</Button>
+        <DialogActions sx={{ px: 3, pb: 2.75, pt: 1 }}>
+          <Button onClick={() => setShowCompanyModal(false)} variant="outlined">Cancel</Button>
           <Button variant="contained" onClick={createCompany} disabled={!newCompanyName.trim()}>Create</Button>
         </DialogActions>
       </Dialog>
@@ -582,6 +663,21 @@ export default function Page() {
           campaign={campaignAction.campaign}
           onClose={() => setCampaignAction(null)}
           onDone={fetchData}
+        />
+      )}
+      {showSaveTemplate && (
+        <SaveTemplateDialog
+          onClose={() => setShowSaveTemplate(false)}
+          onSave={async name => { await dash.saveTemplate(name) }}
+        />
+      )}
+      {tourStep !== null && (
+        <TutorialOverlay
+          step={tourStep}
+          steps={TOUR_STEPS}
+          onNext={() => setTourStep(s => (s === null ? null : Math.min(s + 1, TOUR_STEPS.length - 1)))}
+          onBack={() => setTourStep(s => (s === null ? null : Math.max(s - 1, 0)))}
+          onSkip={() => setTourStep(null)}
         />
       )}
       <FloatingNav view={view} setView={setView} />

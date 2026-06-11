@@ -7,6 +7,7 @@ import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import MenuIcon from '@mui/icons-material/Menu'
 import LogoutIcon from '@mui/icons-material/Logout'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutlineOutlined'
 import type { Campaign } from '@/types'
 import { agentColors, colors } from '@/lib/tokens'
 
@@ -16,11 +17,12 @@ const AGENT_COLOR: Record<string, string> = {
   sangoma: agentColors.sangoma,
 }
 
-export default function TopBar({ title, campaigns = [], onMenu, onLogout }: {
+export default function TopBar({ title, campaigns = [], onMenu, onLogout, onTour }: {
   title: string
   campaigns?: Campaign[]
   onMenu: () => void
   onLogout?: () => void
+  onTour?: () => void
 }) {
   const active = campaigns.filter(c => c.status === 'running' || c.status === 'paused')
   const agentsPresent = Array.from(new Set(active.map(c => c.agent)))
@@ -44,6 +46,14 @@ export default function TopBar({ title, campaigns = [], onMenu, onLogout }: {
             <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main', animation: 'livePulse 1.4s infinite' }} />
             <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 600 }}>Live</Typography>
           </Box>
+
+          {onTour && (
+            <Tooltip title="Guided tour">
+              <IconButton onClick={onTour} size="small" aria-label="Start guided tour" sx={{ color: 'text.secondary', ml: 1 }}>
+                <HelpOutlineIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
 
           <Tooltip title="Logout">
             <IconButton onClick={onLogout} size="small" aria-label="Logout" sx={{ color: 'error.main', bgcolor: 'rgba(224,82,79,0.12)', ml: 1 }}>

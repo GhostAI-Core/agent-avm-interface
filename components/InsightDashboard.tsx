@@ -1,63 +1,25 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import Grid from '@mui/material/Grid'
-import Stack from '@mui/material/Stack'
 import Box from '@mui/material/Box'
-import Button from '@mui/material/Button'
-import Menu from '@mui/material/Menu'
+import Stack from '@mui/material/Stack'
+import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
-import AddIcon from '@mui/icons-material/Add'
+import Divider from '@mui/material/Divider'
 import InsightCard from '@/components/InsightCard'
-import { INSIGHTS, DEFAULT_INSIGHTS, type InsightCtx, type InsightSize } from '@/lib/dashboardInsights'
+import { INSIGHTS, type InsightCtx, type InsightSize } from '@/lib/dashboardInsights'
+import type { DashboardLayoutApi } from '@/lib/useDashboardLayout'
 
-const LS_KEY = 'avm.dash.layout.v3'
-const ALL_IDS = INSIGHTS.map(i => i.id)
-const ADDON_IDS = ALL_IDS.filter(id => !DEFAULT_INSIGHTS.includes(id))
 const SPAN: Record<InsightSize, { xs: number; sm: number; md: number }> = {
   sm: { xs: 6, sm: 4, md: 3 },
   md: { xs: 12, sm: 12, md: 6 },
   lg: { xs: 12, sm: 12, md: 12 },
 }
 
-type Layout = { order: string[]; pinned: string[]; hidden: string[] }
-
-function defaultLayout(): Layout {
-  return {
-    order: [...DEFAULT_INSIGHTS.filter(id => ALL_IDS.includes(id)), ...ADDON_IDS],
-    pinned: [],
-    hidden: [...ADDON_IDS],
-  }
-}
-
-function load(): Layout {
-  try {
-    const raw = typeof window !== 'undefined' && window.localStorage.getItem(LS_KEY)
-    if (!raw) return defaultLayout()
-    const saved = JSON.parse(raw) as Layout
-    const known = new Set(ALL_IDS)
-    const order = saved.order.filter(id => known.has(id))
-    ALL_IDS.forEach(id => { if (!order.includes(id)) order.push(id) })
-    // New insights added to the registry later default to hidden (available as add-ons)
-    const seen = new Set(saved.order)
-    const newlyAdded = ALL_IDS.filter(id => !seen.has(id))
-    return {
-      order,
-      pinned: (saved.pinned || []).filter(id => known.has(id)),
-      hidden: [...(saved.hidden || []).filter(id => known.has(id)), ...newlyAdded],
-    }
-  } catch {
-    return defaultLayout()
-  }
-}
-
-export default function InsightDashboard({ ctx }: { ctx: InsightCtx }) {
-  const [layout, setLayout] = useState<Layout>(defaultLayout)
+export default function InsightDashboard({ ctx, dash }: { ctx: InsightCtx; dash: DashboardLayoutApi }) {
+  const { layout, setLayout, available, add, reset, togglePin, hide } = dash
   const [dragId, setDragId] = useState<string | null>(null)
-  const [addAnchor, setAddAnchor] = useState<null | HTMLElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => { setLayout(load()) }, [])
-  useEffect(() => { try { window.localStorage.setItem(LS_KEY, JSON.stringify(layout)) } catch { /* ignore */ } }, [layout])
 
   // Auto-scroll the page while dragging near the top/bottom edge (native DnD doesn't)
   useEffect(() => {
@@ -90,8 +52,8 @@ export default function InsightDashboard({ ctx }: { ctx: InsightCtx }) {
   const pinnedSet = new Set(layout.pinned)
   const visible = layout.order.filter(id => !hiddenSet.has(id))
   const display = [...visible.filter(id => pinnedSet.has(id)), ...visible.filter(id => !pinnedSet.has(id))]
-  const available = layout.order.filter(id => hiddenSet.has(id))
 
+  // reorder depends on the component-local dragId, so it stays here (uses the hook's setLayout)
   const reorder = (targetId: string) => {
     if (!dragId || dragId === targetId) return
     setLayout(l => {
@@ -101,24 +63,32 @@ export default function InsightDashboard({ ctx }: { ctx: InsightCtx }) {
       return { ...l, order }
     })
   }
-  const togglePin = (id: string) => setLayout(l => ({ ...l, pinned: l.pinned.includes(id) ? l.pinned.filter(x => x !== id) : [...l.pinned, id] }))
-  const hide = (id: string) => setLayout(l => ({ ...l, hidden: [...l.hidden, id], pinned: l.pinned.filter(x => x !== id) }))
-  // Adding from the dropdown un-hides and pins it to the top window
-  const add = (id: string) => setLayout(l => ({ ...l, hidden: l.hidden.filter(x => x !== id), pinned: [...l.pinned.filter(x => x !== id), id] }))
-  const reset = () => setLayout(defaultLayout())
+
+  const ADD_PLACEHOLDER = '__add__'
+  const RESET = '__reset__'
 
   return (
     <Box ref={rootRef}>
       <Stack direction="row" sx={{ justifyContent: 'flex-end', alignItems: 'center', gap: 1, mb: 1.5 }}>
-        <Button size="small" variant="outlined" startIcon={<AddIcon />} disabled={!available.length} onClick={e => setAddAnchor(e.currentTarget)}>
-          Add insight{available.length ? ` (${available.length})` : ''}
-        </Button>
-        <Button size="small" variant="text" onClick={reset}>Reset layout</Button>
-        <Menu anchorEl={addAnchor} open={!!addAnchor} onClose={() => setAddAnchor(null)}>
+        <Select<string>
+          size="small"
+          value=""
+          displayEmpty
+          data-tour="add-insight"
+          onChange={e => {
+            const v = e.target.value
+            if (v === RESET) reset()
+            else if (v && v !== ADD_PLACEHOLDER) add(v)
+          }}
+          renderValue={() => `Add insight${available.length ? ` (${available.length})` : ''}`}
+          sx={{ minWidth: 180 }}
+        >
           {available.map(id => (
-            <MenuItem key={id} onClick={() => { add(id); setAddAnchor(null) }}>{defs.get(id)?.title ?? id}</MenuItem>
+            <MenuItem key={id} value={id}>{defs.get(id)?.title ?? id}</MenuItem>
           ))}
-        </Menu>
+          {!!available.length && <Divider />}
+          <MenuItem value={RESET}>Reset layout</MenuItem>
+        </Select>
       </Stack>
 
       <Grid container spacing={2}>

@@ -38,11 +38,11 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { name, agent, dialing_speed, window_start, window_end, voice_recording_url, contacts } = body
 
-    if (!name || !agent) return NextResponse.json({ error: 'name and agent required' }, { status: 400 })
-    
-    // 1. Insert Campaign
+    if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
+
+    // 1. Insert Campaign — agent is optional in the fast-dial flow (stored NULL when unset).
     const { data: campaign, error: cErr } = await supabase.from('campaigns').insert({
-      name, agent, status: 'draft',
+      name, agent: agent || null, status: 'draft',
       dialing_speed: dialing_speed ?? 1,
       time_window_start: window_start ?? '08:00',
       time_window_end: window_end ?? '20:00',

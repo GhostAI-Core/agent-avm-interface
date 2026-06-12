@@ -150,3 +150,28 @@ $$;
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 7. LiveKit dialer (see supabase/migrations/20260611100000_campaign_gateway.sql et al.)
+CREATE TABLE IF NOT EXISTS sip_trunks (
+    id               SERIAL PRIMARY KEY,
+    name             VARCHAR(100) NOT NULL,
+    livekit_trunk_id VARCHAR(64)  NOT NULL,
+    from_number      VARCHAR(20)  NOT NULL,
+    company_id       INT,
+    created_at       TIMESTAMPTZ  DEFAULT NOW()
+);
+
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS sip_trunk_id VARCHAR(64);
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS agent_name   VARCHAR(64);
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS voice_path   TEXT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS max_retries INT NOT NULL DEFAULT 2;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS retry_cooldown_seconds INT NOT NULL DEFAULT 3600;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS max_concurrent INT NOT NULL DEFAULT 10;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS auto_paused BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS retry_count INT NOT NULL DEFAULT 0;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_attempted_at TIMESTAMPTZ;
+
+ALTER TABLE sip_trunks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "auth_all_sip_trunks" ON sip_trunks;
+CREATE POLICY "auth_all_sip_trunks" ON sip_trunks FOR ALL TO authenticated USING (true) WITH CHECK (true);

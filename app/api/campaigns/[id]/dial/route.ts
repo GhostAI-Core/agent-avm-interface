@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { isLivekitConfigured, isEgressConfigured, placeOutboundCall, startRoomRecording } from '@/lib/livekit'
+import { isLivekitConfigured, isEgressConfigured, placeOutboundCall, resolveTrunkId, startRoomRecording } from '@/lib/livekit'
+import { normalizePhone } from '@/lib/phone'
 import { resolveVoiceUrl } from '@/lib/voice'
 
 export const dynamic = 'force-dynamic'
@@ -16,13 +17,13 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const { supabase, user } = await getAuthUser()
   if (!user) return unauthorized()
 
-  // Gateway not wired yet → tell the client to fall back to the simulator.
-  if (!isLivekitConfigured()) {
-    return NextResponse.json({ mode: 'unconfigured' })
-  }
-
   const { data: campaign, error: cErr } = await supabase.from('campaigns').select('*').eq('id', id).single()
   if (cErr || !campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+
+  const trunkId = await resolveTrunkId(supabase, campaign)
+  if (!isLivekitConfigured(trunkId)) {
+    return NextResponse.json({ mode: 'unconfigured' })
+  }
 
   const { data: contacts, error: cntErr } = await supabase
     .from('contacts')
@@ -44,14 +45,19 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   // mark them dialed; final outcomes arrive via /api/livekit/webhook. `sip_trunk_id` and
   // `agent_name` are optional per-campaign overrides (migration 20260611100000) and fall
   // back to the LIVEKIT_* env defaults when unset.
+  const contactIds = contacts.map(c => c.id)
+  if (contactIds.length) {
+    await supabase.from('contacts').update({ status: 'in_progress', last_attempted_at: new Date().toISOString() }).in('id', contactIds)
+  }
+
   const results = await Promise.all(
     contacts.map(c =>
       placeOutboundCall({
-        phone: c.phone,
+        phone: normalizePhone(c.phone),
         campaignId: id,
         contactId: c.id,
         agentName: campaign.agent_name ?? campaign.agent ?? null,
-        trunkId: campaign.sip_trunk_id ?? null,
+        trunkId,
         metadata: {
           campaignName: campaign.name,
           firstName: c.first_name,
@@ -80,7 +86,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const records = placed.map((x, i) => ({
     campaign_id: Number(id),
     contact_id: x.c.id,
-    phone: x.c.phone,
+    phone: normalizePhone(x.c.phone),
     room: x.r.room,
     egress_id: egressIds[i]?.egressId ?? null,
     outcome: 'pending',

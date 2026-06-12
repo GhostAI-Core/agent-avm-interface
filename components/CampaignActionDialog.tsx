@@ -11,20 +11,9 @@ import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
 import type { Campaign } from '@/types'
+import { parseContacts } from '@/lib/parseCsv'
 
 type Mode = 'edit' | 'reuse'
-
-function parseCsv(text: string) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim())
-  if (!lines.length) return []
-  const headers = lines[0].toLowerCase().split(',').map(h => h.trim())
-  return lines.slice(1).map(line => {
-    const values = line.split(',').map(v => v.trim())
-    const contact: Record<string, string> = {}
-    headers.forEach((h, i) => { if (['phone', 'first_name', 'last_name'].includes(h)) contact[h] = values[i] })
-    return contact
-  }).filter(c => c.phone)
-}
 
 export default function CampaignActionDialog({ mode, campaign, onClose, onDone }: {
   mode: Mode
@@ -48,7 +37,7 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
         })
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to update')
       } else {
-        const contacts = csvFile && csvFile.size > 0 ? parseCsv(await csvFile.text()) : undefined
+        const contacts = csvFile && csvFile.size > 0 ? parseContacts(await csvFile.text()) : undefined
         const res = await fetch('/api/campaigns', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

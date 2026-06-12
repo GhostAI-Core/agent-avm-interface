@@ -132,8 +132,17 @@ const isOutcome = (o: string) => (c: DashCall) => c.outcome === o
 // opt-in add-on selectable from the "Add insight" dropdown.
 export const DEFAULT_INSIGHTS = [
   'campaigns-table',
+  'campaign-report',
   'dialed', 'connected', 'qualified', 'avg-talk', 'hangup', 'callback', 'avg-cpl', 'total-spent',
   'outcome-donut', 'campaign-compare', 'spend-cpl', 'funnel',
+]
+
+// Columns for the embedded Campaign Report (mirrors the reports view)
+const REPORT_COLS: { head: string; key: keyof CampaignReport }[] = [
+  { head: 'Dialed', key: 'dialed' }, { head: 'Connected', key: 'connected' }, { head: 'Qualified', key: 'qualified' },
+  { head: 'Voicemail', key: 'voicemail' }, { head: 'No Speech', key: 'no_speech' }, { head: 'Hangup', key: 'hangup' },
+  { head: 'NI', key: 'ni' }, { head: 'DNQ', key: 'dnq' }, { head: 'Callback', key: 'callback' },
+  { head: 'NA', key: 'no_answer' }, { head: 'Busy', key: 'busy_line' }, { head: 'Failed', key: 'failed' },
 ]
 
 // ── registry ────────────────────────────────────────────────────────────────────
@@ -292,6 +301,43 @@ export const INSIGHTS: InsightDef[] = [
       })
       const head = a ? ['Campaign', 'Agent', 'Company', 'Status', 'Actions'] : ['Campaign', 'Agent', 'Company', 'Status']
       return <MiniTable head={head} rows={rows} />
+    },
+  },
+  {
+    id: 'call-quality', title: 'Call Quality (Intent Waterfall)', size: 'lg', render: c => {
+      // Aggregate reached per intent across the scoped campaigns, then mirror the
+      // standalone Call Quality view: intents alphabetical, "% of connected", and
+      // "% dropped from previous" = change vs the row above.
+      const connectedTotal = sumR(c.reports, 'connected')
+      const byIntent = new Map<string, number>()
+      c.intents.forEach(i => byIntent.set(i.intent_name, (byIntent.get(i.intent_name) || 0) + (Number(i.reached) || 0)))
+      const sorted = [...byIntent.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+      const rows = sorted.map(([name, reached], i) => {
+        const prev = sorted[i - 1]
+        const dropped = i === 0 || !prev?.[1] ? null : ((prev[1] - reached) / prev[1]) * 100
+        return [
+          name,
+          fmtN(reached),
+          pct(reached, connectedTotal),
+          dropped === null
+            ? '–'
+            : <Box key="d" component="span" sx={{ color: dropped >= 0 ? 'error.main' : 'success.main', fontWeight: 600 }}>{`${dropped.toFixed(1)}%`}</Box>,
+        ] as ReactNode[]
+      })
+      return <MiniTable head={['Intent', 'Count', '% of Connected', '% dropped from previous']} rows={rows} />
+    },
+  },
+  {
+    id: 'campaign-report', title: 'Campaign Report', size: 'lg', render: c => {
+      const head = ['Campaign', ...REPORT_COLS.map(col => col.head), 'Duration', 'CPL', 'Spent']
+      const rows = c.reports.map(r => [
+        r.campaign?.name ?? '—',
+        ...REPORT_COLS.map(col => fmtN(Number(r[col.key]) || 0)),
+        r.duration,
+        fmtR(Number(r.cpl) || 0),
+        fmtR(Number(r.total_spent) || 0),
+      ])
+      return <Box sx={{ overflowX: 'auto' }}><MiniTable head={head} rows={rows} /></Box>
     },
   },
 ]

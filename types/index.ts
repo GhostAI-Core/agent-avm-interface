@@ -4,6 +4,22 @@ export type CampaignStatus = 'draft' | 'running' | 'paused' | 'completed' | 'del
 export interface Company {
   id: number
   name: string
+  contact_name?: string | null
+  contact_email?: string | null
+  contact_phone?: string | null
+}
+
+export interface DashboardLayout {
+  order: string[]
+  pinned: string[]
+  hidden: string[]
+}
+
+export interface DashboardTemplate {
+  id: string
+  name: string
+  layout: DashboardLayout
+  created_at?: string
 }
 
 export interface Campaign {

@@ -6,6 +6,7 @@ import ListItemText from '@mui/material/ListItemText'
 import ListSubheader from '@mui/material/ListSubheader'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutlineOutlined'
 import { colors } from '@/lib/tokens'
 
 const WIDTH = 260
@@ -37,10 +38,11 @@ const NAV_GROUPS = [
   },
 ]
 
-function SidebarContent({ view, setView, onClose }: {
+function SidebarContent({ view, setView, onClose, onReplayTour }: {
   view: string
   setView: (v: string) => void
   onClose: () => void
+  onReplayTour: () => void
 }) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -72,6 +74,7 @@ function SidebarContent({ view, setView, onClose }: {
             {group.items.map(({ id, label }) => (
               <ListItemButton
                 key={id}
+                data-tour={`nav-${id}`}
                 selected={view === id}
                 onClick={() => { setView(id); onClose() }}
                 sx={{ borderRadius: 1, mb: 0.25 }}
@@ -83,15 +86,23 @@ function SidebarContent({ view, setView, onClose }: {
         ))}
       </List>
 
+      <Box sx={{ mt: 'auto', p: 1.5, borderTop: `1px solid ${colors.border1}` }}>
+        <ListItemButton onClick={() => { onReplayTour(); onClose() }} sx={{ borderRadius: 1 }}>
+          <HelpOutlineIcon sx={{ fontSize: 18, mr: 1.25, color: 'text.secondary' }} />
+          <ListItemText primary="Replay tour" slotProps={{ primary: { sx: { fontSize: '0.9rem', fontWeight: 500 } } }} />
+        </ListItemButton>
+      </Box>
+
     </Box>
   )
 }
 
-export default function Sidebar({ view, setView, isOpen, onClose }: {
+export default function Sidebar({ view, setView, isOpen, onClose, onReplayTour }: {
   view: string
   setView: (v: string) => void
   isOpen: boolean
   onClose: () => void
+  onReplayTour: () => void
 }) {
   const drawerSx = {
     width: WIDTH,
@@ -107,14 +118,14 @@ export default function Sidebar({ view, setView, isOpen, onClose }: {
   return (
     <>
       <Drawer variant="permanent" sx={{ ...drawerSx, display: { xs: 'none', lg: 'block' } }}>
-        <SidebarContent view={view} setView={setView} onClose={() => {}} />
+        <SidebarContent view={view} setView={setView} onClose={() => {}} onReplayTour={onReplayTour} />
       </Drawer>
 
       <Drawer variant="temporary" open={isOpen} onClose={onClose}
         sx={{ ...drawerSx, display: { xs: 'block', lg: 'none' } }}
         ModalProps={{ keepMounted: true }}
       >
-        <SidebarContent view={view} setView={setView} onClose={onClose} />
+        <SidebarContent view={view} setView={setView} onClose={onClose} onReplayTour={onReplayTour} />
       </Drawer>
     </>
   )

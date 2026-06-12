@@ -7,6 +7,9 @@ import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
 import FloatingNav from '@/components/FloatingNav'
 import InsightDashboard from '@/components/InsightDashboard'
+import SaveTemplateDialog from '@/components/SaveTemplateDialog'
+import TutorialOverlay, { TOUR_STEPS } from '@/components/TutorialOverlay'
+import { useDashboardLayout } from '@/lib/useDashboardLayout'
 import CampaignModal from '@/components/CampaignModal'
 import AuthView from '@/components/AuthView'
 import SecurityView from '@/components/SecurityView'
@@ -31,12 +34,16 @@ import StopIcon from '@mui/icons-material/Stop'
 import EditIcon from '@mui/icons-material/Edit'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ArchiveIcon from '@mui/icons-material/Archive'
+import ViewModuleIcon from '@mui/icons-material/ViewModule'
+import ViewListIcon from '@mui/icons-material/ViewList'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import CardActions from '@mui/material/CardActions'
 import Divider from '@mui/material/Divider'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import TextField from '@mui/material/TextField'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -51,6 +58,9 @@ import DialogActions from '@mui/material/DialogActions'
 import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
 import GlassCard from '@/components/ui/GlassCard'
+import BusinessIcon from '@mui/icons-material/Business'
+import CloseIcon from '@mui/icons-material/Close'
+import { colors, semantic, radius } from '@/lib/tokens'
 import type { Campaign, CampaignReport, Company } from '@/types'
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Control Room',
@@ -66,6 +76,20 @@ const VIEW_TITLES: Record<string, string> = {
 
 const REPORT_KEYS: (keyof CampaignReport)[] = ['dialed','connected','qualified','voicemail','no_speech','hangup','ni','dnq','callback','no_answer','busy_line','failed']
 const INACTIVITY_LIMIT = 15 * 60 * 1000 // 15 minutes
+
+// Cards|Table switcher shared by the Companies and Campaigns list views.
+function ViewToggle({ value, onChange }: { value: 'cards' | 'table'; onChange: (v: 'cards' | 'table') => void }) {
+  return (
+    <ToggleButtonGroup
+      size="small" exclusive value={value}
+      onChange={(_e, v) => { if (v) onChange(v) }}
+      aria-label="View mode"
+    >
+      <ToggleButton value="cards" aria-label="Card view"><ViewModuleIcon sx={{ fontSize: 18 }} /></ToggleButton>
+      <ToggleButton value="table" aria-label="Table view"><ViewListIcon sx={{ fontSize: 18 }} /></ToggleButton>
+    </ToggleButtonGroup>
+  )
+}
 
 export default function Page() {
   const supabase = useMemo(() => createClient(), [])
@@ -94,9 +118,54 @@ export default function Page() {
   const [companiesList,    setCompaniesList]    = useState<Company[]>([])
   const [showCompanyModal, setShowCompanyModal] = useState(false)
   const [newCompanyName,   setNewCompanyName]   = useState('')
+  const [newContactName,   setNewContactName]   = useState('')
+  const [newContactEmail,  setNewContactEmail]  = useState('')
+  const [newContactPhone,  setNewContactPhone]  = useState('')
   const [campaignAction,   setCampaignAction]   = useState<{ mode: 'edit' | 'reuse'; campaign: Campaign } | null>(null)
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [tourStep,         setTourStep]         = useState<number | null>(null)
+  const [companiesView,    setCompaniesView]    = useState<'cards' | 'table'>('cards')
+  const [campaignsView,    setCampaignsView]    = useState<'cards' | 'table'>('cards')
+  const dash = useDashboardLayout()
 
   useEffect(() => { setMounted(true) }, [])
+
+  // List-view (cards|table) preferences — hydrate after mount to avoid SSR mismatch, then persist.
+  useEffect(() => {
+    try {
+      const co = window.localStorage.getItem('avm.view.companies'); if (co === 'cards' || co === 'table') setCompaniesView(co)
+      const ca = window.localStorage.getItem('avm.view.campaigns'); if (ca === 'cards' || ca === 'table') setCampaignsView(ca)
+    } catch { /* ignore */ }
+  }, [])
+  useEffect(() => { try { window.localStorage.setItem('avm.view.companies', companiesView) } catch { /* ignore */ } }, [companiesView])
+  useEffect(() => { try { window.localStorage.setItem('avm.view.campaigns', campaignsView) } catch { /* ignore */ } }, [campaignsView])
+
+  // The tour owns which view is shown; switch to a step's view as it advances.
+  useEffect(() => {
+    if (tourStep === null) return
+    const v = TOUR_STEPS[tourStep]?.view
+    if (v) setView(v)
+  }, [tourStep])
+
+  // First-run: auto-open the guided tour once per browser. The ? button replays it anytime.
+  useEffect(() => {
+    if (!auth || !mounted) return
+    try {
+      if (!window.localStorage.getItem('avm.tour.seen')) setTourStep(0)
+    } catch { /* ignore */ }
+  }, [auth, mounted])
+
+  // Ending the tour (Skip or finishing the last step) marks it seen so it won't auto-open again.
+  const endTour = () => {
+    setTourStep(null)
+    try { window.localStorage.setItem('avm.tour.seen', '1') } catch { /* ignore */ }
+  }
+  // Left-click advances; past the last step it ends the tour.
+  const tourNext = () => {
+    if (tourStep === null) return
+    if (tourStep >= TOUR_STEPS.length - 1) { endTour(); return }
+    setTourStep(tourStep + 1)
+  }
 
   useEffect(() => {
     let active = true
@@ -151,11 +220,33 @@ export default function Page() {
     }
   }, [supabase])
 
+  // Sign out cleanly when the session has expired (server returns 401).
+  const handleAuthFailure = useCallback(async () => {
+    try { await supabase.auth.signOut() } catch { /* already gone */ }
+    setAuth(false)
+  }, [supabase])
+
+  // Fetch + parse JSON with consistent error/401 handling.
+  // Returns null on an expired session (and logs the user out); throws on other errors.
+  const getJson = useCallback(async (url: string) => {
+    const res = await fetch(url)
+    if (res.status === 401) { await handleAuthFailure(); return null }
+    if (!res.ok) throw new Error(`${url} → ${res.status}`)
+    return res.json()
+  }, [handleAuthFailure])
+
   const fetchData = useCallback(async () => {
-    const resC = await fetch('/api/campaigns'); const jC = await resC.json(); setCampaigns(jC.campaigns ?? [])
-    const p = new URLSearchParams(); if (filterAgent) p.set('agent', filterAgent); if (filterDate) p.set('date', filterDate)
-    const resR = await fetch(`/api/reports?${p}`); const jR = await resR.json(); setReports(jR.reports ?? [])
-  }, [filterAgent, filterDate])
+    try {
+      const p = new URLSearchParams()
+      if (filterAgent) p.set('agent', filterAgent)
+      if (filterDate) p.set('date', filterDate)
+      const [jC, jR] = await Promise.all([getJson('/api/campaigns'), getJson(`/api/reports?${p}`)])
+      if (jC) setCampaigns(jC.campaigns ?? [])
+      if (jR) setReports(jR.reports ?? [])
+    } catch (err) {
+      console.error('Refresh failed:', err)
+    }
+  }, [filterAgent, filterDate, getJson])
 
   useEffect(() => {
     if (!auth) return
@@ -172,23 +263,53 @@ export default function Page() {
     return () => { clearTimeout(timeout); window.removeEventListener('mousemove', resetTimer); window.removeEventListener('keydown', resetTimer) }
   }, [auth, supabase])
 
+  // Filter-independent data — loaded in parallel (no waterfall), only on login.
   useEffect(() => {
     if (!auth) return
     let active = true
-    const init = async () => {
-      const resC = await fetch('/api/campaigns'); const jC = await resC.json(); if (active) setCampaigns(jC.campaigns ?? [])
-      const p = new URLSearchParams(); if (filterAgent) p.set('agent', filterAgent); if (filterDate) p.set('date', filterDate)
-      const resR = await fetch(`/api/reports?${p}`); const jR = await resR.json(); if (active) setReports(jR.reports ?? [])
-      const resP = await fetch('/api/providers'); const jP = await resP.json(); if (active) setProviders(jP.providers ?? [])
-      const resS = await fetch('/api/security'); const jS = await resS.json(); if (active) setSecurityLogs(jS.logs ?? [])
-      const resCo = await fetch('/api/companies'); const jCo = await resCo.json(); if (active) setCompaniesList(jCo.companies ?? [])
-      const resL = await fetch('/api/logs'); const jL = await resL.json(); if (active) setAllCalls(jL.logs ?? [])
-      const today = new Date().toISOString().slice(0, 10)
-      const resI = await fetch(`/api/intents?date=${today}`); const jI = await resI.json(); if (active) setAllIntents(jI.intents ?? [])
-    }
-    init()
+    ;(async () => {
+      try {
+        const today = new Date().toISOString().slice(0, 10)
+        const [jC, jP, jS, jCo, jL, jI] = await Promise.all([
+          getJson('/api/campaigns'),
+          getJson('/api/providers'),
+          getJson('/api/security'),
+          getJson('/api/companies'),
+          getJson('/api/logs'),
+          getJson(`/api/intents?date=${today}`),
+        ])
+        if (!active) return
+        if (jC) setCampaigns(jC.campaigns ?? [])
+        if (jP) setProviders(jP.providers ?? [])
+        if (jS) setSecurityLogs(jS.logs ?? [])
+        if (jCo) setCompaniesList(jCo.companies ?? [])
+        if (jL) setAllCalls(jL.logs ?? [])
+        if (jI) setAllIntents(jI.intents ?? [])
+      } catch (err) {
+        console.error('Dashboard load failed:', err)
+      }
+    })()
     return () => { active = false }
-  }, [auth, filterAgent, filterDate])
+  }, [auth, getJson])
+
+  // Reports depend on the agent/date filters — fetched separately so changing a
+  // filter doesn't re-pull everything else.
+  useEffect(() => {
+    if (!auth) return
+    let active = true
+    ;(async () => {
+      try {
+        const p = new URLSearchParams()
+        if (filterAgent) p.set('agent', filterAgent)
+        if (filterDate) p.set('date', filterDate)
+        const jR = await getJson(`/api/reports?${p}`)
+        if (active && jR) setReports(jR.reports ?? [])
+      } catch (err) {
+        console.error('Reports load failed:', err)
+      }
+    })()
+    return () => { active = false }
+  }, [auth, filterAgent, filterDate, getJson])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -205,7 +326,13 @@ export default function Page() {
 
   const viewDetailedLogs = async (report: CampaignReport) => {
     setSelectedCampaign(report)
-    const res = await fetch(`/api/logs?campaignId=${report.campaign_id || ''}`); const json = await res.json(); setDetailedLogs(json.logs || [])
+    try {
+      const json = await getJson(`/api/logs?campaignId=${report.campaign_id || ''}`)
+      if (json) setDetailedLogs(json.logs || [])
+    } catch (err) {
+      console.error('Failed to load call logs:', err)
+      setDetailedLogs([])
+    }
   }
 
   async function updateStatus(id: number, status: string) {
@@ -216,12 +343,25 @@ export default function Page() {
     })
 
     if (status === 'running') {
-      // Trigger a simulation burst to show live data
-      fetch('/api/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId: id })
-      }).then(() => fetchData())
+      try {
+        // Dispatch real outbound calls via the LiveKit gateway (same path as Seeker/Grace).
+        const res = await fetch(`/api/campaigns/${id}/dial`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        const j = await res.json().catch(() => ({}))
+        // Gateway not wired yet → keep the demo simulation so the dashboard shows activity.
+        if (j?.mode === 'unconfigured') {
+          await fetch('/api/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ campaignId: id }),
+          })
+        }
+      } catch (err) {
+        console.error('Dial dispatch failed:', err)
+      }
     }
 
     fetchData()
@@ -257,6 +397,9 @@ export default function Page() {
     setView('dashboard')
   }
 
+  // Contact details by company name (from the companies table, when available)
+  const contactByName = new Map(companiesList.map(c => [c.name, c]))
+
   // Per-company stats for the Companies view
   const companyStats = companies.map(name => {
     const camps = campaigns.filter(c => c.company === name)
@@ -266,6 +409,7 @@ export default function Page() {
     const qualified = reps.reduce((a, r) => a + Number(r.qualified || 0), 0)
     return {
       name,
+      contact: contactByName.get(name)?.contact_name ?? null,
       active: camps.filter(c => c.status === 'running' || c.status === 'paused').length,
       total: camps.length,
       cpl: qualified ? spent / qualified : 0,
@@ -275,8 +419,17 @@ export default function Page() {
   async function createCompany() {
     const name = newCompanyName.trim()
     if (!name) return
-    await fetch('/api/companies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
-    setNewCompanyName(''); setShowCompanyModal(false)
+    await fetch('/api/companies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        contact_name: newContactName.trim(),
+        contact_email: newContactEmail.trim(),
+        contact_phone: newContactPhone.trim(),
+      }),
+    })
+    setNewCompanyName(''); setNewContactName(''); setNewContactEmail(''); setNewContactPhone(''); setShowCompanyModal(false)
     const res = await fetch('/api/companies'); const j = await res.json(); setCompaniesList(j.companies ?? [])
   }
   // Effective scope: a single campaign if picked, else the company set, else everything
@@ -290,15 +443,15 @@ export default function Page() {
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: 'background.default', color: 'text.primary' }}>
-      <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} />
+      <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} onReplayTour={() => setTourStep(0)} />
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <TopBar title={VIEW_TITLES[view]} campaigns={dashCampaigns} onMenu={() => setSideOpen(true)} onLogout={handleLogout} />
+        <TopBar title={VIEW_TITLES[view]} campaigns={dashCampaigns} onMenu={() => setSideOpen(true)} onLogout={handleLogout} onTour={() => setTourStep(0)} />
         <Box component="main" sx={{ flex: 1, p: 3, pb: '6rem', overflowY: 'auto' }}>
           
           {/* ── DASHBOARD ── */}
           {view === 'dashboard' && (
             <>
-              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+              <Stack direction="row" data-tour="dash-header" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
                 <Box>
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>
                     {campaignFilter ? (dashCampaigns[0]?.name ?? 'Campaign') : (companyFilter || 'All Companies')}
@@ -309,7 +462,7 @@ export default function Page() {
                       : companyFilter ? `Company overview · ${dashCampaigns.length} campaigns` : 'Company-wide overview'}
                   </Typography>
                 </Box>
-                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                <Stack direction="row" data-tour="dash-scope" sx={{ gap: 1, flexWrap: 'wrap' }}>
                   <Select size="small" value={companyFilter} onChange={e => { setCompanyFilter(e.target.value); setCampaignFilter('') }} displayEmpty sx={{ minWidth: 180 }}>
                     <MenuItem value="">All Companies</MenuItem>
                     {companies.map(co => <MenuItem key={co} value={co}>{co}</MenuItem>)}
@@ -321,7 +474,7 @@ export default function Page() {
                 </Stack>
               </Stack>
 
-              <InsightDashboard ctx={{
+              <InsightDashboard dash={dash} onRequestSaveTemplate={() => setShowSaveTemplate(true)} ctx={{
                 reports: dashReports, calls: dashCalls, intents: dashIntents, campaigns: dashCampaigns,
                 actions: {
                   onPlayPause: c => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running'),
@@ -343,37 +496,75 @@ export default function Page() {
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>Companies</Typography>
                   <Typography variant="caption" color="text.secondary">{companyStats.length} total</Typography>
                 </Stack>
-                <Button variant="contained" onClick={() => setShowCompanyModal(true)}>+ New Company</Button>
+                <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
+                  <ViewToggle value={companiesView} onChange={setCompaniesView} />
+                  <Button variant="contained" data-tour="new-company" onClick={() => setShowCompanyModal(true)}>+ New Company</Button>
+                </Stack>
               </Stack>
 
-              <Grid container spacing={2}>
-                {companyStats.map(co => (
-                  <Grid key={co.name} size={{ xs: 12, sm: 6, lg: 4 }}>
-                    <Card sx={{ height: '100%', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }} onClick={() => openInControlRoom(co.name)}>
-                      <CardContent>
-                        <Typography sx={{ fontWeight: 700, mb: 1.5 }}>{co.name}</Typography>
-                        <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Active</Typography>
-                            <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem', color: 'success.main' }}>{co.active}</Typography>
-                          </Box>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total Camps</Typography>
-                            <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>{co.total}</Typography>
-                          </Box>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total CPL</Typography>
-                            <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>R{co.cpl.toFixed(2)}</Typography>
-                          </Box>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-                {!companyStats.length && (
-                  <Grid size={{ xs: 12 }}><Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No companies yet — add one to get started.</Typography></Grid>
-                )}
-              </Grid>
+              {companiesView === 'cards' ? (
+                <Grid container spacing={2}>
+                  {companyStats.map(co => (
+                    <Grid key={co.name} size={{ xs: 12, sm: 6, lg: 4 }}>
+                      <Card sx={{ height: '100%', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }} onClick={() => openInControlRoom(co.name)}>
+                        <CardContent>
+                          <Typography sx={{ fontWeight: 700, mb: co.contact ? 0.25 : 1.5 }}>{co.name}</Typography>
+                          {co.contact && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                              Contact: {co.contact}
+                            </Typography>
+                          )}
+                          <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Active</Typography>
+                              <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem', color: 'success.main' }}>{co.active}</Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total Camps</Typography>
+                              <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>{co.total}</Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total CPL</Typography>
+                              <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>R{co.cpl.toFixed(2)}</Typography>
+                            </Box>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                  {!companyStats.length && (
+                    <Grid size={{ xs: 12 }}><Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No companies yet — add one to get started.</Typography></Grid>
+                  )}
+                </Grid>
+              ) : (
+                <GlassCard sx={{ p: 0, overflow: 'auto' }}>
+                  <TableContainer>
+                    <Table size="small" sx={{ minWidth: 640 }}>
+                      <TableHead>
+                        <TableRow>
+                          {['Company', 'Contact', 'Active', 'Total Camps', 'Total CPL'].map((h, i) => (
+                            <TableCell key={h} align={i < 2 ? 'left' : 'right'} sx={{ whiteSpace: 'nowrap' }}>{h}</TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {companyStats.map(co => (
+                          <TableRow key={co.name} hover sx={{ cursor: 'pointer' }} onClick={() => openInControlRoom(co.name)}>
+                            <TableCell sx={{ fontWeight: 600 }}>{co.name}</TableCell>
+                            <TableCell sx={{ color: 'text.secondary' }}>{co.contact || '—'}</TableCell>
+                            <TableCell align="right" className="mono" sx={{ color: 'success.main' }}>{co.active}</TableCell>
+                            <TableCell align="right" className="mono">{co.total}</TableCell>
+                            <TableCell align="right" className="mono">R{co.cpl.toFixed(2)}</TableCell>
+                          </TableRow>
+                        ))}
+                        {!companyStats.length && (
+                          <TableRow><TableCell colSpan={5} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No companies yet — add one to get started.</TableCell></TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </GlassCard>
+              )}
             </>
           )}
 
@@ -385,9 +576,50 @@ export default function Page() {
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>Active Campaigns</Typography>
                   <Typography variant="caption" color="text.secondary">{activeCount} active</Typography>
                 </Stack>
-                <Button variant="contained" onClick={() => setShowModal(true)}>+ New Campaign</Button>
+                <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
+                  <ViewToggle value={campaignsView} onChange={setCampaignsView} />
+                  <Button variant="contained" data-tour="new-campaign" onClick={() => setShowModal(true)}>+ New Campaign</Button>
+                </Stack>
               </Stack>
 
+              {campaignsView === 'table' ? (
+                <GlassCard sx={{ p: 0, overflow: 'auto' }}>
+                  <TableContainer>
+                    <Table size="small" sx={{ minWidth: 820 }}>
+                      <TableHead>
+                        <TableRow>
+                          {['Campaign', 'Agent', 'Company', 'Status', 'Window / Speed', 'Actions'].map((h, i) => (
+                            <TableCell key={h} align={i === 5 ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap' }}>{h}</TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {campaigns.map(c => (
+                          <TableRow key={c.id} hover sx={{ cursor: 'pointer' }} onClick={() => openInControlRoom(c.company || '', String(c.id))}>
+                            <TableCell sx={{ fontWeight: 600 }}>{c.name}</TableCell>
+                            <TableCell><AgentChip agent={c.agent} /></TableCell>
+                            <TableCell sx={{ color: 'text.secondary' }}>{c.company || '—'}</TableCell>
+                            <TableCell><StatusChip status={c.status} /></TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8rem' }}>{c.time_window_start}–{c.time_window_end} · {c.dialing_speed}/s</TableCell>
+                            <TableCell align="right" onClick={e => e.stopPropagation()}>
+                              <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
+                                <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}><MuiIconButton size="small" color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>{c.status === 'running' ? <PauseIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}</MuiIconButton></Tooltip>
+                                <Tooltip title="Stop"><MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}><StopIcon sx={{ fontSize: 17 }} /></MuiIconButton></Tooltip>
+                                <Tooltip title="Edit (change MP4)"><MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
+                                <Tooltip title="Reuse as template"><MuiIconButton size="small" aria-label={`Reuse ${c.name}`} onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })}><ContentCopyIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
+                                <Tooltip title="Archive"><MuiIconButton size="small" aria-label={`Archive ${c.name}`} onClick={() => updateStatus(c.id, 'archived')} sx={{ color: 'warning.main' }}><ArchiveIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {!campaigns.length && (
+                          <TableRow><TableCell colSpan={6} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No campaigns yet.</TableCell></TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </GlassCard>
+              ) : (
               <Grid container spacing={2}>
                 {campaigns.map(c => (
                   <Grid key={c.id} size={{ xs: 12, sm: 6, lg: 4 }}>
@@ -439,6 +671,7 @@ export default function Page() {
                   </Grid>
                 ))}
               </Grid>
+              )}
             </>
           )}
 
@@ -562,17 +795,43 @@ export default function Page() {
       })()}
 
       {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} />}
-      <Dialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>New Company</DialogTitle>
-        <DialogContent>
-          <TextField autoFocus fullWidth size="small" label="Company name" value={newCompanyName}
-            onChange={e => setNewCompanyName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') createCompany() }}
-            sx={{ mt: 1 }}
-          />
+      <Dialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth
+        slotProps={{ paper: { sx: { overflow: 'hidden', borderRadius: `${radius.lg}px` } } }}
+      >
+        <Box sx={{
+          position: 'relative', display: 'flex', alignItems: 'center', gap: 1.75, px: 3, pt: 2.75, pb: 2.25,
+          background: `linear-gradient(135deg, rgba(55,166,96,0.16) 0%, rgba(55,166,96,0.03) 48%, transparent 100%)`,
+          '&::after': { content: '""', position: 'absolute', left: 0, right: 0, bottom: 0, height: '1px',
+            background: `linear-gradient(90deg, ${semantic.accent} 0%, rgba(55,166,96,0.15) 40%, ${colors.border1} 100%)` },
+        }}>
+          <Box sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', width: 42, height: 42, borderRadius: `${radius.md}px`,
+            flexShrink: 0, bgcolor: 'rgba(55,166,96,0.16)', border: `1px solid rgba(55,166,96,0.4)`, color: semantic.accentBright,
+            boxShadow: `0 0 18px -4px ${semantic.accentGlow}66`,
+          }}>
+            <BusinessIcon fontSize="small" />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: 19, lineHeight: 1.2, letterSpacing: '-0.01em' }}>New Company</Typography>
+            <Typography variant="body2" color="text.secondary">Add a company and its primary contact.</Typography>
+          </Box>
+          <MuiIconButton onClick={() => setShowCompanyModal(false)} size="small" aria-label="Close" sx={{ color: semantic.textSoft, alignSelf: 'flex-start', mt: -0.5 }}>
+            <CloseIcon fontSize="small" />
+          </MuiIconButton>
+        </Box>
+        <DialogContent sx={{ pt: 3 }}>
+          <Stack sx={{ gap: 2 }}>
+            <TextField autoFocus fullWidth size="small" label="Company name" value={newCompanyName}
+              onChange={e => setNewCompanyName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') createCompany() }}
+            />
+            <TextField fullWidth size="small" label="Contact name" value={newContactName} onChange={e => setNewContactName(e.target.value)} />
+            <TextField fullWidth size="small" type="email" label="Contact email" value={newContactEmail} onChange={e => setNewContactEmail(e.target.value)} />
+            <TextField fullWidth size="small" label="Contact phone" value={newContactPhone} onChange={e => setNewContactPhone(e.target.value)} />
+          </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowCompanyModal(false)}>Cancel</Button>
+        <DialogActions sx={{ px: 3, pb: 2.75, pt: 1 }}>
+          <Button onClick={() => setShowCompanyModal(false)} variant="outlined">Cancel</Button>
           <Button variant="contained" onClick={createCompany} disabled={!newCompanyName.trim()}>Create</Button>
         </DialogActions>
       </Dialog>
@@ -582,6 +841,21 @@ export default function Page() {
           campaign={campaignAction.campaign}
           onClose={() => setCampaignAction(null)}
           onDone={fetchData}
+        />
+      )}
+      {showSaveTemplate && (
+        <SaveTemplateDialog
+          onClose={() => setShowSaveTemplate(false)}
+          onSave={async name => { await dash.saveTemplate(name) }}
+        />
+      )}
+      {tourStep !== null && (
+        <TutorialOverlay
+          step={tourStep}
+          steps={TOUR_STEPS}
+          onNext={tourNext}
+          onBack={() => setTourStep(s => (s === null ? null : Math.max(s - 1, 0)))}
+          onSkip={endTour}
         />
       )}
       <FloatingNav view={view} setView={setView} />

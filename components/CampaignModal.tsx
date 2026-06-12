@@ -21,8 +21,14 @@ import CloseIcon from '@mui/icons-material/Close'
 import GraphicEqIcon from '@mui/icons-material/GraphicEq'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { colors, semantic, radius } from '@/lib/tokens'
+import { parseContacts } from '@/lib/parseCsv'
+import { createClient } from '@/utils/supabase/client'
 
 interface Props { onClose: () => void; onCreated: () => void }
+
+const MAX_CSV_BYTES = 15 * 1024 * 1024 // 15MB upload cap
+const MAX_VOICE_BYTES = 50 * 1024 * 1024 // 50MB voice-recording cap
+const VOICE_BUCKET = 'voice-recordings'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -125,27 +131,56 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
       setError('Please choose a contact list (CSV) to create the campaign.')
       return
     }
-
-    setLoading(true)
-    const text = await csvFile.text()
-    const lines = text.split(/\r?\n/).filter(l => l.trim())
-    const headers = lines[0].toLowerCase().split(',').map(h => h.trim())
-    payload.contacts = lines.slice(1).map(line => {
-      const values = line.split(',').map(v => v.trim())
-      const contact: Record<string, string> = {}
-      headers.forEach((h, i) => { if (['phone', 'first_name', 'last_name'].includes(h)) contact[h] = values[i] })
-      return contact
-    }).filter(c => c.phone)
-
-    const res = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    const json = await res.json().catch(() => ({}))
-    setLoading(false)
-    if (!res.ok) {
-      setError(json.error || 'Failed to create campaign')
+    if (csvFile.size > MAX_CSV_BYTES) {
+      setError(`Contact list is too large (max ${MAX_CSV_BYTES / 1024 / 1024}MB).`)
       return
     }
-    onCreated()
-    onClose()
+
+    setLoading(true)
+    try {
+      const contacts = parseContacts(await csvFile.text())
+      if (contacts.length === 0) {
+        setError('No valid contacts found. The CSV needs a "phone" column (also supports first_name, last_name).')
+        setLoading(false)
+        return
+      }
+      payload.contacts = contacts
+
+      // Upload the voice recording (if any) to the private Supabase Storage bucket.
+      // The campaign keeps only the object path; the dial route signs it at call time.
+      const voiceFile = formData.get('voice_file') as File | null
+      if (voiceFile && voiceFile.size > 0) {
+        if (voiceFile.size > MAX_VOICE_BYTES) {
+          setError(`Voice recording is too large (max ${MAX_VOICE_BYTES / 1024 / 1024}MB).`)
+          return
+        }
+        const ext = (voiceFile.name.split('.').pop() || 'mp4').toLowerCase()
+        const path = `${crypto.randomUUID()}.${ext}`
+        const supabase = createClient()
+        const { error: upErr } = await supabase.storage
+          .from(VOICE_BUCKET)
+          .upload(path, voiceFile, { contentType: voiceFile.type || undefined, upsert: false })
+        if (upErr) {
+          setError(`Could not upload the voice recording: ${upErr.message}`)
+          return
+        }
+        payload.voice_path = path
+      }
+
+      const res = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(json.error || 'Failed to create campaign')
+        return
+      }
+      onCreated()
+      onClose()
+    } catch (err) {
+      console.error('Create campaign failed:', err)
+      setError('Could not read that file. Please upload a valid CSV.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

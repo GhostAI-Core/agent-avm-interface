@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     if (!user) return unauthorized()
 
     const body = await req.json()
-    const { name, agent, dialing_speed, window_start, window_end, voice_recording_url, contacts } = body
+    const { name, agent, dialing_speed, window_start, window_end, voice_recording_url, voice_path, contacts } = body
 
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
 
@@ -47,6 +47,7 @@ export async function POST(req: Request) {
       time_window_start: window_start ?? '08:00',
       time_window_end: window_end ?? '20:00',
       voice_recording_url: voice_recording_url ?? '',
+      voice_path: voice_path ?? null,
       transfer_key: body.transfer_key ?? '',
       transfer_target: body.transfer_target ?? '',
     }).select().single()

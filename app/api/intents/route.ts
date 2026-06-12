@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 import { demoIntentsFor, DEMO_CAMPAIGNS } from '@/lib/demo-data'
+import { DEMO_MODE } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,9 +21,12 @@ export async function GET(req: NextRequest) {
       .eq('day', date)
 
     if (error || !data || data.length === 0) {
-      const all = DEMO_CAMPAIGNS.flatMap(c =>
-        demoIntentsFor(c.id, date).intents.map(i => ({ ...i, campaign_id: c.id })))
-      return NextResponse.json({ day: date, intents: all, demo: true })
+      if (DEMO_MODE) {
+        const all = DEMO_CAMPAIGNS.flatMap(c =>
+          demoIntentsFor(c.id, date).intents.map(i => ({ ...i, campaign_id: c.id })))
+        return NextResponse.json({ day: date, intents: all, demo: true })
+      }
+      return NextResponse.json({ day: date, intents: [] })
     }
     return NextResponse.json({ day: date, intents: data })
   }
@@ -35,7 +39,8 @@ export async function GET(req: NextRequest) {
     .order('intent_name', { ascending: true })
 
   if (error || !data || data.length === 0) {
-    return NextResponse.json({ ...demoIntentsFor(Number(campaignId) || 1, date), demo: true })
+    if (DEMO_MODE) return NextResponse.json({ ...demoIntentsFor(Number(campaignId) || 1, date), demo: true })
+    return NextResponse.json({ day: date, connectedTotal: 0, intents: [] })
   }
 
   // Connected calls that day = denominator for "% of Connected"

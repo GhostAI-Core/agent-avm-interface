@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 import { DEMO_CAMPAIGNS } from '@/lib/demo-data'
+import { DEMO_MODE } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,8 +11,11 @@ export async function GET() {
 
   const { data, error } = await supabase.from('companies').select('id, name, contact_name, contact_email, contact_phone').order('name')
   if (error || !data || data.length === 0) {
-    const names = Array.from(new Set(DEMO_CAMPAIGNS.map(c => c.company).filter(Boolean))) as string[]
-    return NextResponse.json({ companies: names.map((name, i) => ({ id: i + 1, name })), demo: true })
+    if (DEMO_MODE) {
+      const names = Array.from(new Set(DEMO_CAMPAIGNS.map(c => c.company).filter(Boolean))) as string[]
+      return NextResponse.json({ companies: names.map((name, i) => ({ id: i + 1, name })), demo: true })
+    }
+    return NextResponse.json({ companies: [] })
   }
   return NextResponse.json({ companies: data })
 }

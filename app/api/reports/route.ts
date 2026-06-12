@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DEMO_REPORTS } from '@/lib/demo-data'
+import { DEMO_MODE } from '@/lib/supabase'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 
 export const dynamic = 'force-dynamic'
@@ -23,9 +24,13 @@ export async function GET(req: NextRequest) {
     
     const { data, error } = await query
     
+    if (error) console.error('reports query error:', error)
     if (error || !data || data.length === 0) {
-      const rows = agent ? DEMO_REPORTS.filter(r => r.campaign?.agent === agent) : DEMO_REPORTS
-      return NextResponse.json({ reports: rows, demo: true })
+      if (DEMO_MODE) {
+        const rows = agent ? DEMO_REPORTS.filter(r => r.campaign?.agent === agent) : DEMO_REPORTS
+        return NextResponse.json({ reports: rows, demo: true })
+      }
+      return NextResponse.json({ reports: [] })
     }
     
     const rows = agent ? data.filter((r: any) => r.campaign?.agent === agent) : data

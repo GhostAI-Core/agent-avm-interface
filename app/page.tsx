@@ -292,6 +292,25 @@ export default function Page() {
     return () => { active = false }
   }, [auth, getJson])
 
+  // Live polling: while any campaign is running, refresh campaigns/reports/logs every 10s so
+  // the dashboard reflects what evra_callops writes, without a manual reload. (v2: Realtime.)
+  const anyRunning = campaigns.some(c => c.status === 'running')
+  useEffect(() => {
+    if (!auth || !anyRunning) return
+    const id = setInterval(async () => {
+      const p = new URLSearchParams()
+      if (filterAgent) p.set('agent', filterAgent)
+      if (filterDate) p.set('date', filterDate)
+      const [jC, jR, jL] = await Promise.all([
+        getJson('/api/campaigns'), getJson(`/api/reports?${p}`), getJson('/api/logs'),
+      ])
+      if (jC) setCampaigns(jC.campaigns ?? [])
+      if (jR) setReports(jR.reports ?? [])
+      if (jL) setAllCalls(jL.logs ?? [])
+    }, 10000)
+    return () => clearInterval(id)
+  }, [auth, anyRunning, filterAgent, filterDate, getJson])
+
   // Reports depend on the agent/date filters — fetched separately so changing a
   // filter doesn't re-pull everything else.
   useEffect(() => {

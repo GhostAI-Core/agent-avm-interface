@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { DEMO_CAMPAIGNS } from '@/lib/demo-data'
+import { DEMO_MODE } from '@/lib/supabase'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 
 export const dynamic = 'force-dynamic'
@@ -18,7 +19,8 @@ export async function GET() {
 
     if (error) {
       console.error('Supabase error:', error)
-      return NextResponse.json({ campaigns: DEMO_CAMPAIGNS, demo: true })
+      if (DEMO_MODE) return NextResponse.json({ campaigns: DEMO_CAMPAIGNS, demo: true })
+      return NextResponse.json({ campaigns: [] })
     }
 
     // Flatten the joined company to a plain name for the client

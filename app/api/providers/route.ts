@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
+import { DEMO_MODE } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,15 +9,18 @@ export async function GET() {
   if (!user) return unauthorized()
 
   const { data, error } = await supabase.from('voip_providers').select('*').order('created_at', { ascending: false })
-  
+
   if (error || !data || data.length === 0) {
-    return NextResponse.json({
-      providers: [
-        { id: 1, name: 'Twilio', api_key: 'AC...', api_secret: '********' },
-        { id: 2, name: 'Vonage', api_key: 'vn...', api_secret: '********' },
-      ],
-      demo: true
-    })
+    if (DEMO_MODE) {
+      return NextResponse.json({
+        providers: [
+          { id: 1, name: 'Twilio', api_key: 'AC...', api_secret: '********' },
+          { id: 2, name: 'Vonage', api_key: 'vn...', api_secret: '********' },
+        ],
+        demo: true,
+      })
+    }
+    return NextResponse.json({ providers: [] })
   }
 
   return NextResponse.json({ providers: data })

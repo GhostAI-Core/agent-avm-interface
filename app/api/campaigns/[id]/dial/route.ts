@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 import { isLivekitConfigured, isEgressConfigured, placeOutboundCall, startRoomRecording } from '@/lib/livekit'
+import { resolveVoiceUrl } from '@/lib/voice'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -36,6 +37,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ mode: 'live', dispatched: 0, status: 'completed' })
   }
 
+  // Sign the campaign's voice recording once (short-lived) so the agent can fetch + play it.
+  const voiceUrl = await resolveVoiceUrl(campaign)
+
   // TODO(cale): confirm pacing model. For now we dispatch a bounded batch immediately and
   // mark them dialed; final outcomes arrive via /api/livekit/webhook. `sip_trunk_id` and
   // `agent_name` are optional per-campaign overrides (migration 20260611100000) and fall
@@ -52,7 +56,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           campaignName: campaign.name,
           firstName: c.first_name,
           lastName: c.last_name,
-          voiceRecordingUrl: campaign.voice_recording_url,
+          voiceRecordingUrl: voiceUrl,
           transferKey: campaign.transfer_key,
           transferTarget: campaign.transfer_target,
         },

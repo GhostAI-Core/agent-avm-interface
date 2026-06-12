@@ -22,10 +22,13 @@ import GraphicEqIcon from '@mui/icons-material/GraphicEq'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { colors, semantic, radius } from '@/lib/tokens'
 import { parseContacts } from '@/lib/parseCsv'
+import { createClient } from '@/utils/supabase/client'
 
 interface Props { onClose: () => void; onCreated: () => void }
 
 const MAX_CSV_BYTES = 15 * 1024 * 1024 // 15MB upload cap
+const MAX_VOICE_BYTES = 50 * 1024 * 1024 // 50MB voice-recording cap
+const VOICE_BUCKET = 'voice-recordings'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -142,6 +145,27 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
         return
       }
       payload.contacts = contacts
+
+      // Upload the voice recording (if any) to the private Supabase Storage bucket.
+      // The campaign keeps only the object path; the dial route signs it at call time.
+      const voiceFile = formData.get('voice_file') as File | null
+      if (voiceFile && voiceFile.size > 0) {
+        if (voiceFile.size > MAX_VOICE_BYTES) {
+          setError(`Voice recording is too large (max ${MAX_VOICE_BYTES / 1024 / 1024}MB).`)
+          return
+        }
+        const ext = (voiceFile.name.split('.').pop() || 'mp4').toLowerCase()
+        const path = `${crypto.randomUUID()}.${ext}`
+        const supabase = createClient()
+        const { error: upErr } = await supabase.storage
+          .from(VOICE_BUCKET)
+          .upload(path, voiceFile, { contentType: voiceFile.type || undefined, upsert: false })
+        if (upErr) {
+          setError(`Could not upload the voice recording: ${upErr.message}`)
+          return
+        }
+        payload.voice_path = path
+      }
 
       const res = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const json = await res.json().catch(() => ({}))

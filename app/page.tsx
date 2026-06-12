@@ -335,36 +335,20 @@ export default function Page() {
     }
   }
 
+  // Control-plane only: Play/Pause/Stop just write campaigns.status. The evra_callops
+  // service watches status and owns all dialing (LiveKit). This app never dials.
   async function updateStatus(id: number, status: string) {
-    await fetch(`/api/campaigns/${id}`, { 
-      method:'PUT', 
-      headers:{'Content-Type':'application/json'}, 
-      body: JSON.stringify({ status }) 
+    const res = await fetch(`/api/campaigns/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
     })
-
-    if (status === 'running') {
-      try {
-        // Dispatch real outbound calls via the LiveKit gateway (same path as Seeker/Grace).
-        const res = await fetch(`/api/campaigns/${id}/dial`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        })
-        const j = await res.json().catch(() => ({}))
-        // Gateway not wired yet → keep the demo simulation so the dashboard shows activity.
-        if (j?.mode === 'unconfigured') {
-          await fetch('/api/simulate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ campaignId: id }),
-          })
-        }
-      } catch (err) {
-        console.error('Dial dispatch failed:', err)
-      }
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      console.error('Status update failed:', json.error)
+      return
     }
-
-    fetchData()
+    await fetchData()
   }
 
 

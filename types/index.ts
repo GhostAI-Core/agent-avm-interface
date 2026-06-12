@@ -1,5 +1,5 @@
 export type Agent = 'seeker' | 'grace' | 'sangoma'
-export type CampaignStatus = 'draft' | 'running' | 'paused' | 'completed' | 'deleted'
+export type CampaignStatus = 'draft' | 'running' | 'paused' | 'completed' | 'deleted' | 'archived'
 
 export interface Company {
   id: number

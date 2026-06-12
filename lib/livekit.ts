@@ -1,5 +1,8 @@
 import 'server-only'
-import { SipClient, AgentDispatchClient, WebhookReceiver } from 'livekit-server-sdk'
+import {
+  SipClient, AgentDispatchClient, WebhookReceiver,
+  EgressClient, EncodedFileOutput, EncodedFileType, S3Upload,
+} from 'livekit-server-sdk'
 
 /**
  * LiveKit gateway — the same telephony path Seeker/Grace use.
@@ -19,6 +22,16 @@ const LK_SECRET = process.env.LIVEKIT_API_SECRET
 const DEFAULT_TRUNK_ID = process.env.LIVEKIT_SIP_OUTBOUND_TRUNK_ID
 const DEFAULT_AGENT_NAME = process.env.LIVEKIT_AGENT_NAME || 'outbound-agent'
 
+// Recording (LiveKit Egress → S3-compatible storage). Optional: when unset, calls still
+// place; the per-call recording_url just stays null. The same egress also fires the
+// `egress_ended` webhook, so a recording started anywhere (agent / auto-egress) still lands.
+const REC_BUCKET = process.env.LIVEKIT_RECORD_BUCKET
+const REC_REGION = process.env.LIVEKIT_RECORD_REGION || 'us-east-1'
+const REC_ACCESS_KEY = process.env.LIVEKIT_RECORD_ACCESS_KEY
+const REC_SECRET = process.env.LIVEKIT_RECORD_SECRET
+const REC_ENDPOINT = process.env.LIVEKIT_RECORD_ENDPOINT // optional (S3-compatible: R2/MinIO/etc.)
+const REC_PREFIX = process.env.LIVEKIT_RECORD_PREFIX || 'recordings'
+
 /** Auth creds present — enough to validate webhooks. */
 export function isLivekitAuthConfigured(): boolean {
   return Boolean(LK_URL && LK_KEY && LK_SECRET)
@@ -29,8 +42,14 @@ export function isLivekitConfigured(): boolean {
   return isLivekitAuthConfigured() && Boolean(DEFAULT_TRUNK_ID)
 }
 
+/** Auth + an S3 destination — enough to start app-initiated call recording. */
+export function isEgressConfigured(): boolean {
+  return isLivekitAuthConfigured() && Boolean(REC_BUCKET && REC_ACCESS_KEY && REC_SECRET)
+}
+
 let _sip: SipClient | null = null
 let _dispatch: AgentDispatchClient | null = null
+let _egress: EgressClient | null = null
 
 function sipClient(): SipClient {
   if (!_sip) _sip = new SipClient(LK_URL!, LK_KEY!, LK_SECRET!)
@@ -40,9 +59,50 @@ function dispatchClient(): AgentDispatchClient {
   if (!_dispatch) _dispatch = new AgentDispatchClient(LK_URL!, LK_KEY!, LK_SECRET!)
   return _dispatch
 }
+function egressClient(): EgressClient {
+  if (!_egress) _egress = new EgressClient(LK_URL!, LK_KEY!, LK_SECRET!)
+  return _egress
+}
 
 export function webhookReceiver(): WebhookReceiver {
   return new WebhookReceiver(LK_KEY!, LK_SECRET!)
+}
+
+/** Room names are `avm_<campaignId>_<contactId>_<rand>` — pull the ids back out. */
+export function parseRoomName(room: string): { campaignId: number; contactId: number } | null {
+  const m = /^avm_(\d+)_(\d+)_/.exec(room)
+  if (!m) return null
+  return { campaignId: Number(m[1]), contactId: Number(m[2]) }
+}
+
+/**
+ * Start an audio-only recording of the room to S3-compatible storage. Best-effort:
+ * returns the egress id (correlate the file via the `egress_ended` webhook) or null —
+ * never throws, so a recording failure can't sink the call.
+ */
+export async function startRoomRecording(room: string): Promise<{ egressId: string } | null> {
+  if (!isEgressConfigured()) return null
+  try {
+    const output = new EncodedFileOutput({
+      fileType: EncodedFileType.OGG,
+      filepath: `${REC_PREFIX}/${room}.ogg`,
+      output: {
+        case: 's3',
+        value: new S3Upload({
+          accessKey: REC_ACCESS_KEY!,
+          secret: REC_SECRET!,
+          bucket: REC_BUCKET!,
+          region: REC_REGION,
+          ...(REC_ENDPOINT ? { endpoint: REC_ENDPOINT, forcePathStyle: true } : {}),
+        }),
+      },
+    })
+    const info = await egressClient().startRoomCompositeEgress(room, output, { audioOnly: true })
+    return info.egressId ? { egressId: info.egressId } : null
+  } catch (err) {
+    console.error('startRoomRecording failed for', room, err)
+    return null
+  }
 }
 
 export interface DialTarget {

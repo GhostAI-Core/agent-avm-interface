@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { isLivekitConfigured, placeOutboundCall } from '@/lib/livekit'
+import { isLivekitConfigured, isEgressConfigured, placeOutboundCall, startRoomRecording } from '@/lib/livekit'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -64,6 +64,28 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const failedIds = contacts.filter((_, i) => !results[i].ok).map(c => c.id)
   if (dialedIds.length) await supabase.from('contacts').update({ status: 'dialed' }).in('id', dialedIds)
   if (failedIds.length) await supabase.from('contacts').update({ status: 'failed' }).in('id', failedIds)
+
+  // For each placed call: start a recording (best-effort) and create a 'pending'
+  // call_records row keyed by room. The webhook (egress_ended / room_finished) and the
+  // agent result endpoint then upsert that row in place as events arrive.
+  const placed = contacts.map((c, i) => ({ c, r: results[i] })).filter(x => x.r.ok)
+  const egressIds = await Promise.all(
+    placed.map(x => (isEgressConfigured() ? startRoomRecording(x.r.room) : Promise.resolve(null))),
+  )
+  const now = new Date().toISOString()
+  const records = placed.map((x, i) => ({
+    campaign_id: Number(id),
+    contact_id: x.c.id,
+    phone: x.c.phone,
+    room: x.r.room,
+    egress_id: egressIds[i]?.egressId ?? null,
+    outcome: 'pending',
+    called_at: now,
+  }))
+  if (records.length) {
+    const { error: recErr } = await supabase.from('call_records').insert(records)
+    if (recErr) console.error('call_records insert failed:', recErr.message)
+  }
 
   const dispatched = dialedIds.length
   await supabase.from('security_logs').insert({

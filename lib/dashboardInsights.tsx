@@ -304,6 +304,30 @@ export const INSIGHTS: InsightDef[] = [
     },
   },
   {
+    id: 'call-quality', title: 'Call Quality (Intent Waterfall)', size: 'lg', render: c => {
+      // Aggregate reached per intent across the scoped campaigns, then mirror the
+      // standalone Call Quality view: intents alphabetical, "% of connected", and
+      // "% dropped from previous" = change vs the row above.
+      const connectedTotal = sumR(c.reports, 'connected')
+      const byIntent = new Map<string, number>()
+      c.intents.forEach(i => byIntent.set(i.intent_name, (byIntent.get(i.intent_name) || 0) + (Number(i.reached) || 0)))
+      const sorted = [...byIntent.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+      const rows = sorted.map(([name, reached], i) => {
+        const prev = sorted[i - 1]
+        const dropped = i === 0 || !prev?.[1] ? null : ((prev[1] - reached) / prev[1]) * 100
+        return [
+          name,
+          fmtN(reached),
+          pct(reached, connectedTotal),
+          dropped === null
+            ? '–'
+            : <Box key="d" component="span" sx={{ color: dropped >= 0 ? 'error.main' : 'success.main', fontWeight: 600 }}>{`${dropped.toFixed(1)}%`}</Box>,
+        ] as ReactNode[]
+      })
+      return <MiniTable head={['Intent', 'Count', '% of Connected', '% dropped from previous']} rows={rows} />
+    },
+  },
+  {
     id: 'campaign-report', title: 'Campaign Report', size: 'lg', render: c => {
       const head = ['Campaign', ...REPORT_COLS.map(col => col.head), 'Duration', 'CPL', 'Spent']
       const rows = c.reports.map(r => [

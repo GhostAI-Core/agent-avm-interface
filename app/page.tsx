@@ -34,12 +34,16 @@ import StopIcon from '@mui/icons-material/Stop'
 import EditIcon from '@mui/icons-material/Edit'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ArchiveIcon from '@mui/icons-material/Archive'
+import ViewModuleIcon from '@mui/icons-material/ViewModule'
+import ViewListIcon from '@mui/icons-material/ViewList'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import CardActions from '@mui/material/CardActions'
 import Divider from '@mui/material/Divider'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import TextField from '@mui/material/TextField'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -73,6 +77,20 @@ const VIEW_TITLES: Record<string, string> = {
 const REPORT_KEYS: (keyof CampaignReport)[] = ['dialed','connected','qualified','voicemail','no_speech','hangup','ni','dnq','callback','no_answer','busy_line','failed']
 const INACTIVITY_LIMIT = 15 * 60 * 1000 // 15 minutes
 
+// Cards|Table switcher shared by the Companies and Campaigns list views.
+function ViewToggle({ value, onChange }: { value: 'cards' | 'table'; onChange: (v: 'cards' | 'table') => void }) {
+  return (
+    <ToggleButtonGroup
+      size="small" exclusive value={value}
+      onChange={(_e, v) => { if (v) onChange(v) }}
+      aria-label="View mode"
+    >
+      <ToggleButton value="cards" aria-label="Card view"><ViewModuleIcon sx={{ fontSize: 18 }} /></ToggleButton>
+      <ToggleButton value="table" aria-label="Table view"><ViewListIcon sx={{ fontSize: 18 }} /></ToggleButton>
+    </ToggleButtonGroup>
+  )
+}
+
 export default function Page() {
   const supabase = useMemo(() => createClient(), [])
   const [mounted,         setMounted]         = useState(false)
@@ -105,11 +123,22 @@ export default function Page() {
   const [newContactPhone,  setNewContactPhone]  = useState('')
   const [campaignAction,   setCampaignAction]   = useState<{ mode: 'edit' | 'reuse'; campaign: Campaign } | null>(null)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
-  const [templateSel,      setTemplateSel]      = useState('')
   const [tourStep,         setTourStep]         = useState<number | null>(null)
+  const [companiesView,    setCompaniesView]    = useState<'cards' | 'table'>('cards')
+  const [campaignsView,    setCampaignsView]    = useState<'cards' | 'table'>('cards')
   const dash = useDashboardLayout()
 
   useEffect(() => { setMounted(true) }, [])
+
+  // List-view (cards|table) preferences — hydrate after mount to avoid SSR mismatch, then persist.
+  useEffect(() => {
+    try {
+      const co = window.localStorage.getItem('avm.view.companies'); if (co === 'cards' || co === 'table') setCompaniesView(co)
+      const ca = window.localStorage.getItem('avm.view.campaigns'); if (ca === 'cards' || ca === 'table') setCampaignsView(ca)
+    } catch { /* ignore */ }
+  }, [])
+  useEffect(() => { try { window.localStorage.setItem('avm.view.companies', companiesView) } catch { /* ignore */ } }, [companiesView])
+  useEffect(() => { try { window.localStorage.setItem('avm.view.campaigns', campaignsView) } catch { /* ignore */ } }, [campaignsView])
 
   // The tour owns which view is shown; switch to a step's view as it advances.
   useEffect(() => {
@@ -117,6 +146,26 @@ export default function Page() {
     const v = TOUR_STEPS[tourStep]?.view
     if (v) setView(v)
   }, [tourStep])
+
+  // First-run: auto-open the guided tour once per browser. The ? button replays it anytime.
+  useEffect(() => {
+    if (!auth || !mounted) return
+    try {
+      if (!window.localStorage.getItem('avm.tour.seen')) setTourStep(0)
+    } catch { /* ignore */ }
+  }, [auth, mounted])
+
+  // Ending the tour (Skip or finishing the last step) marks it seen so it won't auto-open again.
+  const endTour = () => {
+    setTourStep(null)
+    try { window.localStorage.setItem('avm.tour.seen', '1') } catch { /* ignore */ }
+  }
+  // Left-click advances; past the last step it ends the tour.
+  const tourNext = () => {
+    if (tourStep === null) return
+    if (tourStep >= TOUR_STEPS.length - 1) { endTour(); return }
+    setTourStep(tourStep + 1)
+  }
 
   useEffect(() => {
     let active = true
@@ -323,7 +372,7 @@ export default function Page() {
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: 'background.default', color: 'text.primary' }}>
-      <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} />
+      <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} onReplayTour={() => setTourStep(0)} />
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <TopBar title={VIEW_TITLES[view]} campaigns={dashCampaigns} onMenu={() => setSideOpen(true)} onLogout={handleLogout} onTour={() => setTourStep(0)} />
         <Box component="main" sx={{ flex: 1, p: 3, pb: '6rem', overflowY: 'auto' }}>
@@ -341,11 +390,6 @@ export default function Page() {
                       ? `Single campaign${companyFilter ? ` · ${companyFilter}` : ''}`
                       : companyFilter ? `Company overview · ${dashCampaigns.length} campaigns` : 'Company-wide overview'}
                   </Typography>
-                  {dash.isDirty && (
-                    <Box sx={{ mt: 1 }}>
-                      <Button size="small" variant="outlined" onClick={() => setShowSaveTemplate(true)}>Save layout template</Button>
-                    </Box>
-                  )}
                 </Box>
                 <Stack direction="row" data-tour="dash-scope" sx={{ gap: 1, flexWrap: 'wrap' }}>
                   <Select size="small" value={companyFilter} onChange={e => { setCompanyFilter(e.target.value); setCampaignFilter('') }} displayEmpty sx={{ minWidth: 180 }}>
@@ -356,22 +400,10 @@ export default function Page() {
                     <MenuItem value="">All Campaigns</MenuItem>
                     {companyCampaigns.map(c => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}
                   </Select>
-                  <Select
-                    size="small"
-                    value={templateSel}
-                    displayEmpty
-                    data-tour="dash-templates"
-                    onChange={e => { const id = e.target.value; setTemplateSel(id); if (id) dash.applyTemplate(id) }}
-                    renderValue={v => dash.templates.find(t => t.id === v)?.name ?? 'Layout template'}
-                    sx={{ minWidth: 180 }}
-                  >
-                    <MenuItem value="" disabled>{dash.templates.length ? 'Select a template' : 'No templates yet'}</MenuItem>
-                    {dash.templates.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-                  </Select>
                 </Stack>
               </Stack>
 
-              <InsightDashboard dash={dash} ctx={{
+              <InsightDashboard dash={dash} onRequestSaveTemplate={() => setShowSaveTemplate(true)} ctx={{
                 reports: dashReports, calls: dashCalls, intents: dashIntents, campaigns: dashCampaigns,
                 actions: {
                   onPlayPause: c => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running'),
@@ -393,42 +425,75 @@ export default function Page() {
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>Companies</Typography>
                   <Typography variant="caption" color="text.secondary">{companyStats.length} total</Typography>
                 </Stack>
-                <Button variant="contained" data-tour="new-company" onClick={() => setShowCompanyModal(true)}>+ New Company</Button>
+                <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
+                  <ViewToggle value={companiesView} onChange={setCompaniesView} />
+                  <Button variant="contained" data-tour="new-company" onClick={() => setShowCompanyModal(true)}>+ New Company</Button>
+                </Stack>
               </Stack>
 
-              <Grid container spacing={2}>
-                {companyStats.map(co => (
-                  <Grid key={co.name} size={{ xs: 12, sm: 6, lg: 4 }}>
-                    <Card sx={{ height: '100%', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }} onClick={() => openInControlRoom(co.name)}>
-                      <CardContent>
-                        <Typography sx={{ fontWeight: 700, mb: co.contact ? 0.25 : 1.5 }}>{co.name}</Typography>
-                        {co.contact && (
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                            Contact: {co.contact}
-                          </Typography>
+              {companiesView === 'cards' ? (
+                <Grid container spacing={2}>
+                  {companyStats.map(co => (
+                    <Grid key={co.name} size={{ xs: 12, sm: 6, lg: 4 }}>
+                      <Card sx={{ height: '100%', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }} onClick={() => openInControlRoom(co.name)}>
+                        <CardContent>
+                          <Typography sx={{ fontWeight: 700, mb: co.contact ? 0.25 : 1.5 }}>{co.name}</Typography>
+                          {co.contact && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                              Contact: {co.contact}
+                            </Typography>
+                          )}
+                          <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Active</Typography>
+                              <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem', color: 'success.main' }}>{co.active}</Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total Camps</Typography>
+                              <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>{co.total}</Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total CPL</Typography>
+                              <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>R{co.cpl.toFixed(2)}</Typography>
+                            </Box>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                  {!companyStats.length && (
+                    <Grid size={{ xs: 12 }}><Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No companies yet — add one to get started.</Typography></Grid>
+                  )}
+                </Grid>
+              ) : (
+                <GlassCard sx={{ p: 0, overflow: 'auto' }}>
+                  <TableContainer>
+                    <Table size="small" sx={{ minWidth: 640 }}>
+                      <TableHead>
+                        <TableRow>
+                          {['Company', 'Contact', 'Active', 'Total Camps', 'Total CPL'].map((h, i) => (
+                            <TableCell key={h} align={i < 2 ? 'left' : 'right'} sx={{ whiteSpace: 'nowrap' }}>{h}</TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {companyStats.map(co => (
+                          <TableRow key={co.name} hover sx={{ cursor: 'pointer' }} onClick={() => openInControlRoom(co.name)}>
+                            <TableCell sx={{ fontWeight: 600 }}>{co.name}</TableCell>
+                            <TableCell sx={{ color: 'text.secondary' }}>{co.contact || '—'}</TableCell>
+                            <TableCell align="right" className="mono" sx={{ color: 'success.main' }}>{co.active}</TableCell>
+                            <TableCell align="right" className="mono">{co.total}</TableCell>
+                            <TableCell align="right" className="mono">R{co.cpl.toFixed(2)}</TableCell>
+                          </TableRow>
+                        ))}
+                        {!companyStats.length && (
+                          <TableRow><TableCell colSpan={5} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No companies yet — add one to get started.</TableCell></TableRow>
                         )}
-                        <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Active</Typography>
-                            <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem', color: 'success.main' }}>{co.active}</Typography>
-                          </Box>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total Camps</Typography>
-                            <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>{co.total}</Typography>
-                          </Box>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.05em' }}>Total CPL</Typography>
-                            <Typography className="mono" sx={{ fontWeight: 700, fontSize: '1.3rem' }}>R{co.cpl.toFixed(2)}</Typography>
-                          </Box>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-                {!companyStats.length && (
-                  <Grid size={{ xs: 12 }}><Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No companies yet — add one to get started.</Typography></Grid>
-                )}
-              </Grid>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </GlassCard>
+              )}
             </>
           )}
 
@@ -440,9 +505,50 @@ export default function Page() {
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>Active Campaigns</Typography>
                   <Typography variant="caption" color="text.secondary">{activeCount} active</Typography>
                 </Stack>
-                <Button variant="contained" data-tour="new-campaign" onClick={() => setShowModal(true)}>+ New Campaign</Button>
+                <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
+                  <ViewToggle value={campaignsView} onChange={setCampaignsView} />
+                  <Button variant="contained" data-tour="new-campaign" onClick={() => setShowModal(true)}>+ New Campaign</Button>
+                </Stack>
               </Stack>
 
+              {campaignsView === 'table' ? (
+                <GlassCard sx={{ p: 0, overflow: 'auto' }}>
+                  <TableContainer>
+                    <Table size="small" sx={{ minWidth: 820 }}>
+                      <TableHead>
+                        <TableRow>
+                          {['Campaign', 'Agent', 'Company', 'Status', 'Window / Speed', 'Actions'].map((h, i) => (
+                            <TableCell key={h} align={i === 5 ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap' }}>{h}</TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {campaigns.map(c => (
+                          <TableRow key={c.id} hover sx={{ cursor: 'pointer' }} onClick={() => openInControlRoom(c.company || '', String(c.id))}>
+                            <TableCell sx={{ fontWeight: 600 }}>{c.name}</TableCell>
+                            <TableCell><AgentChip agent={c.agent} /></TableCell>
+                            <TableCell sx={{ color: 'text.secondary' }}>{c.company || '—'}</TableCell>
+                            <TableCell><StatusChip status={c.status} /></TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8rem' }}>{c.time_window_start}–{c.time_window_end} · {c.dialing_speed}/s</TableCell>
+                            <TableCell align="right" onClick={e => e.stopPropagation()}>
+                              <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
+                                <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}><MuiIconButton size="small" color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>{c.status === 'running' ? <PauseIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}</MuiIconButton></Tooltip>
+                                <Tooltip title="Stop"><MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}><StopIcon sx={{ fontSize: 17 }} /></MuiIconButton></Tooltip>
+                                <Tooltip title="Edit (change MP4)"><MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
+                                <Tooltip title="Reuse as template"><MuiIconButton size="small" aria-label={`Reuse ${c.name}`} onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })}><ContentCopyIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
+                                <Tooltip title="Archive"><MuiIconButton size="small" aria-label={`Archive ${c.name}`} onClick={() => updateStatus(c.id, 'archived')} sx={{ color: 'warning.main' }}><ArchiveIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {!campaigns.length && (
+                          <TableRow><TableCell colSpan={6} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No campaigns yet.</TableCell></TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </GlassCard>
+              ) : (
               <Grid container spacing={2}>
                 {campaigns.map(c => (
                   <Grid key={c.id} size={{ xs: 12, sm: 6, lg: 4 }}>
@@ -494,6 +600,7 @@ export default function Page() {
                   </Grid>
                 ))}
               </Grid>
+              )}
             </>
           )}
 
@@ -675,9 +782,9 @@ export default function Page() {
         <TutorialOverlay
           step={tourStep}
           steps={TOUR_STEPS}
-          onNext={() => setTourStep(s => (s === null ? null : Math.min(s + 1, TOUR_STEPS.length - 1)))}
+          onNext={tourNext}
           onBack={() => setTourStep(s => (s === null ? null : Math.max(s - 1, 0)))}
-          onSkip={() => setTourStep(null)}
+          onSkip={endTour}
         />
       )}
       <FloatingNav view={view} setView={setView} />

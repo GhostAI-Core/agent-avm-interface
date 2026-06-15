@@ -162,6 +162,8 @@ CREATE TABLE IF NOT EXISTS sip_trunks (
 );
 
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS sip_trunk_id VARCHAR(64);
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS routing_mode VARCHAR(16) NOT NULL DEFAULT 'legacy'
+  CHECK (routing_mode IN ('legacy', 'routr'));
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS agent_name   VARCHAR(64);
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS voice_path   TEXT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS max_retries INT NOT NULL DEFAULT 2;

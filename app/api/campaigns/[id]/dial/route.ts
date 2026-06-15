@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { isLivekitConfigured, isEgressConfigured, placeOutboundCall, resolveTrunkId, startRoomRecording } from '@/lib/livekit'
+import {
+  isLivekitConfigured,
+  isEgressConfigured,
+  placeOutboundCall,
+  resolveTrunkId,
+  routrTrunkConfigError,
+  startRoomRecording,
+} from '@/lib/livekit'
 import { normalizePhone } from '@/lib/phone'
 import { resolveVoiceUrl } from '@/lib/voice'
 
@@ -19,6 +26,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   const { data: campaign, error: cErr } = await supabase.from('campaigns').select('*').eq('id', id).single()
   if (cErr || !campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+
+  const routrErr = routrTrunkConfigError(campaign)
+  if (routrErr) {
+    return NextResponse.json({ mode: 'live', error: routrErr, dispatched: 0, attempted: 0 }, { status: 503 })
+  }
 
   const trunkId = await resolveTrunkId(supabase, campaign)
   if (!isLivekitConfigured(trunkId)) {

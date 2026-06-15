@@ -28,3 +28,20 @@ services:
       retries: 3
       start_period: 20s
     restart: unless-stopped
+
+  agent-avm-sip-routr:
+    image: fonoster/routr-one:latest
+    environment:
+      # Public IP LiveKit/carriers use in SIP Contact headers (host WAN IP, not Cloudflare)
+      EXTERNAL_ADDRS: ${ROUTR_PUBLIC_IP:?set ROUTR_PUBLIC_IP in .env to the server public IPv4}
+    expose:
+      - "5060/tcp"
+      - "5060/udp"
+      - "51908/tcp"
+    ports:
+      # SIP must be reachable from LiveKit Cloud and carriers — not proxyable via Cloudflare Tunnel
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+    networks:
+      - shared
+    restart: unless-stopped

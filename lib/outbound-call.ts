@@ -13,7 +13,22 @@ function livekitHost(): string {
 function lkKey() { return process.env.LIVEKIT_API_KEY }
 function lkSecret() { return process.env.LIVEKIT_API_SECRET }
 function defaultTrunkId() { return process.env.LIVEKIT_SIP_OUTBOUND_TRUNK_ID }
+function routrTrunkId() { return process.env.LIVEKIT_SIP_ROUTR_TRUNK_ID }
 function defaultAgentName() { return process.env.LIVEKIT_AGENT_NAME || 'outbound-agent' }
+
+export type CampaignRoutingMode = 'legacy' | 'routr'
+
+export function campaignRoutingMode(campaign: { routing_mode?: string | null }): CampaignRoutingMode {
+  return campaign.routing_mode === 'routr' ? 'routr' : 'legacy'
+}
+
+/** Misconfiguration when routr mode is set but the Routr-facing LiveKit trunk env is missing. */
+export function routrTrunkConfigError(campaign: { routing_mode?: string | null }): string | null {
+  if (campaign.routing_mode === 'routr' && !routrTrunkId()) {
+    return 'Campaign routing_mode is routr but LIVEKIT_SIP_ROUTR_TRUNK_ID is not set'
+  }
+  return null
+}
 
 function recBucket() { return process.env.LIVEKIT_RECORD_BUCKET }
 function recRegion() { return process.env.LIVEKIT_RECORD_REGION || 'us-east-1' }
@@ -59,16 +74,24 @@ export function parseRoomName(room: string): { campaignId: number; contactId: nu
 }
 
 /**
- * Resolve LiveKit trunk id (ST_…) from campaign.sip_trunk_id:
- * - string starting with ST_ → use directly
- * - numeric id → lookup sip_trunks.livekit_trunk_id
- * - else → LIVEKIT_SIP_OUTBOUND_TRUNK_ID env
+ * Resolve LiveKit trunk id (ST_…) for outbound SIP.
+ *
+ * routing_mode = 'routr':
+ *   → LIVEKIT_SIP_ROUTR_TRUNK_ID (single LiveKit trunk pointing at Routr)
+ *
+ * routing_mode = 'legacy' (default):
+ *   → campaigns.sip_trunk_id if ST_… or sip_trunks lookup
+ *   → else LIVEKIT_SIP_OUTBOUND_TRUNK_ID
  */
 export async function resolveTrunkId(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: { from: (t: string) => any } | null,
-  campaign: { sip_trunk_id?: string | number | null },
+  campaign: { sip_trunk_id?: string | number | null; routing_mode?: string | null },
 ): Promise<string | null> {
+  if (campaignRoutingMode(campaign) === 'routr') {
+    return routrTrunkId() ?? null
+  }
+
   const raw = campaign.sip_trunk_id
   if (typeof raw === 'string' && raw.startsWith('ST_')) return raw
   if (raw != null && String(raw).match(/^\d+$/) && supabase) {

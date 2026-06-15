@@ -17,16 +17,15 @@ Parallel migration: campaigns with `routing_mode = 'legacy'` keep using `LIVEKIT
 
 ## Open spikes (fill before first real call)
 
-### 1. Utility Connect SIP
+### 1. Twilio Elastic SIP (first carrier)
 
 | Field | Value |
 |-------|-------|
-| SIP host | _TBD_ |
-| Auth model | _credentials / IP ACL / both_ |
-| Username / password | _TBD_ |
-| Allowed source IPs (Routr VPS) | _TBD_ |
-| Caller ID / From rules | _TBD_ |
-| Test DID / from number | _TBD_ |
+| Termination URI (Routr dials **to** Twilio) | `evra-routr.pstn.twilio.com` |
+| Credentials | username `evra` + password in server `.env` only |
+| IP ACL on Twilio | Allow `16.28.15.189/32` (Routr elastic IP) |
+| Caller ID / From | `+27102886988` on LiveKit Routr trunk Numbers |
+| Origination (inbound only) | `sip:16.28.15.189:5060` — for future inbound to DID |
 
 ### 2. LiveKit → Routr Peer
 
@@ -70,14 +69,22 @@ From the repo root (same stack as EVRA web):
 
 ```bash
 cd /opt/docker/production/evra_avm
-# ROUTR_PUBLIC_IP in .env
-docker compose up -d agent-avm-sip-routr
+
+# Add carrier vars to .env when ready (see .env.example ROUTR_CARRIER_*)
+docker compose up -d agent-avm-sip-routr agent-avm-sip-routr-bootstrap
+docker compose logs agent-avm-sip-routr-bootstrap
 docker compose logs -f agent-avm-sip-routr
 ```
 
-Service name on `shared` network: `agent-avm-sip-routr`.
+`agent-avm-sip-routr-bootstrap` applies LiveKit Peer (+ optional carrier Trunk) from `infrastructure/routr/config/` on every deploy. Config persists in Docker volume `routr-pgdata`.
 
-Image: `fonoster/routr-one:latest` with restart policy `unless-stopped`.
+**Admin API from laptop:**
+
+```bash
+ssh -L 51908:127.0.0.1:51908 deploy@your-server
+export ROUTR_API=insecure://127.0.0.1:51908
+npx @routr/ctl peers list --insecure
+```
 
 ## Manual Routr config (M1)
 

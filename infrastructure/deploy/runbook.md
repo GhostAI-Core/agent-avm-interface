@@ -33,6 +33,23 @@ Routr is on the `shared` network so other stack containers can reach it by servi
 
 Set `ROUTR_PUBLIC_IP` in server `.env` to the same public IPv4 used for LiveKit trunk configuration.
 
+`agent-avm-sip-routr-bootstrap` runs on every `docker compose up`, waits for the API, and applies Peer/Trunk YAML from `infrastructure/routr/config/` (idempotent `create` / `apply`). Routr Postgres data persists in volume `routr-pgdata`.
+
+### Admin API via SSH (optional)
+
+Routr API is bound to **localhost only** on the host (`127.0.0.1:51908`):
+
+```bash
+# From your laptop
+ssh -L 51908:127.0.0.1:51908 deploy@{DEPLOY_HOST}
+
+# Then locally
+export ROUTR_API=insecure://127.0.0.1:51908
+npx @routr/ctl peers list --insecure
+```
+
+No Cloudflare route needed for Routr API.
+
 ## Decommission FreeSWITCH (one-time, before first Routr deploy)
 
 The production host may have **systemd FreeSWITCH** bound to `5060`. Routr cannot start until it is stopped.

@@ -26,3 +26,8 @@ COMMENT ON COLUMN voip_providers.sync_status IS 'pending | synced | error after 
 
 -- Platform LiveKit peer settings (JSON blob per row id)
 ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS config JSONB;
+
+-- voip_providers was missing RLS while other tables had policies
+ALTER TABLE voip_providers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "auth_all_voip_providers" ON voip_providers;
+CREATE POLICY "auth_all_voip_providers" ON voip_providers FOR ALL TO authenticated USING (true) WITH CHECK (true);

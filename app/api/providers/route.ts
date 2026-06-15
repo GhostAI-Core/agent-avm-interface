@@ -1,28 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { requireAdmin } from '@/lib/auth-admin'
-import { maskProviderForClient } from '@/lib/routr/mask-provider'
-import { syncProviderRow } from '@/lib/routr/sync-provider-row'
+import { maskProviderForClient, normalizeProvider } from '@/lib/routr/mask-provider'
 import { slugifyName, validateCarrierInput } from '@/lib/validate-carrier'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const { supabase, user } = await getAuthUser()
-  if (!user) return unauthorized()
+  try {
+    const { supabase, user } = await getAuthUser()
+    if (!user) return unauthorized()
 
-  const { data, error } = await supabase
-    .from('voip_providers')
-    .select('*')
-    .order('created_at', { ascending: false })
+    const { data, error } = await supabase
+      .from('voip_providers')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!data?.length) return NextResponse.json({ providers: [] })
+    if (error) {
+      console.error('[api/providers] GET error:', error.message)
+      return NextResponse.json({ providers: [], error: error.message }, { status: 200 })
+    }
 
-  return NextResponse.json({ providers: data.map(maskProviderForClient) })
+    const providers = (data ?? []).map((row) => maskProviderForClient(normalizeProvider(row)))
+    return NextResponse.json({ providers })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[api/providers] GET exception:', message)
+    return NextResponse.json({ providers: [], error: message }, { status: 200 })
+  }
 }
 
 export async function POST(req: NextRequest) {
+  const { requireAdmin } = await import('@/lib/auth-admin')
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
@@ -51,14 +59,23 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const sync = await syncProviderRow(auth.supabase, row)
+  const { syncProviderRow } = await import('@/lib/routr/sync-provider-row')
+  const normalized = normalizeProvider(row)
+  const sync = await syncProviderRow(auth.supabase, normalized)
   if (!sync.ok) {
     return NextResponse.json(
-      { provider: maskProviderForClient(row), sync_error: sync.error, routr_unreachable: sync.status === 503 },
+      {
+        provider: maskProviderForClient(normalized),
+        sync_error: sync.error,
+        routr_unreachable: sync.status === 503,
+      },
       { status: sync.status === 503 ? 503 : 201 },
     )
   }
 
   const { data: updated } = await auth.supabase.from('voip_providers').select('*').eq('id', row.id).single()
-  return NextResponse.json({ provider: maskProviderForClient(updated || row) }, { status: 201 })
+  return NextResponse.json(
+    { provider: maskProviderForClient(normalizeProvider(updated || row)) },
+    { status: 201 },
+  )
 }

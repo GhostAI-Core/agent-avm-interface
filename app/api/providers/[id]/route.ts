@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/auth-admin'
-import { maskProviderForClient } from '@/lib/routr/mask-provider'
-import { syncProviderRow } from '@/lib/routr/sync-provider-row'
+import { maskProviderForClient, normalizeProvider } from '@/lib/routr/mask-provider'
 import { validateCarrierInput } from '@/lib/validate-carrier'
 
 export const dynamic = 'force-dynamic'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { requireAdmin } = await import('@/lib/auth-admin')
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
@@ -56,14 +55,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const sync = await syncProviderRow(auth.supabase, row)
+  const { syncProviderRow } = await import('@/lib/routr/sync-provider-row')
+  const normalized = normalizeProvider(row)
+  const sync = await syncProviderRow(auth.supabase, normalized)
   if (!sync.ok) {
     return NextResponse.json(
-      { provider: maskProviderForClient(row), sync_error: sync.error, routr_unreachable: sync.status === 503 },
+      {
+        provider: maskProviderForClient(normalized),
+        sync_error: sync.error,
+        routr_unreachable: sync.status === 503,
+      },
       { status: sync.status },
     )
   }
 
   const { data: updated } = await auth.supabase.from('voip_providers').select('*').eq('id', providerId).single()
-  return NextResponse.json({ provider: maskProviderForClient(updated || row) })
+  return NextResponse.json({ provider: maskProviderForClient(normalizeProvider(updated || row)) })
 }

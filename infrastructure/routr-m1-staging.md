@@ -82,8 +82,8 @@ docker compose logs -f agent-avm-sip-routr
 
 ```bash
 ssh -L 51908:127.0.0.1:51908 deploy@your-server
-export ROUTR_API=insecure://127.0.0.1:51908
-npx @routr/ctl peers list --insecure
+npx @routr/ctl@2 peers get -e 127.0.0.1:51908 --insecure
+npx @routr/ctl@2 trunks get -e 127.0.0.1:51908 --insecure
 ```
 
 ## Manual Routr config (M1)

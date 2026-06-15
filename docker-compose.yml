@@ -68,6 +68,7 @@ services:
       ROUTR_LIVEKIT_PEER_USERNAME: ${ROUTR_LIVEKIT_PEER_USERNAME:-livekit}
     volumes:
       - ./infrastructure/routr/bootstrap.sh:/bootstrap/bootstrap.sh:ro
+      - ./infrastructure/routr/bootstrap-apply.cjs:/bootstrap/bootstrap-apply.cjs:ro
       - ./infrastructure/routr/config:/bootstrap/config:ro
     entrypoint: ["/bin/sh", "/bootstrap/bootstrap.sh"]
     depends_on:

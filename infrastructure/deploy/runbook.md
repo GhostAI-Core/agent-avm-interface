@@ -43,9 +43,9 @@ Routr API is bound to **localhost only** on the host (`127.0.0.1:51908`):
 # From your laptop
 ssh -L 51908:127.0.0.1:51908 deploy@{DEPLOY_HOST}
 
-# Then locally
-export ROUTR_API=insecure://127.0.0.1:51908
-npx @routr/ctl peers list --insecure
+# Then locally (@routr/ctl v2: use peers get / trunks get, and -e host:port)
+npx @routr/ctl@2 peers get -e 127.0.0.1:51908 --insecure
+npx @routr/ctl@2 trunks get -e 127.0.0.1:51908 --insecure
 ```
 
 No Cloudflare route needed for Routr API.

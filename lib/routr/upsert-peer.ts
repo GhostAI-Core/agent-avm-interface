@@ -1,5 +1,6 @@
 import type { CreatePeerRequest } from '@routr/sdk/dist/peers/types'
 import type { RoutrClients } from './client'
+import { enforceContactAddrLimit } from './resolve-contact-addr'
 import { findPeerRefByUsername } from './find-refs'
 import { isAlreadyExists } from './upsert'
 
@@ -30,7 +31,11 @@ export async function upsertPeer(
     enabled: body.enabled ?? true,
     extended: body.extended,
   }
-  if (body.contactAddr?.trim()) createBody.contactAddr = body.contactAddr.trim()
+  if (body.contactAddr?.trim()) {
+    const addr = enforceContactAddrLimit(body.contactAddr)
+    if (addr) createBody.contactAddr = addr
+    else log(`[routr] omitting contactAddr (exceeds Routr ${20}-char limit)`)
+  }
   if (body.credentialsRef) createBody.credentialsRef = body.credentialsRef
   if (body.accessControlListRef) createBody.accessControlListRef = body.accessControlListRef
 

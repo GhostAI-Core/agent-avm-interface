@@ -1,7 +1,23 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveContactAddr, CONTACT_ADDR_MAX_LEN } from '../../../lib/routr/resolve-contact-addr'
+import {
+  resolveContactAddr,
+  enforceContactAddrLimit,
+  CONTACT_ADDR_MAX_LEN,
+} from '../../../lib/routr/resolve-contact-addr'
 import { buildTrunkPayload } from '../../../lib/routr/sync-carrier'
+
+describe('enforceContactAddrLimit', () => {
+  it('accepts short IP:port', () => {
+    assert.equal(enforceContactAddrLimit('10.0.0.1:5060'), '10.0.0.1:5060')
+  })
+
+  it('rejects 255.255.255.255:65535 (21 chars)', () => {
+    const long = '255.255.255.255:65535'
+    assert.ok(long.length > CONTACT_ADDR_MAX_LEN)
+    assert.equal(enforceContactAddrLimit(long), undefined)
+  })
+})
 
 describe('resolveContactAddr', () => {
   it('returns short values unchanged', async () => {
@@ -12,6 +28,11 @@ describe('resolveContactAddr', () => {
   it('returns undefined for empty input', async () => {
     assert.equal(await resolveContactAddr(''), undefined)
     assert.equal(await resolveContactAddr(null), undefined)
+  })
+
+  it('strips sip: prefix before processing', async () => {
+    const result = await resolveContactAddr('sip:10.0.0.1:5060')
+    assert.equal(result, '10.0.0.1:5060')
   })
 
   it('omits contactAddr when IP:port exceeds Routr limit', async () => {

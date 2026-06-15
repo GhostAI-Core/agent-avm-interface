@@ -105,7 +105,15 @@ async function upsertLiveKitPeer(peers, peerBody) {
     enabled: true,
     extended: peerBody.extended,
   };
-  if (peerBody.contactAddr) createBody.contactAddr = peerBody.contactAddr;
+  if (peerBody.contactAddr) {
+    const addr = enforceContactAddrLimit(peerBody.contactAddr);
+    if (addr) createBody.contactAddr = addr;
+    else {
+      console.warn(
+        `[routr-bootstrap] omitting contactAddr (${String(peerBody.contactAddr).length} chars exceeds Routr limit ${CONTACT_ADDR_MAX_LEN})`
+      );
+    }
+  }
   if (peerBody.credentialsRef) createBody.credentialsRef = peerBody.credentialsRef;
   if (peerBody.accessControlListRef) {
     createBody.accessControlListRef = peerBody.accessControlListRef;
@@ -177,20 +185,28 @@ async function applyLiveKitAcl(acls) {
   );
 }
 
+function enforceContactAddrLimit(value) {
+  if (!value || !String(value).trim()) return undefined;
+  const trimmed = String(value).trim();
+  if (trimmed.length > CONTACT_ADDR_MAX_LEN) return undefined;
+  return trimmed;
+}
+
 /** Routr DB: contact_addr VARCHAR(20) — IP:port only; hostnames must be resolved. */
 async function resolveContactAddr(raw) {
   if (!raw) {
     return undefined;
   }
-  const trimmed = raw.trim();
-  if (trimmed.length <= CONTACT_ADDR_MAX_LEN) {
-    return trimmed;
+  const trimmed = raw.trim().replace(/^sip:/i, "");
+  const withinLimit = enforceContactAddrLimit(trimmed);
+  if (withinLimit) {
+    return withinLimit;
   }
 
   const match = trimmed.match(/^([^:]+):(\d+)$/);
   if (!match) {
     console.warn(
-      `[routr-bootstrap] ROUTR_LIVEKIT_SIP_HOST "${trimmed}" exceeds ${CONTACT_ADDR_MAX_LEN} chars and is not host:port; omitting contactAddr`
+      `[routr-bootstrap] ROUTR_LIVEKIT_SIP_HOST "${trimmed}" exceeds ${CONTACT_ADDR_MAX_LEN} chars; omitting contactAddr`
     );
     return undefined;
   }
@@ -198,7 +214,7 @@ async function resolveContactAddr(raw) {
   const [, host, port] = match;
   if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
     console.warn(
-      `[routr-bootstrap] ROUTR_LIVEKIT_SIP_HOST "${trimmed}" (${trimmed.length} chars) exceeds Routr limit (${CONTACT_ADDR_MAX_LEN}); omitting contactAddr`
+      `[routr-bootstrap] contactAddr "${trimmed}" exceeds ${CONTACT_ADDR_MAX_LEN} chars; omitting contactAddr`
     );
     return undefined;
   }
@@ -206,14 +222,15 @@ async function resolveContactAddr(raw) {
   try {
     const { address } = await dns.lookup(host, { family: 4 });
     const resolved = `${address}:${port}`;
-    if (resolved.length > CONTACT_ADDR_MAX_LEN) {
+    const ok = enforceContactAddrLimit(resolved);
+    if (!ok) {
       console.warn(
-        `[routr-bootstrap] resolved ${trimmed} → ${resolved} still exceeds ${CONTACT_ADDR_MAX_LEN} chars; omitting contactAddr`
+        `[routr-bootstrap] resolved ${trimmed} → ${resolved} (${resolved.length} chars) exceeds ${CONTACT_ADDR_MAX_LEN}; omitting contactAddr`
       );
       return undefined;
     }
     console.log(`[routr-bootstrap] resolved contactAddr ${trimmed} → ${resolved}`);
-    return resolved;
+    return ok;
   } catch (err) {
     console.warn(
       `[routr-bootstrap] DNS lookup failed for ${host} (${err.message}); omitting contactAddr`

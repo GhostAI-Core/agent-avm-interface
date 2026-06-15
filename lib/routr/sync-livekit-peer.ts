@@ -85,8 +85,9 @@ export async function syncLiveKitPeer(
 }
 
 export function liveKitSettingsFromEnv(): LiveKitPeerSettings {
+  const rawHost = process.env.ROUTR_LIVEKIT_SIP_HOST || 'sip.livekit.cloud:5060'
   return {
-    sip_host: process.env.ROUTR_LIVEKIT_SIP_HOST || 'sip.livekit.cloud:5060',
+    sip_host: rawHost.replace(/^sip:/i, '').trim(),
     allowed_cidrs: process.env.ROUTR_LIVEKIT_ALLOWED_CIDRS,
     peer_username: normalizePeerUsername(process.env.ROUTR_LIVEKIT_PEER_USERNAME),
     peer_password: process.env.ROUTR_LIVEKIT_PEER_PASSWORD,

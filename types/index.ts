@@ -9,6 +9,15 @@ export interface Company {
   contact_phone?: string | null
 }
 
+export interface SipTrunk {
+  id: number
+  name: string
+  livekit_trunk_id?: string | null
+  from_number?: string | null
+  company_id?: number | null
+  created_at?: string
+}
+
 export interface DashboardLayout {
   order: string[]
   pinned: string[]
@@ -31,10 +40,16 @@ export interface Campaign {
   time_window_start: string
   time_window_end: string
   voice_recording_url?: string
+  voice_path?: string | null
   transfer_key?: string | null
   transfer_target?: string | null
   company_id?: number | null
   company?: string | null
+  sip_trunk_id?: number | null
+  max_retries?: number
+  retry_cooldown_seconds?: number
+  max_concurrent?: number
+  auto_paused?: boolean
   created_at?: string
   updated_at?: string
 }

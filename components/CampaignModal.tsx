@@ -1,5 +1,5 @@
 'use client'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
@@ -23,6 +23,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { colors, semantic, radius } from '@/lib/tokens'
 import { parseContacts } from '@/lib/parseCsv'
 import { createClient } from '@/utils/supabase/client'
+import type { Company, SipTrunk } from '@/types'
 
 interface Props { onClose: () => void; onCreated: () => void }
 
@@ -117,6 +118,21 @@ function FileField({ name, label, accept, required, icon, hint }: {
 export default function CampaignModal({ onClose, onCreated }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [trunks, setTrunks] = useState<SipTrunk[]>([])
+
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      fetch('/api/companies').then(r => r.json()).catch(() => ({ companies: [] })),
+      fetch('/api/sip-trunks').then(r => r.json()).catch(() => ({ trunks: [] })),
+    ]).then(([c, t]) => {
+      if (!active) return
+      setCompanies(c.companies ?? [])
+      setTrunks(t.trunks ?? [])
+    })
+    return () => { active = false }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -147,7 +163,7 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
       payload.contacts = contacts
 
       // Upload the voice recording (if any) to the private Supabase Storage bucket.
-      // The campaign keeps only the object path; the dial route signs it at call time.
+      // The campaign keeps only the object path; evra_callops signs it at dispatch time.
       const voiceFile = formData.get('voice_file') as File | null
       if (voiceFile && voiceFile.size > 0) {
         if (voiceFile.size > MAX_VOICE_BYTES) {
@@ -256,6 +272,34 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
                     </Select>
                   </FormControl>
                 </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel id="company-label" shrink>Company</InputLabel>
+                    <Select labelId="company-label" name="company_id" label="Company" defaultValue="" displayEmpty notched
+                      renderValue={(v) => {
+                        const c = companies.find(x => String(x.id) === String(v))
+                        return c ? c.name : <Box component="span" sx={{ color: semantic.textSoft }}>None</Box>
+                      }}
+                    >
+                      <MenuItem value="">None</MenuItem>
+                      {companies.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel id="trunk-label" shrink>SIP Trunk</InputLabel>
+                    <Select labelId="trunk-label" name="sip_trunk_id" label="SIP Trunk" defaultValue="" displayEmpty notched
+                      renderValue={(v) => {
+                        const t = trunks.find(x => String(x.id) === String(v))
+                        return t ? t.name : <Box component="span" sx={{ color: semantic.textSoft }}>Default</Box>
+                      }}
+                    >
+                      <MenuItem value="">Default</MenuItem>
+                      {trunks.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
               </Grid>
             </Stack>
 
@@ -264,13 +308,42 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
               <SectionLabel>Schedule &amp; Speed</SectionLabel>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <TextField name="dialing_speed" label="Dialing Speed (calls/sec)" type="number" size="small" fullWidth defaultValue="1" slotProps={{ htmlInput: { min: 1, max: 10 } }} />
+                  <TextField name="dialing_speed" label="Dialing Speed (calls/min)" type="number" size="small" fullWidth defaultValue="1" slotProps={{ htmlInput: { min: 1, max: 600 } }} />
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <TextField name="window_start" label="Window Start" type="time" size="small" fullWidth defaultValue="08:00" slotProps={{ inputLabel: { shrink: true } }} />
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <TextField name="window_end" label="Window End" type="time" size="small" fullWidth defaultValue="20:00" slotProps={{ inputLabel: { shrink: true } }} />
+                </Grid>
+              </Grid>
+            </Stack>
+
+            {/* Dialer limits */}
+            <Stack sx={{ gap: 1.5 }}>
+              <SectionLabel>Dialer Limits</SectionLabel>
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <TextField name="max_retries" label="Max Retries" type="number" size="small" fullWidth defaultValue="2" slotProps={{ htmlInput: { min: 0, max: 10 } }} />
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField name="retry_cooldown_seconds" label="Retry Cooldown (s)" type="number" size="small" fullWidth defaultValue="3600" slotProps={{ htmlInput: { min: 0 } }} />
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField name="max_concurrent" label="Max Concurrent" type="number" size="small" fullWidth defaultValue="10" slotProps={{ htmlInput: { min: 1 } }} />
+                </Grid>
+              </Grid>
+            </Stack>
+
+            {/* Transfer */}
+            <Stack sx={{ gap: 1.5 }}>
+              <SectionLabel>Transfer (optional)</SectionLabel>
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 5 }}>
+                  <TextField name="transfer_key" label="Transfer Key" placeholder="e.g. 1" size="small" fullWidth slotProps={{ htmlInput: { maxLength: 10 } }} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 7 }}>
+                  <TextField name="transfer_target" label="Transfer Target" placeholder="e.g. +27110000000" size="small" fullWidth />
                 </Grid>
               </Grid>
             </Stack>

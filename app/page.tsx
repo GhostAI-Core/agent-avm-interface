@@ -27,6 +27,9 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import MuiIconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
+import Snackbar from '@mui/material/Snackbar'
+import Alert from '@mui/material/Alert'
+import Chip from '@mui/material/Chip'
 import OpenInFullIcon from '@mui/icons-material/OpenInFull'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import PauseIcon from '@mui/icons-material/Pause'
@@ -61,7 +64,7 @@ import GlassCard from '@/components/ui/GlassCard'
 import BusinessIcon from '@mui/icons-material/Business'
 import CloseIcon from '@mui/icons-material/Close'
 import { colors, semantic, radius } from '@/lib/tokens'
-import type { Campaign, CampaignReport, Company } from '@/types'
+import type { Campaign, CampaignReport, Company, SipTrunk } from '@/types'
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Control Room',
   companies: 'Companies',
@@ -104,7 +107,8 @@ export default function Page() {
   const [reports,     setReports]     = useState<CampaignReport[]>([])
   const [allCalls,    setAllCalls]    = useState<any[]>([])
   const [allIntents,  setAllIntents]  = useState<any[]>([])
-  const [providers,         setProviders]         = useState<any[]>([])
+  const [trunks,            setTrunks]            = useState<SipTrunk[]>([])
+  const [snack,             setSnack]             = useState<{ msg: string; severity: 'error' | 'success' } | null>(null)
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignReport | null>(null)
   const [detailedLogs,     setDetailedLogs]     = useState<any[]>([])
   const [activeCalls,      setActiveCalls]      = useState<any[]>([])
@@ -272,7 +276,7 @@ export default function Page() {
         const today = new Date().toISOString().slice(0, 10)
         const [jC, jP, jS, jCo, jL, jI] = await Promise.all([
           getJson('/api/campaigns'),
-          getJson('/api/providers'),
+          getJson('/api/sip-trunks'),
           getJson('/api/security'),
           getJson('/api/companies'),
           getJson('/api/logs'),
@@ -280,7 +284,7 @@ export default function Page() {
         ])
         if (!active) return
         if (jC) setCampaigns(jC.campaigns ?? [])
-        if (jP) setProviders(jP.providers ?? [])
+        if (jP) setTrunks(jP.trunks ?? [])
         if (jS) setSecurityLogs(jS.logs ?? [])
         if (jCo) setCompaniesList(jCo.companies ?? [])
         if (jL) setAllCalls(jL.logs ?? [])
@@ -365,6 +369,7 @@ export default function Page() {
     if (!res.ok) {
       const json = await res.json().catch(() => ({}))
       console.error('Status update failed:', json.error)
+      setSnack({ msg: json.error || 'Could not update campaign status. Please try again.', severity: 'error' })
       return
     }
     await fetchData()
@@ -602,11 +607,18 @@ export default function Page() {
                             <TableCell sx={{ fontWeight: 600 }}>{c.name}</TableCell>
                             <TableCell><AgentChip agent={c.agent} /></TableCell>
                             <TableCell sx={{ color: 'text.secondary' }}>{c.company || '—'}</TableCell>
-                            <TableCell><StatusChip status={c.status} /></TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8rem' }}>{c.time_window_start}–{c.time_window_end} · {c.dialing_speed}/s</TableCell>
+                            <TableCell>
+                              <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                                <StatusChip status={c.status} />
+                                {c.auto_paused && c.status === 'paused' && (
+                                  <Chip size="small" color="warning" variant="outlined" label="Auto-paused (outside window)" sx={{ fontSize: '0.65rem', height: 20 }} />
+                                )}
+                              </Stack>
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8rem' }}>{c.time_window_start}–{c.time_window_end} · {c.dialing_speed}/min</TableCell>
                             <TableCell align="right" onClick={e => e.stopPropagation()}>
                               <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
-                                <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}><MuiIconButton size="small" color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>{c.status === 'running' ? <PauseIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}</MuiIconButton></Tooltip>
+                                <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}><span><MuiIconButton size="small" disabled={c.status === 'archived' || c.status === 'deleted'} color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>{c.status === 'running' ? <PauseIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}</MuiIconButton></span></Tooltip>
                                 <Tooltip title="Stop"><MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}><StopIcon sx={{ fontSize: 17 }} /></MuiIconButton></Tooltip>
                                 <Tooltip title="Edit (change MP4)"><MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
                                 <Tooltip title="Reuse as template"><MuiIconButton size="small" aria-label={`Reuse ${c.name}`} onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })}><ContentCopyIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
@@ -636,13 +648,18 @@ export default function Page() {
                             <Typography sx={{ fontWeight: 600 }}>{c.name}</Typography>
                             <AgentChip agent={c.agent} />
                           </Box>
-                          <StatusChip status={c.status} />
+                          <Stack sx={{ alignItems: 'flex-end', gap: 0.5 }}>
+                            <StatusChip status={c.status} />
+                            {c.auto_paused && c.status === 'paused' && (
+                              <Chip size="small" color="warning" variant="outlined" label="Auto-paused (outside window)" sx={{ fontSize: '0.6rem', height: 19 }} />
+                            )}
+                          </Stack>
                         </Stack>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                           <strong>Company:</strong> {c.company || '—'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          <strong>Speed:</strong> {c.dialing_speed} calls/sec
+                          <strong>Speed:</strong> {c.dialing_speed} calls/min
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           <strong>Window:</strong> {c.time_window_start} – {c.time_window_end}
@@ -653,9 +670,11 @@ export default function Page() {
 
                       <CardActions sx={{ px: 2, py: 1 }}>
                         <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}>
-                          <MuiIconButton size="small" color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>
-                            {c.status === 'running' ? <PauseIcon sx={{ fontSize: 19 }} /> : <PlayArrowIcon sx={{ fontSize: 19 }} />}
-                          </MuiIconButton>
+                          <span>
+                            <MuiIconButton size="small" disabled={c.status === 'archived' || c.status === 'deleted'} color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>
+                              {c.status === 'running' ? <PauseIcon sx={{ fontSize: 19 }} /> : <PlayArrowIcon sx={{ fontSize: 19 }} />}
+                            </MuiIconButton>
+                          </span>
                         </Tooltip>
                         <Tooltip title="Stop">
                           <MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}><StopIcon sx={{ fontSize: 19 }} /></MuiIconButton>
@@ -741,7 +760,7 @@ export default function Page() {
           {view === 'sts' && <STSDashboard />}
 
           {/* ── SETTINGS ── */}
-          {view === 'settings' && <SettingsView role={role} providers={providers} setProviders={setProviders} />}
+          {view === 'settings' && <SettingsView role={role} trunks={trunks} setTrunks={setTrunks} />}
 
           {/* ── PROFILE ── */}
           {view === 'profile' && <ProfileView role={role} />}
@@ -862,6 +881,18 @@ export default function Page() {
         />
       )}
       <FloatingNav view={view} setView={setView} />
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={5000}
+        onClose={() => setSnack(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {snack ? (
+          <Alert onClose={() => setSnack(null)} severity={snack.severity} variant="filled" sx={{ width: '100%' }}>
+            {snack.msg}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Box>
   )
 }

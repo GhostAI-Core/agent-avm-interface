@@ -28,7 +28,7 @@ export const TOUR_STEPS: TourStep[] = [
   { key: 'nav-reports',   target: 'nav-reports',   title: 'Campaign Report', body: 'The full results table: dialled, connected, qualified, spend — exportable to CSV.' },
   { key: 'nav-quality',   target: 'nav-quality',   title: 'Call Quality', body: 'The intent waterfall — see exactly where callers drop off in the conversation.' },
   { key: 'nav-security',  target: 'nav-security',  title: 'Security Audit', body: 'A log of who did what and when — your trail for compliance.' },
-  { key: 'nav-settings',  target: 'nav-settings',  title: 'Settings', body: 'Providers, keys and system options live here.' },
+  { key: 'nav-settings',  target: 'nav-settings',  title: 'Settings', body: 'SIP trunks and system options live here.' },
   { key: 'nav-profile',   target: 'nav-profile',   title: 'Profile', body: 'Your account and appearance preferences.' },
 
   // Into the first tab — the Control Room, step by step

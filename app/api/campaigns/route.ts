@@ -42,6 +42,26 @@ export async function POST(req: Request) {
 
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
 
+    // Form values arrive as strings; coerce to int or null (empty → fall back to column default).
+    const toInt = (v: unknown): number | null => {
+      if (v === undefined || v === null || v === '') return null
+      const n = Number(v)
+      return Number.isFinite(n) ? Math.trunc(n) : null
+    }
+
+    // Dialer-config columns (issue #24 Phase 2). evra_callops reads these; omit when unset
+    // so the DB defaults (max_retries 2, retry_cooldown 3600, max_concurrent 10) apply.
+    const dialerCfg: Record<string, unknown> = {
+      company_id: toInt(body.company_id),
+      sip_trunk_id: toInt(body.sip_trunk_id),
+    }
+    const maxRetries = toInt(body.max_retries)
+    if (maxRetries !== null) dialerCfg.max_retries = maxRetries
+    const retryCooldown = toInt(body.retry_cooldown_seconds)
+    if (retryCooldown !== null) dialerCfg.retry_cooldown_seconds = retryCooldown
+    const maxConcurrent = toInt(body.max_concurrent)
+    if (maxConcurrent !== null) dialerCfg.max_concurrent = maxConcurrent
+
     // 1. Insert Campaign — agent is optional in the fast-dial flow (stored NULL when unset).
     const { data: campaign, error: cErr } = await supabase.from('campaigns').insert({
       name, agent: agent || null, status: 'draft',
@@ -52,6 +72,7 @@ export async function POST(req: Request) {
       voice_path: voice_path ?? null,
       transfer_key: body.transfer_key ?? '',
       transfer_target: body.transfer_target ?? '',
+      ...dialerCfg,
     }).select().single()
 
     if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 })

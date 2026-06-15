@@ -15,7 +15,22 @@ export ROUTR_LIVEKIT_PEER_USERNAME="${ROUTR_LIVEKIT_PEER_USERNAME:-livekit}"
 export ROUTR_LIVEKIT_SIP_HOST="${ROUTR_LIVEKIT_SIP_HOST:-sip.livekit.cloud:5060}"
 CTL="npx --yes @routr/ctl@2"
 CTL_FLAGS="-e ${ROUTR_CTL_ENDPOINT} --insecure"
-APPLY="npx --yes -p @routr/sdk@2 -p js-yaml node /bootstrap/bootstrap-apply.cjs"
+BOOTSTRAP_NPM=/tmp/routr-npm
+
+ensure_npm_deps() {
+  if [ -d "$BOOTSTRAP_NPM/node_modules/@routr/sdk" ] && [ -d "$BOOTSTRAP_NPM/node_modules/js-yaml" ]; then
+    return 0
+  fi
+  echo "[routr-bootstrap] installing @routr/sdk and js-yaml..."
+  mkdir -p "$BOOTSTRAP_NPM"
+  npm install --prefix "$BOOTSTRAP_NPM" --no-save --omit=dev --no-audit --no-fund \
+    @routr/sdk@2 js-yaml >/dev/null 2>&1
+}
+
+apply_config() {
+  ensure_npm_deps
+  NODE_PATH="$BOOTSTRAP_NPM/node_modules" node /bootstrap/bootstrap-apply.cjs "$@"
+}
 
 echo "[routr-bootstrap] ROUTR_API=$ROUTR_API"
 
@@ -70,7 +85,7 @@ fi
 
 if [ -n "$CONFIG_FILES" ]; then
   # shellcheck disable=SC2086
-  $APPLY $CONFIG_FILES
+  apply_config $CONFIG_FILES
 else
   echo "[routr-bootstrap] nothing to apply"
 fi

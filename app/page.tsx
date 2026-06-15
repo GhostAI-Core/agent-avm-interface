@@ -334,6 +334,35 @@ export default function Page() {
     return () => { active = false }
   }, [auth, filterAgent, filterDate, getJson])
 
+  // Periodic refresh so call outcomes written by evra_callops appear without manual reload.
+  useEffect(() => {
+    if (!auth) return
+    const ms = Number(process.env.NEXT_PUBLIC_POLL_INTERVAL_MS) || 15000
+    const tick = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      try {
+        const today = new Date().toISOString().slice(0, 10)
+        const p = new URLSearchParams()
+        if (filterAgent) p.set('agent', filterAgent)
+        if (filterDate) p.set('date', filterDate)
+        const [jC, jR, jL, jI] = await Promise.all([
+          getJson('/api/campaigns'),
+          getJson(`/api/reports?${p}`),
+          getJson('/api/logs'),
+          getJson(`/api/intents?date=${today}`),
+        ])
+        if (jC) setCampaigns(jC.campaigns ?? [])
+        if (jR) setReports(jR.reports ?? [])
+        if (jL) setAllCalls(jL.logs ?? [])
+        if (jI) setAllIntents(jI.intents ?? [])
+      } catch (err) {
+        console.error('Poll refresh failed:', err)
+      }
+    }
+    const id = setInterval(tick, ms)
+    return () => clearInterval(id)
+  }, [auth, filterAgent, filterDate, getJson])
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     setAuth(false)

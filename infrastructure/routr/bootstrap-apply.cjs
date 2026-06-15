@@ -92,13 +92,11 @@ async function applyLiveKitPeer(apis) {
     ref: "peer-livekit",
     name: "LiveKit Cloud",
     aor: "sip:livekit@evra.local",
+    username,
     contactAddr,
     withSessionAffinity: false,
     extended: { evraRole: "livekit-sip-gateway" },
   };
-  if (username && password) {
-    peer.username = username;
-  }
   if (credentialsRef) {
     peer.credentialsRef = credentialsRef;
   }

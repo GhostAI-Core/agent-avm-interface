@@ -5,6 +5,7 @@ metadata:
   name: LiveKit Cloud
 spec:
   aor: sip:livekit@evra.local
+  username: "${ROUTR_LIVEKIT_PEER_USERNAME:-livekit}"
   contactAddr: "${ROUTR_LIVEKIT_SIP_HOST}"
   loadBalancing:
     algorithm: round-robin

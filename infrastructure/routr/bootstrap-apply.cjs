@@ -20,7 +20,7 @@ async function waitForApi(peers) {
   let lastError = "unknown";
   for (let i = 0; i < 120; i++) {
     try {
-      await peers.listPeers({ pageSize: 1 });
+      await peers.listPeers({ pageSize: 1, pageToken: "" });
       return;
     } catch (err) {
       lastError = err.message || String(err);
@@ -42,15 +42,33 @@ async function upsert(
   createFn,
   updateFn,
   payload,
-  resolveExistingRef
+  resolveExistingRef,
+  options = {}
 ) {
   const body = { ...payload };
   delete body.ref;
+  const omitOnUpdate = options.omitFieldsOnUpdate || [];
+
+  const buildUpdate = (targetRef) => {
+    const updatePayload = { ref: targetRef, ...body };
+    for (const field of omitOnUpdate) {
+      delete updatePayload[field];
+    }
+    return updatePayload;
+  };
 
   const update = async (targetRef, note) => {
     const suffix = note ? ` (${note})` : "";
     console.log(`[routr-bootstrap] update ${targetRef}${suffix}`);
-    return updateFn({ ref: targetRef, ...body });
+    return updateFn(buildUpdate(targetRef));
+  };
+
+  const create = async () => {
+    console.log(`[routr-bootstrap] create ${ref}`);
+    if (options.omitRefOnCreate) {
+      return createFn({ ...body });
+    }
+    return createFn({ ref, ...body });
   };
 
   try {
@@ -58,8 +76,7 @@ async function upsert(
     return update(ref);
   } catch {
     try {
-      console.log(`[routr-bootstrap] create ${ref}`);
-      return await createFn({ ref, ...body });
+      return await create();
     } catch (err) {
       if (!isAlreadyExists(err) || !resolveExistingRef) {
         throw err;
@@ -73,18 +90,69 @@ async function upsert(
   }
 }
 
+function normalizePeerUsername(raw) {
+  const value = (raw || "").trim();
+  return value || "livekit";
+}
+
+async function upsertLiveKitPeer(peers, peerBody) {
+  const username = normalizePeerUsername(peerBody.username);
+  const createBody = {
+    name: peerBody.name,
+    username,
+    aor: peerBody.aor,
+    withSessionAffinity: peerBody.withSessionAffinity ?? false,
+    enabled: true,
+    extended: peerBody.extended,
+  };
+  if (peerBody.contactAddr) createBody.contactAddr = peerBody.contactAddr;
+  if (peerBody.credentialsRef) createBody.credentialsRef = peerBody.credentialsRef;
+  if (peerBody.accessControlListRef) {
+    createBody.accessControlListRef = peerBody.accessControlListRef;
+  }
+
+  const updateBody = { ...createBody };
+  delete updateBody.username;
+
+  let existingRef = await findPeerRefByUsername(peers, username);
+  if (!existingRef) {
+    try {
+      await peers.getPeer("peer-livekit");
+      existingRef = "peer-livekit";
+    } catch {
+      // not found
+    }
+  }
+
+  if (existingRef) {
+    console.log(`[routr-bootstrap] update peer ${existingRef}`);
+    return peers.updatePeer({ ref: existingRef, ...updateBody });
+  }
+
+  console.log(`[routr-bootstrap] create peer (${username})`);
+  try {
+    return await peers.createPeer(createBody);
+  } catch (err) {
+    if (!isAlreadyExists(err)) throw err;
+    const found = await findPeerRefByUsername(peers, username);
+    if (!found) throw err;
+    console.log(`[routr-bootstrap] update peer ${found} (existing resource)`);
+    return peers.updatePeer({ ref: found, ...updateBody });
+  }
+}
+
 async function findPeerRefByUsername(peers, username) {
-  const { items } = await peers.listPeers({ pageSize: 50 });
+  const { items } = await peers.listPeers({ pageSize: 50, pageToken: "" });
   return items?.find((p) => p.username === username)?.ref;
 }
 
 async function findCredentialsRefByName(credentials, name) {
-  const { items } = await credentials.listCredentials({ pageSize: 50 });
+  const { items } = await credentials.listCredentials({ pageSize: 50, pageToken: "" });
   return items?.find((c) => c.name === name)?.ref;
 }
 
 async function findTrunkRefByInboundUri(trunks, inboundUri) {
-  const { items } = await trunks.listTrunks({ pageSize: 50 });
+  const { items } = await trunks.listTrunks({ pageSize: 50, pageToken: "" });
   return items?.find((t) => t.inboundUri === inboundUri)?.ref;
 }
 
@@ -103,7 +171,9 @@ async function applyLiveKitAcl(acls) {
       name: "LiveKit SIP sources",
       allow: [allow],
       deny: ["0.0.0.0/0"],
-    }
+    },
+    undefined,
+    { omitRefOnCreate: true }
   );
 }
 
@@ -156,7 +226,7 @@ async function applyLiveKitPeer(apis) {
   const contactAddr = await resolveContactAddr(
     process.env.ROUTR_LIVEKIT_SIP_HOST || "sip.livekit.cloud:5060"
   );
-  const username = process.env.ROUTR_LIVEKIT_PEER_USERNAME || "livekit";
+  const username = normalizePeerUsername(process.env.ROUTR_LIVEKIT_PEER_USERNAME);
   const password = process.env.ROUTR_LIVEKIT_PEER_PASSWORD;
 
   let credentialsRef;
@@ -177,37 +247,23 @@ async function applyLiveKitPeer(apis) {
         name: "LiveKit peer credentials",
         username,
         password,
-      }
+      },
+      undefined,
+      { omitRefOnCreate: true }
     );
     credentialsRef = "cred-livekit";
   }
 
-  const peer = {
-    ref: "peer-livekit",
+  await upsertLiveKitPeer(apis.peers, {
     name: "LiveKit Cloud",
-    aor: "sip:livekit@evra.local",
     username,
+    aor: "sip:livekit@evra.local",
+    contactAddr,
     withSessionAffinity: false,
+    credentialsRef,
+    accessControlListRef,
     extended: { evraRole: "livekit-sip-gateway" },
-  };
-  if (contactAddr) {
-    peer.contactAddr = contactAddr;
-  }
-  if (credentialsRef) {
-    peer.credentialsRef = credentialsRef;
-  }
-  if (accessControlListRef) {
-    peer.accessControlListRef = accessControlListRef;
-  }
-
-  await upsert(
-    "peer-livekit",
-    (ref) => apis.peers.getPeer(ref),
-    (p) => apis.peers.createPeer(p),
-    (p) => apis.peers.updatePeer(p),
-    peer,
-    () => findPeerRefByUsername(apis.peers, username)
-  );
+  });
 }
 
 async function applyCarrierTrunk(apis) {
@@ -241,7 +297,8 @@ async function applyCarrierTrunk(apis) {
       username,
       password,
     },
-    () => findCredentialsRefByName(apis.credentials, credName)
+    () => findCredentialsRefByName(apis.credentials, credName),
+    { omitRefOnCreate: true }
   );
 
   const carrierCredentialsRef = cred?.ref || "cred-carrier";
@@ -270,7 +327,8 @@ async function applyCarrierTrunk(apis) {
       ],
       extended: { evraCarrier: name },
     },
-    () => findTrunkRefByInboundUri(apis.trunks, inboundUri)
+    () => findTrunkRefByInboundUri(apis.trunks, inboundUri),
+    { omitRefOnCreate: true }
   );
 }
 

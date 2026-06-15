@@ -7,6 +7,6 @@ RUN npm install --omit=dev --no-audit --no-fund \
   && npm install tsx --save-dev --no-audit --no-fund
 
 COPY lib/routr ./lib/routr
-COPY infrastructure/routr/bootstrap.sh infrastructure/routr/bootstrap-run.ts ./infrastructure/routr/
+COPY infrastructure/routr/bootstrap.sh infrastructure/routr/bootstrap-run.ts infrastructure/routr/bootstrap-apply.cjs ./infrastructure/routr/
 
 ENTRYPOINT ["/bin/sh", "/app/infrastructure/routr/bootstrap.sh"]

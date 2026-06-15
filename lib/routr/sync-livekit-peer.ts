@@ -1,11 +1,9 @@
-import type { CreatePeerRequest } from '@routr/sdk/dist/peers/types'
 import type { LiveKitPeerSettings } from '@/lib/types/voip-provider'
 import type { RoutrClients } from './client'
-import { findPeerRefByUsername } from './find-refs'
 import { resolveContactAddr } from './resolve-contact-addr'
+import { normalizePeerUsername, upsertPeer } from './upsert-peer'
 import { upsertResource } from './upsert'
 
-const PEER_REF = 'peer-livekit'
 const ACL_REF = 'acl-livekit'
 const CRED_REF = 'cred-livekit'
 
@@ -29,6 +27,7 @@ export async function syncLiveKitAcl(
     },
     undefined,
     log,
+    { omitRefOnCreate: true },
   )
 }
 
@@ -37,7 +36,7 @@ export async function syncLiveKitPeer(
   settings: LiveKitPeerSettings,
   log: (msg: string) => void = console.log,
 ) {
-  const username = settings.peer_username || 'livekit'
+  const username = normalizePeerUsername(settings.peer_username)
   const password = settings.peer_password?.trim()
   const contactAddr = await resolveContactAddr(settings.sip_host, log)
 
@@ -63,29 +62,24 @@ export async function syncLiveKitPeer(
       },
       undefined,
       log,
+      { omitRefOnCreate: true },
     )
     credentialsRef = CRED_REF
   }
 
-  const peer = {
-    ref: PEER_REF,
-    name: 'LiveKit Cloud',
-    aor: 'sip:livekit@evra.local',
-    username,
-    contactAddr: contactAddr || '',
-    withSessionAffinity: false,
-    extended: { evraRole: 'livekit-sip-gateway' },
-    ...(credentialsRef ? { credentialsRef } : {}),
-    ...(accessControlListRef ? { accessControlListRef } : {}),
-  } as unknown as CreatePeerRequest & { ref: string }
-
-  await upsertResource(
-    PEER_REF,
-    (ref) => clients.peers.getPeer(ref),
-    (p) => clients.peers.createPeer(p),
-    (p) => clients.peers.updatePeer(p),
-    peer,
-    () => findPeerRefByUsername(clients, username),
+  await upsertPeer(
+    clients,
+    {
+      name: 'LiveKit Cloud',
+      username,
+      aor: 'sip:livekit@evra.local',
+      contactAddr: contactAddr || undefined,
+      withSessionAffinity: false,
+      credentialsRef,
+      accessControlListRef,
+      extended: { evraRole: 'livekit-sip-gateway' },
+      enabled: true,
+    },
     log,
   )
 }
@@ -94,7 +88,7 @@ export function liveKitSettingsFromEnv(): LiveKitPeerSettings {
   return {
     sip_host: process.env.ROUTR_LIVEKIT_SIP_HOST || 'sip.livekit.cloud:5060',
     allowed_cidrs: process.env.ROUTR_LIVEKIT_ALLOWED_CIDRS,
-    peer_username: process.env.ROUTR_LIVEKIT_PEER_USERNAME || 'livekit',
+    peer_username: normalizePeerUsername(process.env.ROUTR_LIVEKIT_PEER_USERNAME),
     peer_password: process.env.ROUTR_LIVEKIT_PEER_PASSWORD,
   }
 }

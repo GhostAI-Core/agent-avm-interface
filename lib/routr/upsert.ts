@@ -3,6 +3,13 @@ export function isAlreadyExists(err: unknown): boolean {
   return e?.code === 6 || String(e?.message || err).includes('ALREADY_EXISTS')
 }
 
+export type UpsertOptions = {
+  /** Routr Create*Request messages do not accept client ref — server assigns UUID. */
+  omitRefOnCreate?: boolean
+  /** e.g. peer UpdatePeerRequest has no username field */
+  omitFieldsOnUpdate?: string[]
+}
+
 export async function upsertResource<T extends { ref?: string }, R extends { ref: string }>(
   ref: string,
   getFn: (ref: string) => Promise<unknown>,
@@ -11,14 +18,31 @@ export async function upsertResource<T extends { ref?: string }, R extends { ref
   payload: T,
   resolveExistingRef?: () => Promise<string | undefined>,
   log: (msg: string) => void = () => {},
+  options: UpsertOptions = {},
 ): Promise<R> {
   const body = { ...payload } as T & { ref?: string }
   delete body.ref
 
+  const buildUpdate = (targetRef: string) => {
+    const updatePayload = { ref: targetRef, ...body } as T & { ref: string }
+    for (const field of options.omitFieldsOnUpdate ?? []) {
+      delete (updatePayload as Record<string, unknown>)[field]
+    }
+    return updatePayload
+  }
+
   const update = async (targetRef: string, note?: string) => {
     const suffix = note ? ` (${note})` : ''
     log(`[routr] update ${targetRef}${suffix}`)
-    return updateFn({ ref: targetRef, ...body })
+    return updateFn(buildUpdate(targetRef))
+  }
+
+  const create = async () => {
+    log(`[routr] create ${ref}`)
+    if (options.omitRefOnCreate) {
+      return createFn(body as T & { ref: string })
+    }
+    return createFn({ ref, ...body })
   }
 
   try {
@@ -26,8 +50,7 @@ export async function upsertResource<T extends { ref?: string }, R extends { ref
     return update(ref)
   } catch {
     try {
-      log(`[routr] create ${ref}`)
-      return await createFn({ ref, ...body })
+      return await create()
     } catch (err) {
       if (!isAlreadyExists(err) || !resolveExistingRef) throw err
       const existingRef = await resolveExistingRef()

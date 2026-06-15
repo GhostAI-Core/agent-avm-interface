@@ -84,6 +84,7 @@ export async function syncCarrierProvider(
     credPayload,
     () => findCredentialsRefByName(clients, credPayload.name),
     log,
+    { omitRefOnCreate: true },
   )
 
   const trunkPayload = buildTrunkPayload(provider, cred.ref)
@@ -97,6 +98,7 @@ export async function syncCarrierProvider(
       (await findTrunkRefByProviderId(clients, provider.id)) ||
       findTrunkRefByInboundUri(clients, trunkPayload.inboundUri),
     log,
+    { omitRefOnCreate: true },
   )
 
   return { credentialsRef: cred.ref, trunkRef: trunk.ref }

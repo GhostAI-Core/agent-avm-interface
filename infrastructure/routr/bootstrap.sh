@@ -9,6 +9,10 @@ export ROUTR_CARRIER_SIP_PORT="${ROUTR_CARRIER_SIP_PORT:-5060}"
 export ROUTR_CARRIER_NAME="${ROUTR_CARRIER_NAME:-carrier}"
 export ROUTR_LIVEKIT_PEER_USERNAME="${ROUTR_LIVEKIT_PEER_USERNAME:-livekit}"
 export ROUTR_LIVEKIT_SIP_HOST="${ROUTR_LIVEKIT_SIP_HOST:-sip.livekit.cloud:5060}"
+# .env may set ROUTR_LIVEKIT_PEER_USERNAME= (empty) — treat as livekit
+case "${ROUTR_LIVEKIT_PEER_USERNAME}" in
+  ""|" ") export ROUTR_LIVEKIT_PEER_USERNAME=livekit ;;
+esac
 
 CTL="npx --yes @routr/ctl@2"
 CTL_FLAGS="-e ${ROUTR_CTL_ENDPOINT} --insecure"
@@ -28,7 +32,12 @@ else
 fi
 
 cd /app
-npx tsx infrastructure/routr/bootstrap-run.ts
+if npx tsx infrastructure/routr/bootstrap-run.ts; then
+  :
+else
+  echo "[routr-bootstrap] tsx failed — falling back to bootstrap-apply.cjs" >&2
+  node infrastructure/routr/bootstrap-apply.cjs
+fi
 
 echo "[routr-bootstrap] done"
 $CTL peers get $CTL_FLAGS 2>/dev/null || true

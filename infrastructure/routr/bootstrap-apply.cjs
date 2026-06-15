@@ -3,6 +3,9 @@
  * Idempotent Routr Connect bootstrap via @routr/sdk (env-driven, no YAML parser).
  */
 const SDK = require("@routr/sdk").default;
+const dns = require("dns").promises;
+
+const CONTACT_ADDR_MAX_LEN = 20;
 
 function normalizeEndpoint(raw) {
   const value = raw || "agent-avm-sip-routr:51908";
@@ -59,9 +62,55 @@ async function applyLiveKitAcl(acls) {
   );
 }
 
+/** Routr DB: contact_addr VARCHAR(20) — IP:port only; hostnames must be resolved. */
+async function resolveContactAddr(raw) {
+  if (!raw) {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length <= CONTACT_ADDR_MAX_LEN) {
+    return trimmed;
+  }
+
+  const match = trimmed.match(/^([^:]+):(\d+)$/);
+  if (!match) {
+    console.warn(
+      `[routr-bootstrap] ROUTR_LIVEKIT_SIP_HOST "${trimmed}" exceeds ${CONTACT_ADDR_MAX_LEN} chars and is not host:port; omitting contactAddr`
+    );
+    return undefined;
+  }
+
+  const [, host, port] = match;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+    console.warn(
+      `[routr-bootstrap] ROUTR_LIVEKIT_SIP_HOST "${trimmed}" (${trimmed.length} chars) exceeds Routr limit (${CONTACT_ADDR_MAX_LEN}); omitting contactAddr`
+    );
+    return undefined;
+  }
+
+  try {
+    const { address } = await dns.lookup(host, { family: 4 });
+    const resolved = `${address}:${port}`;
+    if (resolved.length > CONTACT_ADDR_MAX_LEN) {
+      console.warn(
+        `[routr-bootstrap] resolved ${trimmed} → ${resolved} still exceeds ${CONTACT_ADDR_MAX_LEN} chars; omitting contactAddr`
+      );
+      return undefined;
+    }
+    console.log(`[routr-bootstrap] resolved contactAddr ${trimmed} → ${resolved}`);
+    return resolved;
+  } catch (err) {
+    console.warn(
+      `[routr-bootstrap] DNS lookup failed for ${host} (${err.message}); omitting contactAddr`
+    );
+    return undefined;
+  }
+}
+
 async function applyLiveKitPeer(apis) {
-  const contactAddr =
-    process.env.ROUTR_LIVEKIT_SIP_HOST || "sip.livekit.cloud:5060";
+  const contactAddr = await resolveContactAddr(
+    process.env.ROUTR_LIVEKIT_SIP_HOST || "sip.livekit.cloud:5060"
+  );
   const username = process.env.ROUTR_LIVEKIT_PEER_USERNAME || "livekit";
   const password = process.env.ROUTR_LIVEKIT_PEER_PASSWORD;
 
@@ -93,10 +142,12 @@ async function applyLiveKitPeer(apis) {
     name: "LiveKit Cloud",
     aor: "sip:livekit@evra.local",
     username,
-    contactAddr,
     withSessionAffinity: false,
     extended: { evraRole: "livekit-sip-gateway" },
   };
+  if (contactAddr) {
+    peer.contactAddr = contactAddr;
+  }
   if (credentialsRef) {
     peer.credentialsRef = credentialsRef;
   }

@@ -60,8 +60,8 @@ services:
 
   agent-avm-sip-routr-bootstrap:
     build:
-      context: ./infrastructure/routr
-      dockerfile: Dockerfile.bootstrap
+      context: .
+      dockerfile: infrastructure/routr/Dockerfile.bootstrap
     env_file:
       - path: .env
         required: false

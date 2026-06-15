@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Idempotent Routr Connect bootstrap via @routr/sdk (env-driven, no YAML parser).
+ * @deprecated Use infrastructure/routr/bootstrap-run.ts (lib/routr via tsx).
+ * Kept for reference; Docker bootstrap now runs bootstrap-run.ts.
  */
 const SDK = require("@routr/sdk").default;
 const dns = require("dns").promises;

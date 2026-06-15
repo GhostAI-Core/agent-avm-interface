@@ -27,7 +27,8 @@ else
   echo "[routr-bootstrap] skip carrier trunk (set ROUTR_CARRIER_SIP_HOST in .env)"
 fi
 
-node /bootstrap/bootstrap-apply.cjs
+cd /app
+npx tsx infrastructure/routr/bootstrap-run.ts
 
 echo "[routr-bootstrap] done"
 $CTL peers get $CTL_FLAGS 2>/dev/null || true

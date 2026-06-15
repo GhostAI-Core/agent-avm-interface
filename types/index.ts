@@ -22,6 +22,8 @@ export interface DashboardTemplate {
   created_at?: string
 }
 
+export type CampaignRoutingMode = 'legacy' | 'routr'
+
 export interface Campaign {
   id: number
   name: string
@@ -30,6 +32,7 @@ export interface Campaign {
   dialing_speed: number
   time_window_start: string
   time_window_end: string
+  routing_mode?: CampaignRoutingMode
   voice_recording_url?: string
   transfer_key?: string | null
   transfer_target?: string | null

@@ -451,7 +451,9 @@ rctl trunks create --insecure     # One per carrier
 
 ### Step 3 — Programmatic management (SDK)
 
-Create `lib/routr/client.ts` in evra:
+**Implemented (M2):** `lib/routr/client.ts`, `sync-carrier.ts`, `sync-livekit-peer.ts`, `upsert.ts`, `resolve-contact-addr.ts`. Web app calls these from `/api/providers` and `/api/routr/*`; Docker bootstrap runs `infrastructure/routr/bootstrap-run.ts` (same modules).
+
+Reference client shape:
 
 ```typescript
 import { Trunks, Peers, Credentials, Numbers } from "@routr/sdk";
@@ -466,7 +468,9 @@ export const routrNumbers = new Numbers({ endpoint });
 
 ### Step 4 — Sync from voip_providers
 
-When admin saves a provider in Settings:
+**Implemented:** Admin saves a carrier in Settings → `POST /api/providers` or `PATCH /api/providers/[id]` → `lib/routr/sync-provider-row.ts` upserts Credentials + Trunk and updates `sync_status` / `routr_*_ref` on the row.
+
+Historical pseudocode:
 
 ```typescript
 // Pseudocode — lib/routr/sync-provider.ts

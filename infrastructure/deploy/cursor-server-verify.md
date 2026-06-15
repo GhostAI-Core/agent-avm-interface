@@ -212,7 +212,7 @@ docker compose config | grep -A5 agent-avm-sip-routr-bootstrap
 docker images | grep -E 'agent-avm|bootstrap|routr' || true
 ```
 
-**Pass:** `build: context: ./infrastructure/routr` and `dockerfile: Dockerfile.bootstrap` in compose config.
+**Pass:** `build: context: .` and `dockerfile: infrastructure/routr/Dockerfile.bootstrap` in compose config.
 
 ---
 
@@ -225,6 +225,7 @@ Only verify configuration is **consistent**:
 | LiveKit Routr trunk address | Must be `<ROUTR_PUBLIC_IP>:5060` in LiveKit Cloud (user confirms or use `lk` CLI if available) |
 | Twilio termination ACL | Must allow `<ROUTR_PUBLIC_IP>/32` |
 | Campaign `routing_mode` | Supabase: test campaign set to `routr` for Routr path |
+| Provider Routr sync | Supabase `voip_providers.sync_status = synced` after save in Settings UI; or `GET /api/routr/status` (admin) lists peer + trunks |
 
 Do not dial a phone number unless the user explicitly requests a test call.
 

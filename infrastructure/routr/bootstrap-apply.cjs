@@ -31,16 +31,60 @@ async function waitForApi(peers) {
   );
 }
 
-async function upsert(ref, getFn, createFn, updateFn, payload) {
-  const { ref: _ref, ...body } = payload;
+function isAlreadyExists(err) {
+  return err?.code === 6 || String(err?.message || err).includes("ALREADY_EXISTS");
+}
+
+async function upsert(
+  ref,
+  getFn,
+  createFn,
+  updateFn,
+  payload,
+  resolveExistingRef
+) {
+  const body = { ...payload };
+  delete body.ref;
+
+  const update = async (targetRef, note) => {
+    const suffix = note ? ` (${note})` : "";
+    console.log(`[routr-bootstrap] update ${targetRef}${suffix}`);
+    return updateFn({ ref: targetRef, ...body });
+  };
+
   try {
     await getFn(ref);
-    console.log(`[routr-bootstrap] update ${ref}`);
-    return updateFn({ ref, ...body });
+    return update(ref);
   } catch {
-    console.log(`[routr-bootstrap] create ${ref}`);
-    return createFn({ ref, ...body });
+    try {
+      console.log(`[routr-bootstrap] create ${ref}`);
+      return await createFn({ ref, ...body });
+    } catch (err) {
+      if (!isAlreadyExists(err) || !resolveExistingRef) {
+        throw err;
+      }
+      const existingRef = await resolveExistingRef();
+      if (!existingRef) {
+        throw err;
+      }
+      return update(existingRef, "existing resource");
+    }
   }
+}
+
+async function findPeerRefByUsername(peers, username) {
+  const { items } = await peers.listPeers({ pageSize: 50 });
+  return items?.find((p) => p.username === username)?.ref;
+}
+
+async function findCredentialsRefByName(credentials, name) {
+  const { items } = await credentials.listCredentials({ pageSize: 50 });
+  return items?.find((c) => c.name === name)?.ref;
+}
+
+async function findTrunkRefByInboundUri(trunks, inboundUri) {
+  const { items } = await trunks.listTrunks({ pageSize: 50 });
+  return items?.find((t) => t.inboundUri === inboundUri)?.ref;
 }
 
 async function applyLiveKitAcl(acls) {
@@ -160,7 +204,8 @@ async function applyLiveKitPeer(apis) {
     (ref) => apis.peers.getPeer(ref),
     (p) => apis.peers.createPeer(p),
     (p) => apis.peers.updatePeer(p),
-    peer
+    peer,
+    () => findPeerRefByUsername(apis.peers, username)
   );
 }
 
@@ -181,18 +226,24 @@ async function applyCarrierTrunk(apis) {
     );
   }
 
-  await upsert(
+  const credName = `${name} credentials`;
+  const inboundUri = `${name}.evra.local`;
+
+  const cred = await upsert(
     "cred-carrier",
     (ref) => apis.credentials.getCredentials(ref),
     (p) => apis.credentials.createCredentials(p),
     (p) => apis.credentials.updateCredentials(p),
     {
       ref: "cred-carrier",
-      name: `${name} credentials`,
+      name: credName,
       username,
       password,
-    }
+    },
+    () => findCredentialsRefByName(apis.credentials, credName)
   );
+
+  const carrierCredentialsRef = cred?.ref || "cred-carrier";
 
   await upsert(
     "trunk-carrier-default",
@@ -202,8 +253,8 @@ async function applyCarrierTrunk(apis) {
     {
       ref: "trunk-carrier-default",
       name,
-      inboundUri: `${name}.evra.local`,
-      outboundCredentialsRef: "cred-carrier",
+      inboundUri,
+      outboundCredentialsRef: carrierCredentialsRef,
       sendRegister: false,
       uris: [
         {
@@ -217,7 +268,8 @@ async function applyCarrierTrunk(apis) {
         },
       ],
       extended: { evraCarrier: name },
-    }
+    },
+    () => findTrunkRefByInboundUri(apis.trunks, inboundUri)
   );
 }
 

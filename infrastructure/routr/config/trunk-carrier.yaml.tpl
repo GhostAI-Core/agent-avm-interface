@@ -14,7 +14,7 @@ spec:
       - uri:
           host: "${ROUTR_CARRIER_SIP_HOST}"
           port: ${ROUTR_CARRIER_SIP_PORT}
-          transport: udp
+          transport: UDP
         enabled: true
   extended:
     evraCarrier: "${ROUTR_CARRIER_NAME:-carrier}"

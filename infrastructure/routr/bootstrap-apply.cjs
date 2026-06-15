@@ -260,7 +260,7 @@ async function applyCarrierTrunk(apis) {
         {
           host,
           port,
-          transport: "udp",
+          transport: "UDP",
           user: username,
           weight: 1,
           priority: 1,

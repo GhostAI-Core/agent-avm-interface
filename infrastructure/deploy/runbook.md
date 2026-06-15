@@ -33,7 +33,14 @@ Routr is on the `shared` network so other stack containers can reach it by servi
 
 Set `ROUTR_PUBLIC_IP` in server `.env` to the same public IPv4 used for LiveKit trunk configuration.
 
-`agent-avm-sip-routr-bootstrap` runs on every `docker compose up`, waits for the API, and applies Peer/Trunk YAML from `infrastructure/routr/config/` (idempotent `create` / `apply`). Routr Postgres data persists in volume `routr-pgdata`.
+`agent-avm-sip-routr-bootstrap` is a **built image** (`infrastructure/routr/Dockerfile.bootstrap`) that applies LiveKit peer + carrier trunk via `@routr/sdk` on every deploy. Re-run manually after Routr is up:
+
+```bash
+docker compose build agent-avm-sip-routr-bootstrap
+docker compose run --rm agent-avm-sip-routr-bootstrap
+```
+
+Routr Postgres data persists in volume `routr-pgdata`.
 
 ### Admin API via SSH (optional)
 

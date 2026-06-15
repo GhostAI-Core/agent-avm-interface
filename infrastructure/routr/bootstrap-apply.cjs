@@ -1,36 +1,34 @@
 #!/usr/bin/env node
 /**
- * Apply rendered Routr YAML (v2beta1) via @routr/sdk — idempotent create/update by ref.
- * Invoked from bootstrap.sh after envsubst; requires: npx -p @routr/sdk -p js-yaml
+ * Idempotent Routr Connect bootstrap via @routr/sdk (env-driven, no YAML parser).
  */
-const fs = require("fs");
-const path = require("path");
-const yaml = require("js-yaml");
 const SDK = require("@routr/sdk").default;
 
-const endpoint = process.env.ROUTR_API || "insecure://agent-avm-sip-routr:51908";
+function normalizeEndpoint(raw) {
+  const value = raw || "agent-avm-sip-routr:51908";
+  return value.replace(/^insecure:\/\//, "").replace(/^https?:\/\//, "");
+}
+
+const endpoint = normalizeEndpoint(process.env.ROUTR_API);
 const clientOpts = { endpoint, insecure: true };
 
-const KIND_ORDER = {
-  AccessControlList: 1,
-  Credentials: 2,
-  Peer: 3,
-  Trunk: 4,
-};
-
 async function waitForApi(peers) {
-  for (let i = 0; i < 90; i++) {
+  let lastError = "unknown";
+  for (let i = 0; i < 120; i++) {
     try {
       await peers.listPeers({ pageSize: 1 });
       return;
-    } catch {
+    } catch (err) {
+      lastError = err.message || String(err);
       await new Promise((r) => setTimeout(r, 2000));
     }
   }
-  throw new Error("Routr API not reachable after 180s");
+  throw new Error(
+    `Routr API not reachable at ${endpoint} after 240s (last: ${lastError})`
+  );
 }
 
-async function upsert(api, ref, getFn, createFn, updateFn, payload) {
+async function upsert(ref, getFn, createFn, updateFn, payload) {
   const { ref: _ref, ...body } = payload;
   try {
     await getFn(ref);
@@ -42,142 +40,154 @@ async function upsert(api, ref, getFn, createFn, updateFn, payload) {
   }
 }
 
-function yamlToCredentials(doc) {
-  return {
-    ref: doc.ref,
-    name: doc.metadata.name,
-    username: doc.spec.credentials.username,
-    password: doc.spec.credentials.password,
-    extended: doc.spec.extended,
-  };
-}
-
-function yamlToAcl(doc) {
-  return {
-    ref: doc.ref,
-    name: doc.metadata.name,
-    allow: doc.spec.accessControlList.allow,
-    deny: doc.spec.accessControlList.deny,
-    extended: doc.spec.extended,
-  };
-}
-
-function yamlToPeer(doc) {
-  const lb = doc.spec.loadBalancing || {};
-  return {
-    ref: doc.ref,
-    name: doc.metadata.name,
-    aor: doc.spec.aor,
-    username: doc.spec.username,
-    contactAddr: doc.spec.contactAddr,
-    credentialsRef: doc.spec.credentialsRef,
-    accessControlListRef: doc.spec.accessControlListRef,
-    withSessionAffinity: lb.withSessionAffinity ?? false,
-    extended: doc.spec.extended,
-  };
-}
-
-function yamlToTrunk(doc) {
-  const outbound = doc.spec.outbound || {};
-  const inbound = doc.spec.inbound || {};
-  const uris = (outbound.uris || []).map((entry) => {
-    const u = entry.uri || entry;
-    return {
-      host: u.host,
-      port: u.port,
-      transport: u.transport,
-      user: u.user,
-      weight: entry.weight ?? 1,
-      priority: entry.priority ?? 1,
-      enabled: entry.enabled !== false,
-    };
-  });
-  return {
-    ref: doc.ref,
-    name: doc.metadata.name,
-    inboundUri: inbound.uri,
-    accessControlListRef: inbound.accessControlListRef,
-    inboundCredentialsRef: inbound.credentialsRef,
-    outboundCredentialsRef: outbound.credentialsRef,
-    sendRegister: outbound.sendRegister ?? false,
-    uris,
-    extended: doc.spec.extended,
-  };
-}
-
-async function applyDoc(doc, apis) {
-  switch (doc.kind) {
-    case "Credentials":
-      return upsert(
-        apis.credentials,
-        doc.ref,
-        (ref) => apis.credentials.getCredentials(ref),
-        (p) => apis.credentials.createCredentials(p),
-        (p) => apis.credentials.updateCredentials(p),
-        yamlToCredentials(doc)
-      );
-    case "AccessControlList":
-      return upsert(
-        apis.acls,
-        doc.ref,
-        (ref) => apis.acls.getAcl(ref),
-        (p) => apis.acls.createAcl(p),
-        (p) => apis.acls.updateAcl(p),
-        yamlToAcl(doc)
-      );
-    case "Peer":
-      return upsert(
-        apis.peers,
-        doc.ref,
-        (ref) => apis.peers.getPeer(ref),
-        (p) => apis.peers.createPeer(p),
-        (p) => apis.peers.updatePeer(p),
-        yamlToPeer(doc)
-      );
-    case "Trunk":
-      return upsert(
-        apis.trunks,
-        doc.ref,
-        (ref) => apis.trunks.getTrunk(ref),
-        (p) => apis.trunks.createTrunk(p),
-        (p) => apis.trunks.updateTrunk(p),
-        yamlToTrunk(doc)
-      );
-    default:
-      console.warn(`[routr-bootstrap] skip unknown kind: ${doc.kind}`);
+async function applyLiveKitAcl(acls) {
+  const allow = process.env.ROUTR_LIVEKIT_ALLOWED_CIDRS;
+  if (!allow) {
+    return;
   }
+  await upsert(
+    "acl-livekit",
+    (ref) => acls.getAcl(ref),
+    (p) => acls.createAcl(p),
+    (p) => acls.updateAcl(p),
+    {
+      ref: "acl-livekit",
+      name: "LiveKit SIP sources",
+      allow: [allow],
+      deny: ["0.0.0.0/0"],
+    }
+  );
 }
 
-async function main() {
-  const files = process.argv.slice(2).filter((f) => f.endsWith(".yaml"));
-  if (files.length === 0) {
-    console.log("[routr-bootstrap] no YAML files to apply");
+async function applyLiveKitPeer(apis) {
+  const contactAddr =
+    process.env.ROUTR_LIVEKIT_SIP_HOST || "sip.livekit.cloud:5060";
+  const username = process.env.ROUTR_LIVEKIT_PEER_USERNAME || "livekit";
+  const password = process.env.ROUTR_LIVEKIT_PEER_PASSWORD;
+
+  let credentialsRef;
+  let accessControlListRef;
+
+  if (process.env.ROUTR_LIVEKIT_ALLOWED_CIDRS) {
+    accessControlListRef = "acl-livekit";
+  }
+
+  if (password) {
+    await upsert(
+      "cred-livekit",
+      (ref) => apis.credentials.getCredentials(ref),
+      (p) => apis.credentials.createCredentials(p),
+      (p) => apis.credentials.updateCredentials(p),
+      {
+        ref: "cred-livekit",
+        name: "LiveKit peer credentials",
+        username,
+        password,
+      }
+    );
+    credentialsRef = "cred-livekit";
+  }
+
+  const peer = {
+    ref: "peer-livekit",
+    name: "LiveKit Cloud",
+    aor: "sip:livekit@evra.local",
+    contactAddr,
+    withSessionAffinity: false,
+    extended: { evraRole: "livekit-sip-gateway" },
+  };
+  if (username && password) {
+    peer.username = username;
+  }
+  if (credentialsRef) {
+    peer.credentialsRef = credentialsRef;
+  }
+  if (accessControlListRef) {
+    peer.accessControlListRef = accessControlListRef;
+  }
+
+  await upsert(
+    "peer-livekit",
+    (ref) => apis.peers.getPeer(ref),
+    (p) => apis.peers.createPeer(p),
+    (p) => apis.peers.updatePeer(p),
+    peer
+  );
+}
+
+async function applyCarrierTrunk(apis) {
+  const host = process.env.ROUTR_CARRIER_SIP_HOST;
+  if (!host) {
     return;
   }
 
-  const peers = new SDK.Peers(clientOpts);
-  await waitForApi(peers);
-  console.log("[routr-bootstrap] Routr API is up");
+  const name = process.env.ROUTR_CARRIER_NAME || "carrier";
+  const port = Number(process.env.ROUTR_CARRIER_SIP_PORT || 5060);
+  const username = process.env.ROUTR_CARRIER_SIP_USERNAME;
+  const password = process.env.ROUTR_CARRIER_SIP_PASSWORD;
+
+  if (!username || !password) {
+    throw new Error(
+      "ROUTR_CARRIER_SIP_HOST is set but ROUTR_CARRIER_SIP_USERNAME/PASSWORD are missing"
+    );
+  }
+
+  await upsert(
+    "cred-carrier",
+    (ref) => apis.credentials.getCredentials(ref),
+    (p) => apis.credentials.createCredentials(p),
+    (p) => apis.credentials.updateCredentials(p),
+    {
+      ref: "cred-carrier",
+      name: `${name} credentials`,
+      username,
+      password,
+    }
+  );
+
+  await upsert(
+    "trunk-carrier-default",
+    (ref) => apis.trunks.getTrunk(ref),
+    (p) => apis.trunks.createTrunk(p),
+    (p) => apis.trunks.updateTrunk(p),
+    {
+      ref: "trunk-carrier-default",
+      name,
+      inboundUri: `${name}.evra.local`,
+      outboundCredentialsRef: "cred-carrier",
+      sendRegister: false,
+      uris: [
+        {
+          host,
+          port,
+          transport: "udp",
+          user: username,
+          weight: 1,
+          priority: 1,
+          enabled: true,
+        },
+      ],
+      extended: { evraCarrier: name },
+    }
+  );
+}
+
+async function main() {
+  console.log(`[routr-bootstrap] SDK endpoint=${endpoint}`);
 
   const apis = {
     acls: new SDK.Acls(clientOpts),
     credentials: new SDK.Credentials(clientOpts),
-    peers,
+    peers: new SDK.Peers(clientOpts),
     trunks: new SDK.Trunks(clientOpts),
   };
 
-  const docs = files
-    .map((file) => {
-      const raw = fs.readFileSync(file, "utf8");
-      const doc = yaml.load(raw);
-      return { file, doc, order: KIND_ORDER[doc.kind] ?? 99 };
-    })
-    .sort((a, b) => a.order - b.order || a.file.localeCompare(b.file));
+  await waitForApi(apis.peers);
+  console.log("[routr-bootstrap] Routr API is up");
 
-  for (const { file, doc } of docs) {
-    console.log(`[routr-bootstrap] applying ${path.basename(file)}`);
-    await applyDoc(doc, apis);
-  }
+  await applyLiveKitAcl(apis.acls);
+  await applyLiveKitPeer(apis);
+  await applyCarrierTrunk(apis);
 }
 
 main().catch((err) => {

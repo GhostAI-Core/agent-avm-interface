@@ -1,0 +1,10 @@
+FROM node:20-alpine
+
+WORKDIR /bootstrap
+
+COPY bootstrap.package.json package.json
+RUN npm install --omit=dev --no-audit --no-fund
+
+COPY bootstrap.sh bootstrap-apply.cjs ./
+
+ENTRYPOINT ["/bin/sh", "/bootstrap/bootstrap.sh"]

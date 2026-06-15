@@ -22,6 +22,8 @@ services:
         required: false
     environment:
       PORT: ${WEB_PORT:-3000}
+      # Docker sets HOSTNAME to the container id; Next binds to that IP, so localhost health checks fail.
+      HOSTNAME: "0.0.0.0"
       # M2: backend sync to Routr over shared network (no Cloudflare)
       ROUTR_API_ENDPOINT: ${ROUTR_API_ENDPOINT:-insecure://agent-avm-sip-routr:51908}
     networks:
@@ -57,7 +59,9 @@ services:
     restart: unless-stopped
 
   agent-avm-sip-routr-bootstrap:
-    image: node:20-alpine
+    build:
+      context: ./infrastructure/routr
+      dockerfile: Dockerfile.bootstrap
     env_file:
       - path: .env
         required: false
@@ -66,11 +70,6 @@ services:
       ROUTR_CARRIER_SIP_PORT: ${ROUTR_CARRIER_SIP_PORT:-5060}
       ROUTR_CARRIER_NAME: ${ROUTR_CARRIER_NAME:-carrier}
       ROUTR_LIVEKIT_PEER_USERNAME: ${ROUTR_LIVEKIT_PEER_USERNAME:-livekit}
-    volumes:
-      - ./infrastructure/routr/bootstrap.sh:/bootstrap/bootstrap.sh:ro
-      - ./infrastructure/routr/bootstrap-apply.cjs:/bootstrap/bootstrap-apply.cjs:ro
-      - ./infrastructure/routr/config:/bootstrap/config:ro
-    entrypoint: ["/bin/sh", "/bootstrap/bootstrap.sh"]
     depends_on:
       agent-avm-sip-routr:
         condition: service_started

@@ -101,6 +101,19 @@ WHERE id = <campaign_id>;
 
 ## CLI test commands
 
+### Server prerequisites
+
+The dial scripts are **not** in the production web Docker image. On the deploy host, install deps once in the repo directory:
+
+```bash
+cd /opt/docker/production/evra_avm   # your deploy path
+npm ci
+```
+
+Then run dial commands from that directory (not from `scripts/`). `npm run` adds `node_modules/.bin` to PATH so `tsx` resolves locally — do **not** rely on `npx tsx` on the server.
+
+Alternatively, run dial from your laptop where the repo already has `node_modules`.
+
 ### Dry-run trunk resolution (no call placed)
 
 ```bash

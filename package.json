@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "dial": "npx tsx scripts/dial-outbound.ts",
-    "dial:route": "npx tsx scripts/dial-route.ts",
-    "test:routr": "npx tsx --test tests/lib/routr/*.test.ts"
+    "dial": "tsx scripts/dial-outbound.ts",
+    "dial:route": "tsx scripts/dial-route.ts",
+    "test:routr": "tsx --test tests/lib/routr/*.test.ts"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",

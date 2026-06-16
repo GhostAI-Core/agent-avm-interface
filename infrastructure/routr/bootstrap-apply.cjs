@@ -135,7 +135,7 @@ async function upsertLiveKitPeer(peers, peerBody) {
   const updateBody = { ...createBody };
   delete updateBody.username;
 
-  let existingRef = await findPeerRefByUsername(peers, username);
+  let existingRef = await findLiveKitPeerRef(peers, username);
   if (!existingRef) {
     try {
       await peers.getPeer("peer-livekit");
@@ -155,7 +155,7 @@ async function upsertLiveKitPeer(peers, peerBody) {
     return await peers.createPeer(createBody);
   } catch (err) {
     if (!isAlreadyExists(err)) throw err;
-    const found = await findPeerRefByUsername(peers, username);
+    const found = await findLiveKitPeerRef(peers, username);
     if (!found) throw err;
     console.log(`[routr-bootstrap] update peer ${found} (existing resource)`);
     return peers.updatePeer({ ref: found, ...updateBody });
@@ -165,6 +165,20 @@ async function upsertLiveKitPeer(peers, peerBody) {
 async function findPeerRefByUsername(peers, username) {
   const { items } = await peers.listPeers({ pageSize: 50, pageToken: "" });
   return items?.find((p) => p.username === username)?.ref;
+}
+
+async function findPeerRefByName(peers, name) {
+  const { items } = await peers.listPeers({ pageSize: 50, pageToken: "" });
+  return items?.find((p) => p.name === name)?.ref;
+}
+
+async function findLiveKitPeerRef(peers, username) {
+  const byUsername = await findPeerRefByUsername(peers, username);
+  if (byUsername) return byUsername;
+  const byName = await findPeerRefByName(peers, "LiveKit Cloud");
+  if (byName) return byName;
+  const { items } = await peers.listPeers({ pageSize: 50, pageToken: "" });
+  return items?.find((p) => p.extended?.evraRole === "livekit-sip-gateway")?.ref;
 }
 
 async function findCredentialsRefByName(credentials, name) {
@@ -272,7 +286,7 @@ async function applyLiveKitPeer(apis) {
   }
 
   if (password) {
-    await upsert(
+    const cred = await upsert(
       "cred-livekit",
       (ref) => apis.credentials.getCredentials(ref),
       (p) => apis.credentials.createCredentials(p),
@@ -283,10 +297,10 @@ async function applyLiveKitPeer(apis) {
         username,
         password,
       },
-      undefined,
+      () => findCredentialsRefByName(apis.credentials, "LiveKit peer credentials"),
       { omitRefOnCreate: true }
     );
-    credentialsRef = "cred-livekit";
+    credentialsRef = cred?.ref;
   }
 
   await upsertLiveKitPeer(apis.peers, {

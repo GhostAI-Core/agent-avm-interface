@@ -5,6 +5,26 @@ export async function findPeerRefByUsername(clients: RoutrClients, username: str
   return items?.find((p) => p.username === username)?.ref
 }
 
+export async function findPeerRefByName(clients: RoutrClients, name: string) {
+  const { items } = await clients.peers.listPeers({ pageSize: 50, pageToken: '' })
+  return items?.find((p) => p.name === name)?.ref
+}
+
+/** Peers created without a client ref get a server UUID — match by role or display name. */
+export async function findLiveKitPeerRef(clients: RoutrClients, username: string) {
+  const byUsername = await findPeerRefByUsername(clients, username)
+  if (byUsername) return byUsername
+
+  const byName = await findPeerRefByName(clients, 'LiveKit Cloud')
+  if (byName) return byName
+
+  const { items } = await clients.peers.listPeers({ pageSize: 50, pageToken: '' })
+  return items?.find((p) => {
+    const ext = p.extended as Record<string, unknown> | undefined
+    return ext?.evraRole === 'livekit-sip-gateway'
+  })?.ref
+}
+
 export async function findCredentialsRefByName(clients: RoutrClients, name: string) {
   const { items } = await clients.credentials.listCredentials({ pageSize: 50, pageToken: '' })
   return items?.find((c) => c.name === name)?.ref

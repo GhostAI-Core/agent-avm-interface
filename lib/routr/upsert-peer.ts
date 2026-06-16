@@ -1,7 +1,7 @@
 import type { CreatePeerRequest } from '@routr/sdk/dist/peers/types'
 import type { RoutrClients } from './client'
 import { enforceContactAddrLimit } from './resolve-contact-addr'
-import { findPeerRefByUsername } from './find-refs'
+import { findLiveKitPeerRef } from './find-refs'
 import { isAlreadyExists } from './upsert'
 
 export type PeerUpsertBody = {
@@ -42,7 +42,7 @@ export async function upsertPeer(
   const updateBody = { ...createBody }
   delete updateBody.username
 
-  let existingRef = await findPeerRefByUsername(clients, username)
+  let existingRef = await findLiveKitPeerRef(clients, username)
   if (!existingRef) {
     try {
       await clients.peers.getPeer('peer-livekit')
@@ -62,7 +62,7 @@ export async function upsertPeer(
     return await clients.peers.createPeer(createBody as unknown as CreatePeerRequest)
   } catch (err) {
     if (!isAlreadyExists(err)) throw err
-    const found = await findPeerRefByUsername(clients, username)
+    const found = await findLiveKitPeerRef(clients, username)
     if (!found) throw err
     log(`[routr] update peer ${found} (existing resource)`)
     return clients.peers.updatePeer({ ref: found, ...updateBody })

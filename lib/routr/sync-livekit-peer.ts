@@ -1,6 +1,7 @@
 import type { LiveKitPeerSettings } from '@/lib/types/voip-provider'
 import type { RoutrClients } from './client'
 import { resolveContactAddr } from './resolve-contact-addr'
+import { findCredentialsRefByName } from './find-refs'
 import { normalizePeerUsername, upsertPeer } from './upsert-peer'
 import { upsertResource } from './upsert'
 
@@ -49,7 +50,7 @@ export async function syncLiveKitPeer(
   }
 
   if (password) {
-    await upsertResource(
+    const cred = await upsertResource(
       CRED_REF,
       (ref) => clients.credentials.getCredentials(ref),
       (p) => clients.credentials.createCredentials(p),
@@ -60,11 +61,11 @@ export async function syncLiveKitPeer(
         username,
         password,
       },
-      undefined,
+      () => findCredentialsRefByName(clients, 'LiveKit peer credentials'),
       log,
       { omitRefOnCreate: true },
     )
-    credentialsRef = CRED_REF
+    credentialsRef = cred.ref
   }
 
   await upsertPeer(

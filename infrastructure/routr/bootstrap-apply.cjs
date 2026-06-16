@@ -122,7 +122,10 @@ function buildPeerUpdateRequest(existingRef, current, createBody, peerBody) {
   };
   if (contactAddr) request.contactAddr = contactAddr;
   if (peerBody.credentialsRef) request.credentialsRef = peerBody.credentialsRef;
-  else if (current.credentialsRef) request.credentialsRef = current.credentialsRef;
+  else {
+    const currentCredRef = current.credentialsRef || current.credentials?.ref;
+    if (currentCredRef) request.credentialsRef = currentCredRef;
+  }
   if (peerBody.accessControlListRef) {
     request.accessControlListRef = peerBody.accessControlListRef;
   } else if (current.accessControlListRef) {
@@ -169,7 +172,17 @@ async function upsertLiveKitPeer(peers, peerBody) {
   if (existingRef) {
     console.log(`[routr-bootstrap] update peer ${existingRef}`);
     const current = await peers.getPeer(existingRef);
-    return peers.updatePeer(buildPeerUpdateRequest(existingRef, current, createBody, peerBody));
+    await peers.updatePeer(buildPeerUpdateRequest(existingRef, current, createBody, peerBody));
+    if (peerBody.credentialsRef) {
+      const after = await peers.getPeer(existingRef);
+      const linked = after.credentialsRef || after.credentials?.ref;
+      if (!linked) {
+        console.log(`[routr-bootstrap] recreate peer ${existingRef} (link credentials on create)`);
+        await peers.deletePeer(existingRef);
+        return peers.createPeer(createBody);
+      }
+    }
+    return peers.getPeer(existingRef);
   }
 
   console.log(`[routr-bootstrap] create peer (${username})`);

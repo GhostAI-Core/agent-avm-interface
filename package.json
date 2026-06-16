@@ -12,6 +12,7 @@
     "routr:bootstrap": "docker compose --profile bootstrap run --rm agent-avm-sip-routr-bootstrap",
     "routr:bootstrap:rebuild": "docker compose --profile bootstrap build agent-avm-sip-routr-bootstrap && npm run routr:bootstrap",
     "routr:peers": "npx --yes @routr/ctl@2 peers get -e 127.0.0.1:51908 --insecure -x",
+    "routr:peer": "npx --yes @routr/ctl@2 peers describe -e 127.0.0.1:51908 --insecure",
     "routr:numbers": "npx --yes @routr/ctl@2 numbers get -e 127.0.0.1:51908 --insecure -x",
     "routr:trunks": "npx --yes @routr/ctl@2 trunks get -e 127.0.0.1:51908 --insecure -x",
     "routr:verify": "npm run routr:peers && npm run routr:numbers && npm run routr:trunks",

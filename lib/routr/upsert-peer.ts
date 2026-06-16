@@ -2,6 +2,7 @@ import type { CreatePeerRequest } from '@routr/sdk/dist/peers/types'
 import type { RoutrClients } from './client'
 import { enforceContactAddrLimit } from './resolve-contact-addr'
 import { findLiveKitPeerRef } from './find-refs'
+import { peerCredentialsRef } from './peer-credentials'
 import { isAlreadyExists } from './upsert'
 
 export type PeerUpsertBody = {
@@ -43,7 +44,10 @@ function buildPeerUpdateRequest(
 
   if (contactAddr) request.contactAddr = contactAddr
   if (body.credentialsRef) request.credentialsRef = body.credentialsRef
-  else if (current.credentialsRef) request.credentialsRef = current.credentialsRef
+  else {
+    const currentCredRef = peerCredentialsRef(current)
+    if (currentCredRef) request.credentialsRef = currentCredRef
+  }
   if (body.accessControlListRef) request.accessControlListRef = body.accessControlListRef
   else if (current.accessControlListRef) {
     request.accessControlListRef = current.accessControlListRef
@@ -89,11 +93,20 @@ export async function upsertPeer(
   if (existingRef) {
     log(`[routr] update peer ${existingRef}`)
     const current = await clients.peers.getPeer(existingRef)
-    return clients.peers.updatePeer(
+    await clients.peers.updatePeer(
       buildPeerUpdateRequest(existingRef, current, createBody, body) as Parameters<
         RoutrClients['peers']['updatePeer']
       >[0],
     )
+    if (body.credentialsRef) {
+      const after = await clients.peers.getPeer(existingRef)
+      if (!peerCredentialsRef(after)) {
+        log(`[routr] recreate peer ${existingRef} (link credentials on create)`)
+        await clients.peers.deletePeer(existingRef)
+        return clients.peers.createPeer(createBody as unknown as CreatePeerRequest)
+      }
+    }
+    return clients.peers.getPeer(existingRef)
   }
 
   log(`[routr] create peer (${username})`)

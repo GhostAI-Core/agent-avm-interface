@@ -6,6 +6,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { createRoutrClients, hostRoutrEndpoint } from '../lib/routr/client'
 import { findCredentialsRefByName } from '../lib/routr/find-refs'
+import { peerCredentialsRef } from '../lib/routr/peer-credentials'
 import { arg } from './dial-cli-shared'
 
 const REQUIRED_ENV = [
@@ -71,19 +72,28 @@ async function verifyRoutr(): Promise<void> {
 
   const livekit = peers.find((p) => p.name === 'LiveKit Cloud') ?? peers[0]
   const full = await clients.peers.getPeer(livekit.ref!)
+  const linkedCredRef = peerCredentialsRef(full)
   console.log(`\nLiveKit peer (${livekit.ref}):`)
-  console.log(`  credentialsRef: ${full.credentialsRef ?? '(none)'}`)
+  console.log(`  credentialsRef: ${linkedCredRef ?? '(none)'}`)
+  if (full.credentials?.username) {
+    console.log(`  credentialsUser: ${full.credentials.username}`)
+  }
   console.log(`  contactAddr:    ${full.contactAddr ?? '(none)'}`)
   if (process.env.ROUTR_PUBLIC_IP?.trim()) {
     console.log(`  UC whitelist IP: ${process.env.ROUTR_PUBLIC_IP.trim()} (ROUTR_PUBLIC_IP)`)
   }
   if (process.env.ROUTR_LIVEKIT_PEER_PASSWORD?.trim()) {
     const credRef = await findCredentialsRefByName(clients, 'LiveKit peer credentials')
-    if (!full.credentialsRef) {
+    if (!linkedCredRef) {
       console.error(
-        'error: LiveKit peer has no credentialsRef (LiveKit trunk auth will fail). Run: npm run routr:bootstrap:rebuild',
+        'error: LiveKit peer has no credentials linked (LiveKit trunk auth will fail). Run: npm run routr:bootstrap:rebuild',
       )
       if (credRef) console.error(`  credentials exist at ${credRef} but are not linked to the peer`)
+      process.exit(1)
+    }
+    if (credRef && linkedCredRef !== credRef) {
+      console.error(`error: peer credentialsRef ${linkedCredRef} != LiveKit peer credentials ${credRef}`)
+      console.error('  Run: npm run routr:bootstrap:rebuild')
       process.exit(1)
     }
   }

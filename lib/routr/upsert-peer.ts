@@ -54,7 +54,15 @@ export async function upsertPeer(
 
   if (existingRef) {
     log(`[routr] update peer ${existingRef}`)
-    return clients.peers.updatePeer({ ref: existingRef, ...updateBody })
+    const result = await clients.peers.updatePeer({ ref: existingRef, ...updateBody })
+    if (body.credentialsRef) {
+      const current = await clients.peers.getPeer(existingRef)
+      if (!current.credentialsRef) {
+        log(`[routr] link credentialsRef on peer ${existingRef}`)
+        await clients.peers.updatePeer({ ref: existingRef, credentialsRef: body.credentialsRef })
+      }
+    }
+    return result
   }
 
   log(`[routr] create peer (${username})`)

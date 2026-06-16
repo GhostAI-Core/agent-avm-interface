@@ -1,6 +1,39 @@
 import type { CampaignRoutingMode, ResolveTrunkResult } from '../lib/outbound-call'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+export type CampaignDialRow = {
+  sip_trunk_id?: string | number | null
+  routing_mode?: string | null
+}
+
+/** Load campaign fields for trunk resolution; tolerates DB without routing_mode column. */
+export async function fetchCampaignForDial(
+  supabase: SupabaseClient,
+  campaignId: string,
+): Promise<{ campaign: CampaignDialRow | null; error?: string }> {
+  const { data, error } = await supabase
+    .from('campaigns')
+    .select('sip_trunk_id, routing_mode')
+    .eq('id', campaignId)
+    .single()
+
+  if (!error && data) return { campaign: data }
+
+  if (error?.message?.includes('routing_mode')) {
+    const fallback = await supabase
+      .from('campaigns')
+      .select('sip_trunk_id')
+      .eq('id', campaignId)
+      .single()
+    if (fallback.error || !fallback.data) {
+      return { campaign: null, error: fallback.error?.message ?? error.message }
+    }
+    return { campaign: { ...fallback.data, routing_mode: 'legacy' } }
+  }
+
+  return { campaign: null, error: error?.message ?? 'not found' }
+}
+
 export function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`)
   return i >= 0 ? process.argv[i + 1] : undefined

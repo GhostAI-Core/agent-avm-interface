@@ -147,7 +147,15 @@ async function upsertLiveKitPeer(peers, peerBody) {
 
   if (existingRef) {
     console.log(`[routr-bootstrap] update peer ${existingRef}`);
-    return peers.updatePeer({ ref: existingRef, ...updateBody });
+    const result = await peers.updatePeer({ ref: existingRef, ...updateBody });
+    if (peerBody.credentialsRef) {
+      const current = await peers.getPeer(existingRef);
+      if (!current.credentialsRef) {
+        console.log(`[routr-bootstrap] link credentialsRef on peer ${existingRef}`);
+        await peers.updatePeer({ ref: existingRef, credentialsRef: peerBody.credentialsRef });
+      }
+    }
+    return result;
   }
 
   console.log(`[routr-bootstrap] create peer (${username})`);

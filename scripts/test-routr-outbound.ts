@@ -5,6 +5,7 @@ import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { createRoutrClients, hostRoutrEndpoint } from '../lib/routr/client'
+import { findCredentialsRefByName } from '../lib/routr/find-refs'
 import { arg } from './dial-cli-shared'
 
 const REQUIRED_ENV = [
@@ -73,6 +74,19 @@ async function verifyRoutr(): Promise<void> {
   console.log(`\nLiveKit peer (${livekit.ref}):`)
   console.log(`  credentialsRef: ${full.credentialsRef ?? '(none)'}`)
   console.log(`  contactAddr:    ${full.contactAddr ?? '(none)'}`)
+  if (process.env.ROUTR_PUBLIC_IP?.trim()) {
+    console.log(`  UC whitelist IP: ${process.env.ROUTR_PUBLIC_IP.trim()} (ROUTR_PUBLIC_IP)`)
+  }
+  if (process.env.ROUTR_LIVEKIT_PEER_PASSWORD?.trim()) {
+    const credRef = await findCredentialsRefByName(clients, 'LiveKit peer credentials')
+    if (!full.credentialsRef) {
+      console.error(
+        'error: LiveKit peer has no credentialsRef (LiveKit trunk auth will fail). Run: npm run routr:bootstrap:rebuild',
+      )
+      if (credRef) console.error(`  credentials exist at ${credRef} but are not linked to the peer`)
+      process.exit(1)
+    }
+  }
 
   const { items: numbers } = await clients.numbers.listNumbers({ pageSize: 50, pageToken: '' })
   console.log('\nNumbers:')

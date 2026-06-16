@@ -14,6 +14,7 @@ import { resolveTrunkWithSource } from '../lib/outbound-call'
 import {
   arg,
   effectiveCampaign,
+  fetchCampaignForDial,
   parseRouteArg,
   printRouteDryRun,
 } from './dial-cli-shared'
@@ -35,14 +36,14 @@ async function main() {
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey)
-  const { data: campaign, error: cErr } = await supabase
-    .from('campaigns')
-    .select('sip_trunk_id, routing_mode')
-    .eq('id', campaignId)
-    .single()
+  const { campaign, error: cErr } = await fetchCampaignForDial(supabase, campaignId)
 
   if (cErr || !campaign) {
-    console.error('Campaign not found:', cErr?.message ?? campaignId)
+    console.error('Campaign not found:', cErr ?? campaignId)
+    if (cErr?.includes('routing_mode')) {
+      console.error('  Apply migration: supabase/migrations/20260615120000_campaign_routing_mode.sql')
+      console.error('  Or pass --route routr to test without the column.')
+    }
     process.exit(1)
   }
 

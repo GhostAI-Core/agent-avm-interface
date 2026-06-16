@@ -270,7 +270,7 @@ export default function Page() {
     ;(async () => {
       try {
         const today = new Date().toISOString().slice(0, 10)
-        const [jC, jP, jS, jCo, jL, jI] = await Promise.all([
+        const results = await Promise.allSettled([
           getJson('/api/campaigns'),
           getJson('/api/providers'),
           getJson('/api/security'),
@@ -279,12 +279,18 @@ export default function Page() {
           getJson(`/api/intents?date=${today}`),
         ])
         if (!active) return
+        const [jC, jP, jS, jCo, jL, jI] = results.map((r) => (r.status === 'fulfilled' ? r.value : null))
         if (jC) setCampaigns(jC.campaigns ?? [])
         if (jP) setProviders(jP.providers ?? [])
         if (jS) setSecurityLogs(jS.logs ?? [])
         if (jCo) setCompaniesList(jCo.companies ?? [])
         if (jL) setAllCalls(jL.logs ?? [])
         if (jI) setAllIntents(jI.intents ?? [])
+        results.forEach((r, i) => {
+          if (r.status === 'rejected') {
+            console.warn('Dashboard partial load failed:', ['/api/campaigns', '/api/providers', '/api/security', '/api/companies', '/api/logs', '/api/intents'][i], r.reason)
+          }
+        })
       } catch (err) {
         console.error('Dashboard load failed:', err)
       }
@@ -379,14 +385,9 @@ export default function Page() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
         })
-        const j = await res.json().catch(() => ({}))
-        // Gateway not wired yet → keep the demo simulation so the dashboard shows activity.
-        if (j?.mode === 'unconfigured') {
-          await fetch('/api/simulate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ campaignId: id }),
-          })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          console.error('Dial dispatch failed:', j?.error ?? res.statusText)
         }
       } catch (err) {
         console.error('Dial dispatch failed:', err)

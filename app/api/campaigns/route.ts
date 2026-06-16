@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { DEMO_CAMPAIGNS } from '@/lib/demo-data'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 
 export const dynamic = 'force-dynamic'
@@ -18,7 +17,7 @@ export async function GET() {
 
     if (error) {
       console.error('Supabase error:', error)
-      return NextResponse.json({ campaigns: DEMO_CAMPAIGNS, demo: true })
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     // Flatten the joined company to a plain name for the client
@@ -36,13 +35,16 @@ export async function POST(req: Request) {
     if (!user) return unauthorized()
 
     const body = await req.json()
-    const { name, agent, dialing_speed, window_start, window_end, voice_recording_url, voice_path, contacts } = body
+    const { name, agent, dialing_speed, window_start, window_end, voice_recording_url, voice_path, contacts, routing_mode } = body
 
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
+
+    const mode = routing_mode === 'routr' ? 'routr' : 'legacy'
 
     // 1. Insert Campaign — agent is optional in the fast-dial flow (stored NULL when unset).
     const { data: campaign, error: cErr } = await supabase.from('campaigns').insert({
       name, agent: agent || null, status: 'draft',
+      routing_mode: mode,
       dialing_speed: dialing_speed ?? 1,
       time_window_start: window_start ?? '08:00',
       time_window_end: window_end ?? '20:00',

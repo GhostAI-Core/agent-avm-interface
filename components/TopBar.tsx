@@ -25,8 +25,11 @@ export default function TopBar({ title, campaigns = [], onMenu, onLogout, onTour
   onTour?: () => void
 }) {
   const active = campaigns.filter(c => c.status === 'running' || c.status === 'paused')
-  const agentsPresent = Array.from(new Set(active.map(c => c.agent)))
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  const agentsPresent = Array.from(new Set(active.map(c => c.agent).filter(Boolean))) as string[]
+  const cap = (s: string | null | undefined) => {
+    if (!s) return 'Auto'
+    return s.charAt(0).toUpperCase() + s.slice(1)
+  }
 
   return (
     <Box sx={{ flexShrink: 0 }}>

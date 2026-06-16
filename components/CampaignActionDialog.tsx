@@ -10,7 +10,12 @@ import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
-import type { Campaign } from '@/types'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import FormHelperText from '@mui/material/FormHelperText'
+import type { Campaign, CampaignRoutingMode } from '@/types'
 import { parseContacts } from '@/lib/parseCsv'
 
 type Mode = 'edit' | 'reuse'
@@ -23,6 +28,7 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
 }) {
   const [name, setName] = useState(mode === 'reuse' ? `${campaign.name} (copy)` : campaign.name)
   const [mp4, setMp4] = useState(campaign.voice_recording_url ?? '')
+  const [routingMode, setRoutingMode] = useState<CampaignRoutingMode>(campaign.routing_mode || 'legacy')
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -33,7 +39,7 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
       if (mode === 'edit') {
         const res = await fetch(`/api/campaigns/${campaign.id}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ voice_recording_url: mp4 }),
+          body: JSON.stringify({ voice_recording_url: mp4, routing_mode: routingMode }),
         })
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to update')
       } else {
@@ -49,6 +55,7 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
             voice_recording_url: mp4,
             transfer_key: campaign.transfer_key ?? '',
             transfer_target: campaign.transfer_target ?? '',
+            routing_mode: campaign.routing_mode || 'legacy',
             ...(contacts ? { contacts } : {}),
           }),
         })
@@ -77,6 +84,17 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
             <TextField label="New campaign name" value={name} onChange={e => setName(e.target.value)} fullWidth size="small" />
           )}
           <TextField label="Voice recording URL (MP4)" value={mp4} onChange={e => setMp4(e.target.value)} fullWidth size="small" placeholder="https://…/voice.mp4" />
+          {mode === 'edit' && (
+            <FormControl size="small" fullWidth>
+              <InputLabel id="edit-routing-label">Routing mode</InputLabel>
+              <Select labelId="edit-routing-label" label="Routing mode" value={routingMode}
+                onChange={(e) => setRoutingMode(e.target.value as CampaignRoutingMode)}>
+                <MenuItem value="legacy">Direct carrier (legacy)</MenuItem>
+                <MenuItem value="routr">Via Routr</MenuItem>
+              </Select>
+              <FormHelperText>Routr mode uses server LIVEKIT_SIP_ROUTR_TRUNK_ID.</FormHelperText>
+            </FormControl>
+          )}
           {mode === 'reuse' && (
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Call list (CSV: phone, first_name, last_name) — leave empty to reuse none</Typography>

@@ -63,4 +63,5 @@ jobs:
             set -e
             cd '${{ secrets.DEPLOY_PATH }}'
             docker compose up -d --build
+            docker compose run --rm agent-avm-sip-routr-bootstrap
           "

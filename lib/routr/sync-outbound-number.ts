@@ -45,7 +45,7 @@ export async function syncOutboundCallerNumber(
       telUrl,
       trunkRef,
       aorLink: LIVEKIT_PEER_AOR,
-      city: '',
+      city: 'Johannesburg',
       country: 'South Africa',
       countryIsoCode: 'ZA',
       extended: { evraRole: 'outbound-caller-id' },

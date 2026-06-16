@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "dial": "npx tsx scripts/dial-outbound.ts",
-    "dial:route": "npx tsx scripts/dial-route.ts",
+    "dial": "tsx scripts/dial-outbound.ts",
+    "dial:route": "tsx scripts/dial-route.ts",
+    "test:routr": "bash scripts/test-routr-outbound.sh",
     "test:routr": "tsx --test tests/lib/routr/*.test.ts"
   },
   "dependencies": {

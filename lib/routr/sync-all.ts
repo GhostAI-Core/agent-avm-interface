@@ -20,6 +20,12 @@ export async function waitForRoutrApi(log: (msg: string) => void = console.log) 
   throw new Error(`Routr API not reachable at ${endpoint} after 240s (last: ${lastError})`)
 }
 
+/** True when ROUTR_CARRIER_SEND_REGISTER is true/1/yes (case-insensitive). */
+export function carrierSendRegisterFromEnv(): boolean {
+  const v = (process.env.ROUTR_CARRIER_SEND_REGISTER ?? '').trim().toLowerCase()
+  return v === 'true' || v === '1' || v === 'yes'
+}
+
 /** Bootstrap entry: env-driven LiveKit peer + optional carrier trunk. */
 export async function runBootstrapFromEnv(log: (msg: string) => void = console.log) {
   const clients = await waitForRoutrApi(log)
@@ -40,9 +46,12 @@ export async function runBootstrapFromEnv(log: (msg: string) => void = console.l
   const name = process.env.ROUTR_CARRIER_NAME || 'carrier'
   const username = process.env.ROUTR_CARRIER_SIP_USERNAME
   const password = process.env.ROUTR_CARRIER_SIP_PASSWORD
+  const sendRegister = carrierSendRegisterFromEnv()
   if (!username || !password) {
     throw new Error('ROUTR_CARRIER_SIP_HOST is set but ROUTR_CARRIER_SIP_USERNAME/PASSWORD are missing')
   }
+
+  log(`[routr] carrier sendRegister=${sendRegister}`)
 
   await syncCarrierProvider(
     clients,
@@ -55,7 +64,7 @@ export async function runBootstrapFromEnv(log: (msg: string) => void = console.l
       sip_port: Number(process.env.ROUTR_CARRIER_SIP_PORT || 5060),
       sip_username: username,
       sip_password: password,
-      send_register: false,
+      send_register: sendRegister,
       routr_trunk_ref: 'trunk-carrier-default',
       routr_credentials_ref: 'cred-carrier',
     },

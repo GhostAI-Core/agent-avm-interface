@@ -26,7 +26,7 @@ else
 fi
 
 if [ -n "${ROUTR_CARRIER_SIP_HOST:-}" ]; then
-  echo "[routr-bootstrap] carrier trunk configured (${ROUTR_CARRIER_NAME:-carrier} → ${ROUTR_CARRIER_SIP_HOST})"
+  echo "[routr-bootstrap] carrier trunk configured (${ROUTR_CARRIER_NAME:-carrier} → ${ROUTR_CARRIER_SIP_HOST}, sendRegister=${ROUTR_CARRIER_SEND_REGISTER:-false})"
 else
   echo "[routr-bootstrap] skip carrier trunk (set ROUTR_CARRIER_SIP_HOST in .env)"
 fi

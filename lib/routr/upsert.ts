@@ -1,6 +1,12 @@
 export function isAlreadyExists(err: unknown): boolean {
   const e = err as { code?: number; message?: string }
-  return e?.code === 6 || String(e?.message || err).includes('ALREADY_EXISTS')
+  const msg = String(e?.message || err)
+  return (
+    e?.code === 6 ||
+    msg.includes('ALREADY_EXISTS') ||
+    msg.includes('duplicate key') ||
+    msg.includes('unique constraint')
+  )
 }
 
 export type UpsertOptions = {
@@ -43,6 +49,13 @@ export async function upsertResource<T extends { ref?: string }, R extends { ref
       return createFn(body as T & { ref: string })
     }
     return createFn({ ref, ...body })
+  }
+
+  if (resolveExistingRef) {
+    const existingRef = await resolveExistingRef()
+    if (existingRef) {
+      return update(existingRef, 'existing resource')
+    }
   }
 
   try {

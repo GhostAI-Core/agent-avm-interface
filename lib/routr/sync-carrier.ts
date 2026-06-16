@@ -2,7 +2,7 @@ import type { CreateTrunkRequest } from '@routr/sdk/dist/trunks/types'
 import type { VoipProvider } from '@/lib/types/voip-provider'
 import type { RoutrClients } from './client'
 import { carrierInboundUri } from './inbound-uri'
-import { findCredentialsRefByName, findTrunkRefByInboundUri, findTrunkRefByProviderId } from './find-refs'
+import { findCredentialsRefByName, findTrunkRefByInboundUri, findTrunkRefByName, findTrunkRefByProviderId } from './find-refs'
 import { upsertResource } from './upsert'
 
 export type CarrierSyncInput = Pick<
@@ -89,15 +89,18 @@ export async function syncCarrierProvider(
   )
 
   const trunkPayload = buildTrunkPayload(provider, cred.ref)
+  const resolveTrunkRef = async () =>
+    (provider.id ? await findTrunkRefByProviderId(clients, provider.id) : undefined) ||
+    (await findTrunkRefByInboundUri(clients, trunkPayload.inboundUri)) ||
+    (await findTrunkRefByName(clients, provider.name))
+
   const trunk = await upsertResource(
     trunkPayload.ref,
     (ref) => clients.trunks.getTrunk(ref),
     (p) => clients.trunks.createTrunk(p),
     (p) => clients.trunks.updateTrunk(p),
     trunkPayload,
-    async () =>
-      (await findTrunkRefByProviderId(clients, provider.id)) ||
-      findTrunkRefByInboundUri(clients, trunkPayload.inboundUri),
+    resolveTrunkRef,
     log,
     { omitRefOnCreate: true },
   )

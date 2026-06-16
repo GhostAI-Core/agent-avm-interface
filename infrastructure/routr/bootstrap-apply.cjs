@@ -33,7 +33,13 @@ async function waitForApi(peers) {
 }
 
 function isAlreadyExists(err) {
-  return err?.code === 6 || String(err?.message || err).includes("ALREADY_EXISTS");
+  const msg = String(err?.message || err);
+  return (
+    err?.code === 6 ||
+    msg.includes("ALREADY_EXISTS") ||
+    msg.includes("duplicate key") ||
+    msg.includes("unique constraint")
+  );
 }
 
 async function upsert(
@@ -70,6 +76,13 @@ async function upsert(
     }
     return createFn({ ref, ...body });
   };
+
+  if (resolveExistingRef) {
+    const existingRef = await resolveExistingRef();
+    if (existingRef) {
+      return update(existingRef, "existing resource");
+    }
+  }
 
   try {
     await getFn(ref);
@@ -162,6 +175,11 @@ async function findCredentialsRefByName(credentials, name) {
 async function findTrunkRefByInboundUri(trunks, inboundUri) {
   const { items } = await trunks.listTrunks({ pageSize: 50, pageToken: "" });
   return items?.find((t) => t.inboundUri === inboundUri)?.ref;
+}
+
+async function findTrunkRefByName(trunks, name) {
+  const { items } = await trunks.listTrunks({ pageSize: 50, pageToken: "" });
+  return items?.find((t) => t.name === name)?.ref;
 }
 
 async function applyLiveKitAcl(acls) {
@@ -295,6 +313,11 @@ function carrierInboundUri(slug) {
   return `${label}.evra.local`;
 }
 
+function carrierSendRegisterFromEnv() {
+  const v = String(process.env.ROUTR_CARRIER_SEND_REGISTER ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "yes";
+}
+
 async function applyCarrierTrunk(apis) {
   const host = process.env.ROUTR_CARRIER_SIP_HOST;
   if (!host) {
@@ -314,6 +337,8 @@ async function applyCarrierTrunk(apis) {
 
   const credName = `${name} credentials`;
   const inboundUri = carrierInboundUri(name);
+  const sendRegister = carrierSendRegisterFromEnv();
+  console.log(`[routr-bootstrap] carrier sendRegister=${sendRegister}`);
 
   const cred = await upsert(
     "cred-carrier",
@@ -342,7 +367,7 @@ async function applyCarrierTrunk(apis) {
       name,
       inboundUri,
       outboundCredentialsRef: carrierCredentialsRef,
-      sendRegister: false,
+      sendRegister,
       uris: [
         {
           host,
@@ -356,7 +381,9 @@ async function applyCarrierTrunk(apis) {
       ],
       extended: { evraCarrier: name },
     },
-    () => findTrunkRefByInboundUri(apis.trunks, inboundUri),
+    () =>
+      findTrunkRefByInboundUri(apis.trunks, inboundUri) ||
+      findTrunkRefByName(apis.trunks, name),
     { omitRefOnCreate: true }
   );
 }

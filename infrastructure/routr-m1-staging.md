@@ -28,6 +28,7 @@ Set in server `.env` (bootstrap creates Routr credentials + `trunk-carrier-defau
 | `ROUTR_CARRIER_SIP_PORT` | `5060` |
 | `ROUTR_CARRIER_SIP_USERNAME` | `uc-jono` |
 | `ROUTR_CARRIER_SIP_PASSWORD` | _(server `.env` only)_ |
+| `ROUTR_CARRIER_SEND_REGISTER` | `true` to REGISTER with carrier on deploy (default `false`) |
 
 Utility Connect must whitelist the **Routr VPS public IP** (`ROUTR_PUBLIC_IP`).
 

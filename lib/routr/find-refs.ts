@@ -10,6 +10,11 @@ export async function findCredentialsRefByName(clients: RoutrClients, name: stri
   return items?.find((c) => c.name === name)?.ref
 }
 
+export async function findTrunkRefByName(clients: RoutrClients, name: string) {
+  const { items } = await clients.trunks.listTrunks({ pageSize: 50, pageToken: '' })
+  return items?.find((t) => t.name === name)?.ref
+}
+
 export async function findTrunkRefByInboundUri(clients: RoutrClients, inboundUri: string) {
   const { items } = await clients.trunks.listTrunks({ pageSize: 50, pageToken: '' })
   return items?.find((t) => t.inboundUri === inboundUri)?.ref

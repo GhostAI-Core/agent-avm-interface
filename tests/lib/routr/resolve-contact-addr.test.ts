@@ -60,9 +60,28 @@ describe('buildTrunkPayload', () => {
     )
 
     assert.equal(payload.inboundUri, 'twilio.evra.local')
+    assert.ok(payload.uris)
     assert.equal(payload.uris[0].transport, 'UDP')
     assert.equal(payload.uris[0].host, 'evra-routr.pstn.twilio.com')
     assert.equal(payload.outboundCredentialsRef, 'cred-1')
     assert.equal((payload.extended as { evraProviderId: number }).evraProviderId, 1)
+  })
+
+  it('sanitizes underscores in slug for Routr FQDN inboundUri', () => {
+    const payload = buildTrunkPayload(
+      {
+        id: 0,
+        name: 'utility_connect',
+        slug: 'utility_connect',
+        provider_type: 'utility_connect',
+        sip_host: 'sbc.convergedgroup.co.za',
+        sip_port: 5060,
+        sip_username: 'uc-jono',
+        sip_password: 'secret',
+        send_register: false,
+      },
+      'cred-uc',
+    )
+    assert.equal(payload.inboundUri, 'utility-connect.evra.local')
   })
 })

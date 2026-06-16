@@ -1,6 +1,7 @@
 import type { CreateTrunkRequest } from '@routr/sdk/dist/trunks/types'
 import type { VoipProvider } from '@/lib/types/voip-provider'
 import type { RoutrClients } from './client'
+import { carrierInboundUri } from './inbound-uri'
 import { findCredentialsRefByName, findTrunkRefByInboundUri, findTrunkRefByProviderId } from './find-refs'
 import { upsertResource } from './upsert'
 
@@ -37,7 +38,7 @@ export function buildCredentialsPayload(provider: CarrierSyncInput) {
 }
 
 export function buildTrunkPayload(provider: CarrierSyncInput, credentialsRef: string) {
-  const inboundUri = `${provider.slug}.evra.local`
+  const inboundUri = carrierInboundUri(provider.slug)
   return {
     ref: carrierTrunkRef(provider),
     name: provider.name,

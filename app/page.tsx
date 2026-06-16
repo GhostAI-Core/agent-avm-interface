@@ -385,14 +385,9 @@ export default function Page() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
         })
-        const j = await res.json().catch(() => ({}))
-        // Gateway not wired yet → keep the demo simulation so the dashboard shows activity.
-        if (j?.mode === 'unconfigured') {
-          await fetch('/api/simulate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ campaignId: id }),
-          })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          console.error('Dial dispatch failed:', j?.error ?? res.statusText)
         }
       } catch (err) {
         console.error('Dial dispatch failed:', err)

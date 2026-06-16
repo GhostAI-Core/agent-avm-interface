@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS voip_providers (
     api_secret  VARCHAR(255),
     slug        VARCHAR(32)  NOT NULL DEFAULT '',
     provider_type VARCHAR(20) NOT NULL DEFAULT 'twilio'
-        CHECK (provider_type IN ('twilio', 'telnyx', 'sangoma')),
+        CHECK (provider_type IN ('twilio', 'telnyx', 'sangoma', 'utility_connect')),
     sip_host    VARCHAR(255),
     sip_port    INT          NOT NULL DEFAULT 5060,
     sip_username VARCHAR(60),

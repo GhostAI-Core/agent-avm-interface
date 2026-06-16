@@ -283,6 +283,18 @@ async function applyLiveKitPeer(apis) {
   });
 }
 
+function carrierInboundUri(slug) {
+  const label = String(slug)
+    .toLowerCase()
+    .replace(/_/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/^-+|-+$/g, "");
+  if (!label) {
+    throw new Error("ROUTR_CARRIER_NAME must yield a valid inbound URI label");
+  }
+  return `${label}.evra.local`;
+}
+
 async function applyCarrierTrunk(apis) {
   const host = process.env.ROUTR_CARRIER_SIP_HOST;
   if (!host) {
@@ -301,7 +313,7 @@ async function applyCarrierTrunk(apis) {
   }
 
   const credName = `${name} credentials`;
-  const inboundUri = `${name}.evra.local`;
+  const inboundUri = carrierInboundUri(name);
 
   const cred = await upsert(
     "cred-carrier",

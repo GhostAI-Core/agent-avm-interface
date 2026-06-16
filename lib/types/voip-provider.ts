@@ -1,6 +1,6 @@
 export type RoutrSyncStatus = 'pending' | 'synced' | 'error'
 
-export type ProviderType = 'twilio' | 'telnyx' | 'sangoma'
+export type ProviderType = 'twilio' | 'telnyx' | 'sangoma' | 'utility_connect'
 
 export type CampaignRoutingMode = 'legacy' | 'routr'
 

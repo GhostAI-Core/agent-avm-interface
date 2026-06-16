@@ -5,15 +5,22 @@ export function normalizeRoutrEndpoint(raw?: string | null): string {
   return value.replace(/^insecure:\/\//, '').replace(/^https?:\/\//, '')
 }
 
-export function routrClientOptions() {
+/** Shell/npm on the deploy host — Routr admin API is bound to localhost (see docker-compose). */
+export function hostRoutrEndpoint(): string {
+  return normalizeRoutrEndpoint(
+    process.env.ROUTR_CTL_ENDPOINT || process.env.ROUTR_HOST_API_ENDPOINT || '127.0.0.1:51908',
+  )
+}
+
+export function routrClientOptions(endpoint?: string) {
   return {
-    endpoint: normalizeRoutrEndpoint(process.env.ROUTR_API_ENDPOINT),
+    endpoint: endpoint ? normalizeRoutrEndpoint(endpoint) : normalizeRoutrEndpoint(process.env.ROUTR_API_ENDPOINT),
     insecure: true,
   }
 }
 
-export function createRoutrClients() {
-  const opts = routrClientOptions()
+export function createRoutrClients(endpoint?: string) {
+  const opts = routrClientOptions(endpoint)
   return {
     acls: new SDK.Acls(opts),
     credentials: new SDK.Credentials(opts),

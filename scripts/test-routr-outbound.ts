@@ -4,7 +4,7 @@ import './preload-env'
 import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 import { join } from 'path'
-import { createRoutrClients, normalizeRoutrEndpoint } from '../lib/routr/client'
+import { createRoutrClients, hostRoutrEndpoint } from '../lib/routr/client'
 import { arg } from './dial-cli-shared'
 
 const REQUIRED_ENV = [
@@ -55,8 +55,8 @@ async function verifyRoutr(): Promise<void> {
   const callerId = process.env.ROUTR_OUTBOUND_CALLER_ID!.trim()
   const telUrl = `tel:${callerId.startsWith('+') ? callerId : `+${callerId.replace(/\D/g, '')}`}`
 
-  const clients = createRoutrClients()
-  const endpoint = normalizeRoutrEndpoint(process.env.ROUTR_API_ENDPOINT)
+  const endpoint = hostRoutrEndpoint()
+  const clients = createRoutrClients(endpoint)
 
   const { items: peers } = await clients.peers.listPeers({ pageSize: 50, pageToken: '' })
   console.log('Peers:')

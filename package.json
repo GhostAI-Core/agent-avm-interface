@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "dial": "tsx scripts/dial-outbound.ts",
+    "dial:route": "tsx scripts/dial-route.ts",
     "test:routr": "tsx --test tests/lib/routr/*.test.ts"
   },
   "dependencies": {
@@ -17,8 +18,8 @@
     "@mui/icons-material": "^9.0.1",
     "@mui/material": "^9.0.1",
     "@mui/material-nextjs": "^9.0.1",
+    "@routr/sdk": "^2.13.20",
     "@supabase/ssr": "^0.10.2",
-    "@routr/sdk": "2",
     "@supabase/supabase-js": "^2.105.1",
     "chart.js": "^4.5.1",
     "livekit-server-sdk": "^2.15.4",

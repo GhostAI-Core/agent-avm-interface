@@ -17,7 +17,30 @@ Parallel migration: campaigns with `routing_mode = 'legacy'` keep using `LIVEKIT
 
 ## Open spikes (fill before first real call)
 
-### 1. Twilio Elastic SIP (first carrier)
+### Utility Connect (carrier trunk in Routr)
+
+Set in server `.env` (bootstrap creates Routr credentials + `trunk-carrier-default`):
+
+| Field | Value |
+|-------|-------|
+| `ROUTR_CARRIER_NAME` | `utility_connect` |
+| `ROUTR_CARRIER_SIP_HOST` | `sbc.convergedgroup.co.za` |
+| `ROUTR_CARRIER_SIP_PORT` | `5060` |
+| `ROUTR_CARRIER_SIP_USERNAME` | `uc-jono` |
+| `ROUTR_CARRIER_SIP_PASSWORD` | _(server `.env` only)_ |
+
+Utility Connect must whitelist the **Routr VPS public IP** (`ROUTR_PUBLIC_IP`).
+
+Outbound caller ID (`+27104760561`) is configured on the **LiveKit** Routr-facing trunk (`LIVEKIT_SIP_ROUTR_TRUNK_ID` → Numbers in LiveKit Console), not on the Routr carrier trunk.
+
+After updating `.env` on the server:
+
+```bash
+docker compose run --rm agent-avm-sip-routr-bootstrap
+npx @routr/ctl@2 trunks get -e 127.0.0.1:51908 --insecure
+```
+
+### 1. Twilio Elastic SIP (optional / legacy direct path)
 
 | Field | Value |
 |-------|-------|

@@ -18,6 +18,20 @@ function defaultAgentName() { return process.env.LIVEKIT_AGENT_NAME || 'outbound
 
 export type CampaignRoutingMode = 'legacy' | 'routr'
 
+export type TrunkSource =
+  | 'LIVEKIT_SIP_ROUTR_TRUNK_ID'
+  | 'campaigns.sip_trunk_id'
+  | 'sip_trunks.livekit_trunk_id'
+  | 'LIVEKIT_SIP_OUTBOUND_TRUNK_ID'
+
+export interface ResolveTrunkResult {
+  trunkId: string | null
+  source: TrunkSource | null
+  effectiveRoutingMode: CampaignRoutingMode
+  storedRoutingMode: CampaignRoutingMode
+  configError: string | null
+}
+
 export function campaignRoutingMode(campaign: { routing_mode?: string | null }): CampaignRoutingMode {
   return campaign.routing_mode === 'routr' ? 'routr' : 'legacy'
 }
@@ -83,27 +97,82 @@ export function parseRoomName(room: string): { campaignId: number; contactId: nu
  *   → campaigns.sip_trunk_id if ST_… or sip_trunks lookup
  *   → else LIVEKIT_SIP_OUTBOUND_TRUNK_ID
  */
-export async function resolveTrunkId(
+type CampaignTrunkFields = {
+  sip_trunk_id?: string | number | null
+  routing_mode?: string | null
+}
+
+/**
+ * Resolve trunk id and document which setting supplied it.
+ * Pass `effectiveCampaign` when applying an in-memory routing override (e.g. CLI `--route`).
+ */
+export async function resolveTrunkWithSource(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: { from: (t: string) => any } | null,
-  campaign: { sip_trunk_id?: string | number | null; routing_mode?: string | null },
-): Promise<string | null> {
-  if (campaignRoutingMode(campaign) === 'routr') {
-    return routrTrunkId() ?? null
+  storedCampaign: CampaignTrunkFields,
+  effectiveCampaign?: CampaignTrunkFields,
+): Promise<ResolveTrunkResult> {
+  const effective = effectiveCampaign ?? storedCampaign
+  const storedRoutingMode = campaignRoutingMode(storedCampaign)
+  const effectiveRoutingMode = campaignRoutingMode(effective)
+  const configError = routrTrunkConfigError(effective)
+
+  if (effectiveRoutingMode === 'routr') {
+    const trunkId = routrTrunkId() ?? null
+    return {
+      trunkId,
+      source: trunkId ? 'LIVEKIT_SIP_ROUTR_TRUNK_ID' : null,
+      effectiveRoutingMode,
+      storedRoutingMode,
+      configError,
+    }
   }
 
-  const raw = campaign.sip_trunk_id
-  if (typeof raw === 'string' && raw.startsWith('ST_')) return raw
+  const raw = effective.sip_trunk_id
+  if (typeof raw === 'string' && raw.startsWith('ST_')) {
+    return {
+      trunkId: raw,
+      source: 'campaigns.sip_trunk_id',
+      effectiveRoutingMode,
+      storedRoutingMode,
+      configError,
+    }
+  }
   if (raw != null && String(raw).match(/^\d+$/) && supabase) {
     const { data: trunkRow } = await supabase
       .from('sip_trunks')
       .select('livekit_trunk_id')
       .eq('id', Number(raw))
       .maybeSingle()
-    const tid = (trunkRow as { livekit_trunk_id?: string } | null)?.livekit_trunk_id
-    if (tid) return tid
+    const trunkId = (trunkRow as { livekit_trunk_id?: string } | null)?.livekit_trunk_id ?? null
+    if (trunkId) {
+      return {
+        trunkId,
+        source: 'sip_trunks.livekit_trunk_id',
+        effectiveRoutingMode,
+        storedRoutingMode,
+        configError,
+      }
+    }
   }
-  return defaultTrunkId() ?? null
+
+  const trunkId = defaultTrunkId() ?? null
+  return {
+    trunkId,
+    source: trunkId ? 'LIVEKIT_SIP_OUTBOUND_TRUNK_ID' : null,
+    effectiveRoutingMode,
+    storedRoutingMode,
+    configError,
+  }
+}
+
+export async function resolveTrunkId(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: { from: (t: string) => any } | null,
+  campaign: CampaignTrunkFields,
+): Promise<string | null> {
+  const { trunkId } = await resolveTrunkWithSource(supabase, campaign)
+  return trunkId
 }
 
 export async function startRoomRecording(room: string): Promise<{ egressId: string } | null> {
@@ -138,6 +207,8 @@ export interface DialTarget {
   agentName?: string | null
   trunkId?: string | null
   metadata?: Record<string, unknown>
+  /** CLI test only — wait for callee answer before returning (default false). */
+  waitUntilAnswered?: boolean
 }
 
 export interface DialResult {
@@ -175,7 +246,7 @@ export async function placeOutboundCall(target: DialTarget): Promise<DialResult>
       participantIdentity: `caller_${target.contactId}`,
       participantName: phone,
       participantMetadata: metadata,
-      waitUntilAnswered: false,
+      waitUntilAnswered: target.waitUntilAnswered ?? false,
       krispEnabled: true,
     })
     return { room, phone, contactId: target.contactId, ok: true }

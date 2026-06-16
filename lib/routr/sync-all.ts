@@ -50,7 +50,7 @@ export async function runBootstrapFromEnv(log: (msg: string) => void = console.l
       id: 0,
       name,
       slug: name,
-      provider_type: 'twilio',
+      provider_type: 'utility_connect',
       sip_host: host,
       sip_port: Number(process.env.ROUTR_CARRIER_SIP_PORT || 5060),
       sip_username: username,

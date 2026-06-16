@@ -59,6 +59,8 @@ services:
     restart: unless-stopped
 
   agent-avm-sip-routr-bootstrap:
+    profiles:
+      - bootstrap
     build:
       context: .
       dockerfile: infrastructure/routr/Dockerfile.bootstrap

@@ -16,6 +16,43 @@ export type PeerUpsertBody = {
   enabled?: boolean
 }
 
+type PeerSnapshot = Awaited<ReturnType<RoutrClients['peers']['getPeer']>>
+
+/** Routr updatePeer requires string fields (name, aor, …) — merge with the stored peer. */
+function buildPeerUpdateRequest(
+  existingRef: string,
+  current: PeerSnapshot,
+  createBody: Record<string, unknown>,
+  body: PeerUpsertBody,
+) {
+  const contactAddr =
+    (createBody.contactAddr as string | undefined) ?? current.contactAddr ?? undefined
+
+  const request: Record<string, unknown> = {
+    ref: existingRef,
+    name: (createBody.name as string) ?? current.name,
+    aor: (createBody.aor as string) ?? current.aor,
+    withSessionAffinity:
+      (createBody.withSessionAffinity as boolean | undefined) ??
+      current.withSessionAffinity ??
+      false,
+    enabled: (createBody.enabled as boolean | undefined) ?? current.enabled ?? true,
+    extended: (createBody.extended as Record<string, unknown> | undefined) ?? current.extended,
+    balancingAlgorithm: current.balancingAlgorithm,
+  }
+
+  if (contactAddr) request.contactAddr = contactAddr
+  if (body.credentialsRef) request.credentialsRef = body.credentialsRef
+  else if (current.credentialsRef) request.credentialsRef = current.credentialsRef
+  if (body.accessControlListRef) request.accessControlListRef = body.accessControlListRef
+  else if (current.accessControlListRef) {
+    request.accessControlListRef = current.accessControlListRef
+  }
+  if (current.maxContacts !== undefined) request.maxContacts = current.maxContacts
+
+  return request
+}
+
 /** Routr protos: CreatePeerRequest has no ref; UpdatePeerRequest has no username. */
 export async function upsertPeer(
   clients: RoutrClients,
@@ -39,9 +76,6 @@ export async function upsertPeer(
   if (body.credentialsRef) createBody.credentialsRef = body.credentialsRef
   if (body.accessControlListRef) createBody.accessControlListRef = body.accessControlListRef
 
-  const updateBody = { ...createBody }
-  delete updateBody.username
-
   let existingRef = await findLiveKitPeerRef(clients, username)
   if (!existingRef) {
     try {
@@ -54,15 +88,12 @@ export async function upsertPeer(
 
   if (existingRef) {
     log(`[routr] update peer ${existingRef}`)
-    const result = await clients.peers.updatePeer({ ref: existingRef, ...updateBody })
-    if (body.credentialsRef) {
-      const current = await clients.peers.getPeer(existingRef)
-      if (!current.credentialsRef) {
-        log(`[routr] link credentialsRef on peer ${existingRef}`)
-        await clients.peers.updatePeer({ ref: existingRef, credentialsRef: body.credentialsRef })
-      }
-    }
-    return result
+    const current = await clients.peers.getPeer(existingRef)
+    return clients.peers.updatePeer(
+      buildPeerUpdateRequest(existingRef, current, createBody, body) as Parameters<
+        RoutrClients['peers']['updatePeer']
+      >[0],
+    )
   }
 
   log(`[routr] create peer (${username})`)
@@ -73,7 +104,12 @@ export async function upsertPeer(
     const found = await findLiveKitPeerRef(clients, username)
     if (!found) throw err
     log(`[routr] update peer ${found} (existing resource)`)
-    return clients.peers.updatePeer({ ref: found, ...updateBody })
+    const current = await clients.peers.getPeer(found)
+    return clients.peers.updatePeer(
+      buildPeerUpdateRequest(found, current, createBody, body) as Parameters<
+        RoutrClients['peers']['updatePeer']
+      >[0],
+    )
   }
 }
 

@@ -108,6 +108,30 @@ function normalizePeerUsername(raw) {
   return value || "livekit";
 }
 
+function buildPeerUpdateRequest(existingRef, current, createBody, peerBody) {
+  const contactAddr = createBody.contactAddr ?? current.contactAddr ?? undefined;
+  const request = {
+    ref: existingRef,
+    name: createBody.name ?? current.name,
+    aor: createBody.aor ?? current.aor,
+    withSessionAffinity:
+      createBody.withSessionAffinity ?? current.withSessionAffinity ?? false,
+    enabled: createBody.enabled ?? current.enabled ?? true,
+    extended: createBody.extended ?? current.extended,
+    balancingAlgorithm: current.balancingAlgorithm,
+  };
+  if (contactAddr) request.contactAddr = contactAddr;
+  if (peerBody.credentialsRef) request.credentialsRef = peerBody.credentialsRef;
+  else if (current.credentialsRef) request.credentialsRef = current.credentialsRef;
+  if (peerBody.accessControlListRef) {
+    request.accessControlListRef = peerBody.accessControlListRef;
+  } else if (current.accessControlListRef) {
+    request.accessControlListRef = current.accessControlListRef;
+  }
+  if (current.maxContacts !== undefined) request.maxContacts = current.maxContacts;
+  return request;
+}
+
 async function upsertLiveKitPeer(peers, peerBody) {
   const username = normalizePeerUsername(peerBody.username);
   const createBody = {
@@ -132,9 +156,6 @@ async function upsertLiveKitPeer(peers, peerBody) {
     createBody.accessControlListRef = peerBody.accessControlListRef;
   }
 
-  const updateBody = { ...createBody };
-  delete updateBody.username;
-
   let existingRef = await findLiveKitPeerRef(peers, username);
   if (!existingRef) {
     try {
@@ -147,15 +168,8 @@ async function upsertLiveKitPeer(peers, peerBody) {
 
   if (existingRef) {
     console.log(`[routr-bootstrap] update peer ${existingRef}`);
-    const result = await peers.updatePeer({ ref: existingRef, ...updateBody });
-    if (peerBody.credentialsRef) {
-      const current = await peers.getPeer(existingRef);
-      if (!current.credentialsRef) {
-        console.log(`[routr-bootstrap] link credentialsRef on peer ${existingRef}`);
-        await peers.updatePeer({ ref: existingRef, credentialsRef: peerBody.credentialsRef });
-      }
-    }
-    return result;
+    const current = await peers.getPeer(existingRef);
+    return peers.updatePeer(buildPeerUpdateRequest(existingRef, current, createBody, peerBody));
   }
 
   console.log(`[routr-bootstrap] create peer (${username})`);
@@ -166,7 +180,8 @@ async function upsertLiveKitPeer(peers, peerBody) {
     const found = await findLiveKitPeerRef(peers, username);
     if (!found) throw err;
     console.log(`[routr-bootstrap] update peer ${found} (existing resource)`);
-    return peers.updatePeer({ ref: found, ...updateBody });
+    const current = await peers.getPeer(found);
+    return peers.updatePeer(buildPeerUpdateRequest(found, current, createBody, peerBody));
   }
 }
 

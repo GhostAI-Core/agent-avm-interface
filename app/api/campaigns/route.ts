@@ -35,13 +35,16 @@ export async function POST(req: Request) {
     if (!user) return unauthorized()
 
     const body = await req.json()
-    const { name, agent, dialing_speed, window_start, window_end, voice_recording_url, voice_path, contacts } = body
+    const { name, agent, agent_name, sip_trunk_id, dialing_speed, window_start, window_end, voice_recording_url, voice_path, contacts } = body
 
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
 
-    // 1. Insert Campaign — agent is optional in the fast-dial flow (stored NULL when unset).
+    // 1. Insert Campaign — agent persona is optional; agent_name/sip_trunk_id come from the
+    //    Telephony setup (free-text agent + LiveKit trunk id) and are stored NULL when unset.
     const { data: campaign, error: cErr } = await supabase.from('campaigns').insert({
       name, agent: agent || null, status: 'draft',
+      agent_name: agent_name || null,
+      sip_trunk_id: sip_trunk_id || null,
       dialing_speed: dialing_speed ?? 1,
       time_window_start: window_start ?? '08:00',
       time_window_end: window_end ?? '20:00',

@@ -16,7 +16,9 @@ const NAV_GROUPS = [
     label: 'Campaigns',
     items: [
       { id: 'dashboard', label: 'Control Room'     },
-      { id: 'sts',       label: 'STS Dashboard'   },
+      // Hidden for now (not needed for the foreseeable future) — component + route
+      // are kept; re-enable by uncommenting this line.
+      // { id: 'sts',       label: 'STS Dashboard'   },
       { id: 'companies', label: 'Companies'       },
       { id: 'campaigns', label: 'Campaigns'       },
       { id: 'reports',   label: 'Campaign Report' },

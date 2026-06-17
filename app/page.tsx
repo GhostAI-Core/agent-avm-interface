@@ -824,7 +824,7 @@ export default function Page() {
         )
       })()}
 
-      {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} />}
+      {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} onGoToTelephony={() => setView('telephony')} />}
       <Dialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth
         slotProps={{ paper: { sx: { overflow: 'hidden', borderRadius: `${radius.lg}px` } } }}
       >

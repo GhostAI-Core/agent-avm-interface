@@ -53,12 +53,8 @@ jobs:
       - name: Sync project to server
         run: |
           rsync -az --delete \
-            --exclude '.env' \
-            --exclude '.env.local' \
-            --exclude '.env.*.local' \
             --exclude 'node_modules/' \
             --exclude '.next/' \
-            --exclude '.git/' \
             ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/"
 
       - name: Deploy with Docker Compose

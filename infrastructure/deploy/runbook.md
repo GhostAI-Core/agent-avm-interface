@@ -18,7 +18,7 @@
 | --- | --- | --- | --- |
 | `agent-avm-web-web` | Next.js web app | 3000 | Yes |
 
-Supabase is external SaaS — no database container in this stack.
+Supabase is external SaaS — no database container in this stack. Outbound SIP is configured in LiveKit Cloud (trunks).
 
 The web app is on the `shared` network so the reverse proxy / tunnel can reach it by service name.
 
@@ -50,7 +50,7 @@ sudo chown -R deploy:deploy /opt/docker/production/evra_avm
 
 # After first rsync or clone
 cp /opt/docker/production/evra_avm/.env.example /opt/docker/production/evra_avm/.env
-nano /opt/docker/production/evra_avm/.env   # fill Supabase keys
+nano /opt/docker/production/evra_avm/.env   # fill Supabase + LiveKit keys
 
 docker network inspect shared     # must exist; create outside this project if missing
 
@@ -68,7 +68,7 @@ cd /opt/docker/production/evra_avm
 docker compose ps
 # agent-avm-web-web: expose only (no host ports)
 
-docker network inspect shared | grep -E 'agent-avm-web-web'
+docker network inspect shared | grep agent-avm-web-web
 
 docker exec $(docker compose ps -q agent-avm-web-web) \
   wget -q -O - http://localhost:3000/api/health
@@ -93,5 +93,5 @@ Prefer re-running a prior successful GitHub Actions deploy from a known-good com
 
 ```bash
 ssh -L 3000:agent-avm-web-web:3000 deploy@{DEPLOY_HOST}
-# then open http://localhost:30
+# then open http://localhost:3000
 ```

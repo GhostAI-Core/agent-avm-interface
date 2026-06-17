@@ -17,12 +17,19 @@ import {
   isLivekitAuthConfigured,
   isLivekitConfigured,
   placeOutboundCall,
-  resolveTrunkId,
+  resolveTrunkWithSource,
   startRoomRecording,
   isEgressConfigured,
   type DialResult,
+  type ResolveTrunkResult,
 } from '../lib/outbound-call'
 import { normalizePhone } from '../lib/phone'
+import {
+  arg,
+  printDialPlan,
+  printDialResult,
+  pollCallRecordOutcome,
+} from './dial-cli-shared'
 
 const DEFAULT_BATCH = 3
 
@@ -43,11 +50,6 @@ type CampaignRow = {
   sip_trunk_id?: string | number | null
 }
 
-function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(`--${name}`)
-  return i >= 0 ? process.argv[i + 1] : undefined
-}
-
 function requireEnv(keys: string[]): void {
   const missing = keys.filter(k => !process.env[k])
   if (missing.length) {
@@ -66,11 +68,16 @@ async function dialContact(
   campaignId: string,
   campaign: CampaignRow,
   contact: ContactRow,
-  trunkId: string,
+  trunk: ResolveTrunkResult,
+  waitUntilAnswered: boolean,
 ): Promise<{ contactId: number; phone: string; result: DialResult; callRecordId: number | null }> {
   const phone = normalizePhone(contact.phone)
+  const trunkId = trunk.trunkId!
   const voiceUrl = campaign.voice_recording_url ?? null
   const now = new Date().toISOString()
+
+  console.log('\n── Dial plan ──')
+  printDialPlan(campaignId, String(contact.id), phone, agentName(campaign), trunk)
 
   await supabase
     .from('contacts')
@@ -83,6 +90,7 @@ async function dialContact(
     contactId: contact.id,
     agentName: agentName(campaign),
     trunkId,
+    waitUntilAnswered,
     metadata: {
       campaignName: campaign.name,
       firstName: contact.first_name,
@@ -125,6 +133,20 @@ async function dialContact(
     })
   }
 
+  console.log('\n── Dial result ──')
+  printDialResult(result.room, result.ok, callRecordId, result.error, { waitedForAnswer: waitUntilAnswered })
+  if (result.ok && !waitUntilAnswered) {
+    const outcome = await pollCallRecordOutcome(supabase, result.room)
+    if (outcome) {
+      console.log('webhook_outcome: ', outcome)
+    } else {
+      console.log(
+        'webhook_outcome: ',
+        'still pending after 20s — SIP likely never connected (check carrier route, LiveKit trunk auth)',
+      )
+    }
+  }
+
   return { contactId: contact.id, phone, result, callRecordId }
 }
 
@@ -133,11 +155,16 @@ async function dialManualPhone(
   campaignId: string,
   campaign: CampaignRow,
   phoneRaw: string,
-  trunkId: string,
-): Promise<void> {
+  trunk: ResolveTrunkResult,
+  waitUntilAnswered: boolean,
+): Promise<boolean> {
   const phone = normalizePhone(phoneRaw)
+  const trunkId = trunk.trunkId!
   const voiceUrl = campaign.voice_recording_url ?? null
   const cid = `m${Date.now()}`
+
+  console.log('\n── Dial plan ──')
+  printDialPlan(campaignId, `(manual ${cid})`, phone, agentName(campaign), trunk)
 
   const result = await placeOutboundCall({
     phone,
@@ -145,6 +172,7 @@ async function dialManualPhone(
     contactId: cid,
     agentName: agentName(campaign),
     trunkId,
+    waitUntilAnswered,
     metadata: {
       campaignName: campaign.name,
       voiceRecordingUrl: voiceUrl,
@@ -173,39 +201,33 @@ async function dialManualPhone(
     callRecordId = rec?.id ?? null
   }
 
-  printSummary([{ contactId: cid, phone, result, callRecordId }], trunkId, campaign)
-  process.exit(result.ok ? 0 : 1)
-}
-
-function printSummary(
-  rows: { contactId: number | string; phone: string; result: DialResult; callRecordId: number | null }[],
-  trunkId: string,
-  campaign: CampaignRow,
-) {
-  console.log(`\n── Dial summary (${rows.length} call${rows.length === 1 ? '' : 's'}) ──`)
-  console.log('  trunk: ', trunkId)
-  console.log('  agent: ', agentName(campaign) ?? '(default)')
-  for (const row of rows) {
-    console.log('  ─────────────────────────')
-    console.log('  contact:       ', row.contactId)
-    console.log('  phone:         ', row.phone)
-    console.log('  room:          ', row.result.room)
-    console.log('  call_record_id:', row.callRecordId ?? '(none)')
-    console.log('  ok:            ', row.result.ok)
-    if (row.result.error) console.log('  error:         ', row.result.error)
+  console.log('\n── Dial result ──')
+  printDialResult(result.room, result.ok, callRecordId, result.error, { waitedForAnswer: waitUntilAnswered })
+  if (result.ok && !waitUntilAnswered) {
+    const outcome = await pollCallRecordOutcome(supabase, result.room)
+    if (outcome) {
+      console.log('webhook_outcome: ', outcome)
+    } else {
+      console.log(
+        'webhook_outcome: ',
+        'still pending after 20s — SIP likely never connected (check carrier route, LiveKit trunk auth)',
+      )
+    }
   }
-  const ok = rows.filter(r => r.result.ok).length
-  console.log(`\n  ${ok}/${rows.length} succeeded`)
+  return result.ok
 }
 
 async function main() {
   const campaignId = arg('campaign-id')
   const contactId = arg('contact-id')
   const phoneArg = arg('phone')
+  const waitUntilAnswered = process.argv.includes('--wait')
   const batchSize = Math.max(1, Number(arg('batch') ?? DEFAULT_BATCH) || DEFAULT_BATCH)
 
   if (!campaignId) {
-    console.error('Usage: npm run dial -- --campaign-id <id> [--batch 3] [--contact-id <id>] [--phone <e164>]')
+    console.error(
+      'Usage: npm run dial -- --campaign-id <id> [--batch 3] [--contact-id <id>] [--phone <e164>] [--wait]',
+    )
     process.exit(1)
   }
 
@@ -237,16 +259,17 @@ async function main() {
     process.exit(1)
   }
 
-  const trunkId = await resolveTrunkId(supabase, campaign)
-  if (!isLivekitConfigured(trunkId)) {
-    console.error('No SIP trunk: Set campaigns.sip_trunk_id → sip_trunks, or LIVEKIT_SIP_OUTBOUND_TRUNK_ID in .env')
+  const trunk = await resolveTrunkWithSource(supabase, campaign)
+
+  if (!isLivekitConfigured(trunk.trunkId)) {
+    console.error('No SIP trunk: set campaigns.sip_trunk_id → sip_trunks, or LIVEKIT_SIP_OUTBOUND_TRUNK_ID in .env')
     process.exit(1)
   }
 
   // Single ad-hoc phone
   if (phoneArg) {
-    await dialManualPhone(supabase, campaignId, campaign, phoneArg, trunkId!)
-    return
+    const ok = await dialManualPhone(supabase, campaignId, campaign, phoneArg, trunk, waitUntilAnswered)
+    process.exit(ok ? 0 : 1)
   }
 
   // Single contact
@@ -261,8 +284,7 @@ async function main() {
       console.error('Contact not found:', error?.message ?? contactId)
       process.exit(1)
     }
-    const row = await dialContact(supabase, campaignId, campaign, data, trunkId!)
-    printSummary([row], trunkId!, campaign)
+    const row = await dialContact(supabase, campaignId, campaign, data, trunk, waitUntilAnswered)
     process.exit(row.result.ok ? 0 : 1)
   }
 
@@ -286,12 +308,12 @@ async function main() {
 
   console.log(`Dialing ${contacts.length} contact(s) in parallel (batch=${batchSize})…`)
   const rows = await Promise.all(
-    contacts.map(c => dialContact(supabase, campaignId, campaign, c, trunkId!)),
+    contacts.map(c => dialContact(supabase, campaignId, campaign, c, trunk, waitUntilAnswered)),
   )
 
-  printSummary(rows, trunkId!, campaign)
-  const allOk = rows.every(r => r.result.ok)
-  process.exit(allOk ? 0 : 1)
+  const ok = rows.filter(r => r.result.ok).length
+  console.log(`\n── Batch summary: ${ok}/${rows.length} succeeded ──`)
+  process.exit(ok === rows.length ? 0 : 1)
 }
 
 main().catch(err => {

@@ -53,14 +53,47 @@ jobs:
       - name: Sync project to server
         run: |
           rsync -az --delete \
-            --exclude ".git/" \
-            --exclude ".github/" \
+            --exclude '.env' \
+            --exclude '.env.local' \
+            --exclude '.env.*.local' \
+            --exclude 'node_modules/' \
+            --exclude '.next/' \
+            --exclude '.git/' \
             ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/"
 
       - name: Deploy with Docker Compose
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
-            set -e
+            set -euo pipefail
             cd '${{ secrets.DEPLOY_PATH }}'
+
+            if [ ! -f .env ]; then
+              echo 'ERROR: server .env missing — copy .env.example to .env and fill secrets before deploy' >&2
+              exit 1
+            fi
+            command -v npm >/dev/null || { echo 'ERROR: npm is not installed on the deploy host' >&2; exit 1; }
+
+            # Host CLI (dial) — not used inside the web container
+            npm ci --include=dev
+
             docker compose up -d --build
+
+            docker compose ps
+          "
+
+      - name: Verify web health
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            set -euo pipefail
+            cd '${{ secrets.DEPLOY_PATH }}'
+            for i in \$(seq 1 30); do
+              if docker compose exec -T agent-avm-web-web wget -q --spider http://localhost:3000/api/health 2>/dev/null; then
+                echo 'agent-avm-web-web health check passed'
+                exit 0
+              fi
+              sleep 2
+            done
+            echo 'ERROR: agent-avm-web-web health check failed after 60s' >&2
+            docker compose logs --tail=80 agent-avm-web-web >&2 || true
+            exit 1
           "

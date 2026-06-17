@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { demoCallsFor, DEMO_CAMPAIGNS } from '@/lib/demo-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,11 +20,8 @@ export async function GET(req: NextRequest) {
       .order('called_at', { ascending: false })
       .limit(2000)
 
-    if (error || !data || data.length === 0) {
-      const all = DEMO_CAMPAIGNS.flatMap(c => demoCallsFor(c.id))
-      return NextResponse.json({ logs: all, demo: true })
-    }
-    return NextResponse.json({ logs: data })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ logs: data ?? [] })
   }
 
   const { data, error } = await supabase
@@ -35,9 +31,6 @@ export async function GET(req: NextRequest) {
     .order('called_at', { ascending: false })
     .limit(500)
 
-  if (error || !data || data.length === 0) {
-    return NextResponse.json({ logs: demoCallsFor(Number(campaignId) || 1), demo: true })
-  }
-
-  return NextResponse.json({ logs: data })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ logs: data ?? [] })
 }

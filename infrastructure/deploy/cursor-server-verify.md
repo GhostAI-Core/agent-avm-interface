@@ -1,147 +1,71 @@
-# Cursor agent: EVRA AVM server health check
+# Agent AVM — Server verification checklist
 
-You are on the **production server**. Run every check below yourself (do not ask the user to run commands). Produce a final pass/fail report.
+Post-deploy checks for the **web stack** on the production host.
 
 ## Context
 
 | Item | Value |
 | --- | --- |
 | Compose project | `agent-avm-web` |
-| Working directory | `/opt/docker/production/evra_avm` |
+| Deploy path | `/opt/docker/production/evra_avm` |
+| Compose service | `agent-avm-web-web` |
 | Stack | Next.js web app |
 | External network | Docker network `shared` (must exist) |
+| Public access | Cloudflare Tunnel → `agent-avm-web-web:3000` |
 
-**Security:** Never print secret values from `.env` (passwords, API keys, service role). Only report whether each required variable is **set** or **missing**.
-
----
-
-## Rules
-
-1. `cd /opt/docker/production/evra_avm` before all compose commands.
-2. Run checks in order. If a prerequisite fails, note it and continue where possible.
-3. Do **not** modify files, restart services, or run bootstrap unless the user explicitly asked you to fix something.
-4. End with a markdown table: Component | Status | Evidence | Action needed.
-
----
-
-## 1. Prerequisites
+## 1. Compose status
 
 ```bash
 cd /opt/docker/production/evra_avm
-docker network inspect shared >/dev/null && echo "shared: OK" || echo "shared: MISSING"
-test -f .env && echo ".env: OK" || echo ".env: MISSING"
-docker compose config --quiet && echo "compose: OK" || echo "compose: INVALID"
+docker compose ps
 ```
 
-**Pass:** `shared` network exists, `.env` exists, `docker compose config` succeeds.
+**Pass:** `agent-avm-web-web` is `Up` and healthy.
 
----
-
-## 2. Container status
+## 2. Health endpoint (in container)
 
 ```bash
-docker compose ps -a
+docker exec $(docker compose ps -q agent-avm-web-web) \
+  wget -q -O - http://localhost:3000/api/health
 ```
 
-**Pass criteria:**
+**Pass:** HTTP 200 with health JSON.
 
-| Service | Expected |
-| --- | --- |
-| `agent-avm-web-web` | `Up` and **`healthy`** (not `unhealthy`) |
-
-**Fail hints:**
-- Web `unhealthy` → check `HOSTNAME=0.0.0.0` in `docker-compose.yml` and recreate web container.
-
----
-
-## 3. Web application
+## 3. Shared network
 
 ```bash
-# In-container health (what Docker healthcheck uses)
-docker compose exec -T agent-avm-web-web wget -qO- http://localhost:3000/api/health
-
-# On shared network (how reverse proxy reaches the app)
-docker compose exec -T agent-avm-web-web wget -qO- http://127.0.0.1:3000/api/health 2>/dev/null || true
+docker network inspect shared | grep agent-avm-web-web
 ```
 
-**Pass:** Response JSON includes `"status":"ok"` (or equivalent from `/api/health`).
+**Pass:** Web container attached to `shared` network (if tunnel routes through it).
+
+## 4. Environment (LiveKit + Supabase)
 
 ```bash
-docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q agent-avm-web-web)"
+grep -E '^(LIVEKIT_|NEXT_PUBLIC_SUPABASE|SUPABASE_SERVICE)' .env | sed 's/=.*/=***/'
 ```
 
-**Pass:** `healthy`
+**Pass for outbound dialing:**
 
-**Recent errors:**
+- `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` set
+- `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` set (or campaigns use per-trunk `sip_trunk_id`)
+- `SUPABASE_SERVICE_ROLE_KEY` set (webhooks + agent result)
+
+## 5. Manual dial smoke test (optional)
+
+From the deploy host (with `.env` loaded):
 
 ```bash
-docker compose logs --tail=40 agent-avm-web-web 2>&1 | tail -20
+npm run dial -- --campaign-id <id> --contact-id <id>
 ```
 
----
+**Pass:** CLI prints `selected_trunk` and `result: ok` (or a clear SIP error from LiveKit).
 
-## 4. Environment variables (presence only)
+## Summary template
 
-```bash
-cd /opt/docker/production/evra_avm
-for key in \
-  LIVEKIT_URL \
-  LIVEKIT_API_KEY \
-  LIVEKIT_API_SECRET \
-  LIVEKIT_SIP_OUTBOUND_TRUNK_ID \
-  LIVEKIT_AGENT_NAME \
-  NEXT_PUBLIC_SUPABASE_URL \
-  SUPABASE_SERVICE_ROLE_KEY; do
-  if grep -q "^${key}=" .env 2>/dev/null && \
-     grep "^${key}=" .env | grep -qvE '^[^=]+=$' && \
-     grep "^${key}=" .env | grep -qvE '^[^=]+=\s*$'; then
-    echo "$key: set"
-  else
-    echo "$key: MISSING or empty"
-  fi
-done
-```
-
-**Pass:**
-- `LIVEKIT_*` vars set (including `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`).
-- `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set.
-
----
-
-## 5. Final report template
-
-Fill this in and return it to the user:
-
-```markdown
-# EVRA AVM server health report
-**Checked:** <timestamp UTC>
-**Host:** <hostname>
-**Path:** /opt/docker/production/evra_avm
-
-## Summary
-| Component | Status | Notes |
+| Check | Result | Notes |
 | --- | --- | --- |
-| Docker network `shared` | PASS/FAIL | |
-| agent-avm-web-web | PASS/FAIL | health: healthy/unhealthy |
-| .env required vars | PASS/FAIL | list missing keys only |
-
-## Blockers (if any)
-1. ...
-
-## Recommended fixes (only if failures found)
-1. ...
-```
-
----
-
-## Remediation commands (run only if user asks you to fix)
-
-```bash
-cd /opt/docker/production/evra_avm
-
-# Rebuild web (HOSTNAME / health fix)
-docker compose up -d --build agent-avm-web-web
-
-# Full stack rebuild
-docker compose up -d --build
-```
+| agent-avm-web-web | PASS/FAIL | |
+| /api/health | PASS/FAIL | |
+| LiveKit env | PASS/FAIL | |
+| Manual dial | PASS/FAIL/SKIP | |

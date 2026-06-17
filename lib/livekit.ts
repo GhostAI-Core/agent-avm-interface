@@ -7,10 +7,13 @@ export {
   isEgressConfigured,
   parseRoomName,
   resolveTrunkId,
+  resolveTrunkWithSource,
   startRoomRecording,
   placeOutboundCall,
   type DialTarget,
   type DialResult,
+  type TrunkSource,
+  type ResolveTrunkResult,
 } from '@/lib/outbound-call'
 
 const LK_KEY = process.env.LIVEKIT_API_KEY

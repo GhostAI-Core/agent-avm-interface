@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "dial": "tsx scripts/dial-outbound.ts"
+    "dial": "npx tsx scripts/dial-outbound.ts"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",

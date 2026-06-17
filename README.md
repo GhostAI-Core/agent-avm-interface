@@ -212,7 +212,7 @@ Copy `.env.local.example` (local) or `.env.example` (production). Key groups:
 | `LIVEKIT_RECORD_*` | Optional S3-compatible egress for call recordings |
 | `AGENT_RESULT_SECRET` | Shared secret for `/api/calls/result` |
 | `INWORLD_API_KEY` | Inworld TTS Basic auth credential (base64, server only) for `/api/tts/generate` |
-| `AVM_SCRIPT_AUDIO_STORAGE_*` | Public `avm-scripts` bucket for generated campaign audio (`script-{campaign-slug}.mp3`) |
+| `AVM_SCRIPT_AUDIO_STORAGE_*` | Supabase S3 credentials + public URL for generated campaign audio (`script-{campaign-slug}-{DD-MM-YYYY}.mp3` via PutObject) |
 | `NEXT_PUBLIC_POLL_INTERVAL_MS` | Dashboard refresh interval (default 15000) |
 
 Per-campaign overrides: `campaigns.sip_trunk_id` and `campaigns.agent_name` override the env defaults when set.

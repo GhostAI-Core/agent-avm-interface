@@ -1,11 +1,49 @@
 import 'server-only'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+
+let s3Client: S3Client | null = null
+
+function requiredEnv(name: string): string {
+  const value = process.env[name]?.trim()
+  if (!value) throw new Error(`Missing ${name}`)
+  return value
+}
+
+/** S3 API endpoint — derived from Supabase project URL when not set explicitly. */
+export function getScriptStorageS3Endpoint(): string {
+  const explicit = process.env.AVM_SCRIPT_AUDIO_STORAGE_S3_ENDPOINT?.trim()
+  if (explicit) return explicit.replace(/\/$/, '')
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+  if (!supabaseUrl) throw new Error('NEXT_PUBLIC_SUPABASE_URL is required for S3 uploads')
+
+  const projectRef = new URL(supabaseUrl).hostname.split('.')[0]
+  return `https://${projectRef}.storage.supabase.co/storage/v1/s3`
+}
 
 export function isScriptStorageConfigured(): boolean {
   return Boolean(
-    process.env.AVM_SCRIPT_AUDIO_STORAGE_BUCKET &&
-    process.env.AVM_SCRIPT_AUDIO_STORAGE_ENDPOINT,
+    process.env.AVM_SCRIPT_AUDIO_STORAGE_BUCKET?.trim() &&
+    process.env.AVM_SCRIPT_AUDIO_STORAGE_REGION?.trim() &&
+    process.env.AVM_SCRIPT_AUDIO_STORAGE_ACCESS_KEY?.trim() &&
+    process.env.AVM_SCRIPT_AUDIO_STORAGE_SECRET?.trim() &&
+    process.env.AVM_SCRIPT_AUDIO_STORAGE_ENDPOINT?.trim(),
   )
+}
+
+function getS3Client(): S3Client {
+  if (!s3Client) {
+    s3Client = new S3Client({
+      forcePathStyle: true,
+      region: requiredEnv('AVM_SCRIPT_AUDIO_STORAGE_REGION'),
+      endpoint: getScriptStorageS3Endpoint(),
+      credentials: {
+        accessKeyId: requiredEnv('AVM_SCRIPT_AUDIO_STORAGE_ACCESS_KEY'),
+        secretAccessKey: requiredEnv('AVM_SCRIPT_AUDIO_STORAGE_SECRET'),
+      },
+    })
+  }
+  return s3Client
 }
 
 export function slugifyCampaignName(name: string): string {
@@ -17,14 +55,22 @@ export function slugifyCampaignName(name: string): string {
     .slice(0, 80) || 'campaign'
 }
 
-/** Object key in the avm-scripts bucket, e.g. script-my-campaign.mp3 */
-export function buildCampaignScriptKey(campaignName: string): string {
-  const prefix = process.env.AVM_SCRIPT_AUDIO_STORAGE_PREFIX ?? 'script-'
-  return `${prefix}${slugifyCampaignName(campaignName)}.mp3`
+function formatDateStamp(date = new Date()): string {
+  const dd = String(date.getDate()).padStart(2, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const yyyy = date.getFullYear()
+  return `${dd}-${mm}-${yyyy}`
 }
 
+/** Object key in the avm-scripts bucket, e.g. script-my-campaign-17-06-2026.mp3 */
+export function buildCampaignScriptKey(campaignName: string, date = new Date()): string {
+  const prefix = process.env.AVM_SCRIPT_AUDIO_STORAGE_PREFIX ?? 'script-'
+  return `${prefix}${slugifyCampaignName(campaignName)}-${formatDateStamp(date)}.mp3`
+}
+
+/** Public URL for a stored object (browser / dial playback). */
 export function publicScriptUrl(storageKey: string): string {
-  const base = process.env.AVM_SCRIPT_AUDIO_STORAGE_ENDPOINT!.replace(/\/$/, '')
+  const base = requiredEnv('AVM_SCRIPT_AUDIO_STORAGE_ENDPOINT').replace(/\/$/, '')
   return `${base}/${storageKey}`
 }
 
@@ -33,20 +79,21 @@ export async function uploadCampaignScript(
   audio: Buffer,
   contentType = 'audio/mpeg',
 ): Promise<{ storageKey: string; publicUrl: string }> {
-  const bucket = process.env.AVM_SCRIPT_AUDIO_STORAGE_BUCKET
-  if (!bucket || !process.env.AVM_SCRIPT_AUDIO_STORAGE_ENDPOINT) {
+  if (!isScriptStorageConfigured()) {
     throw new Error('Script audio storage is not configured')
   }
 
-  const admin = createAdminClient()
-  if (!admin) throw new Error('Script audio storage is not configured')
-
+  const bucket = requiredEnv('AVM_SCRIPT_AUDIO_STORAGE_BUCKET')
   const storageKey = buildCampaignScriptKey(campaignName)
-  const { error } = await admin.storage
-    .from(bucket)
-    .upload(storageKey, audio, { contentType, upsert: true })
 
-  if (error) throw new Error(error.message)
+  await getS3Client().send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: storageKey,
+      Body: audio,
+      ContentType: contentType,
+    }),
+  )
 
   return { storageKey, publicUrl: publicScriptUrl(storageKey) }
 }

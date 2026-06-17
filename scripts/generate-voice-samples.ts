@@ -44,6 +44,8 @@ for (const voice of voices) {
         voiceId: voice.voiceId,
         modelId: 'inworld-tts-1.5-max',
         timestampType: 'WORD',
+        deliveryMode: 'STABLE',
+        applyTextNormalization: 'ON',
         audioConfig: { speakingRate: 1.2 },
         temperature: 1.4,
       }),

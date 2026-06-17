@@ -60,6 +60,8 @@ export async function POST(req: Request) {
         voiceId,
         modelId: 'inworld-tts-1.5-max',
         timestampType: 'WORD',
+        deliveryMode: 'STABLE',
+        applyTextNormalization: 'ON',
         audioConfig: { speakingRate: 1.2 },
         temperature: 1.4,
       }),

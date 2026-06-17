@@ -14,6 +14,7 @@ import CampaignModal from '@/components/CampaignModal'
 import AuthView from '@/components/AuthView'
 import SecurityView from '@/components/SecurityView'
 import SettingsView from '@/components/SettingsView'
+import TelephonyView from '@/components/TelephonyView'
 import { OutcomeDonut, CampaignBar, SpendChart, FunnelChart } from '@/components/Charts'
 import STSDashboard from '@/components/STSDashboard'
 import ProfileView from '@/components/ProfileView'
@@ -104,7 +105,6 @@ export default function Page() {
   const [reports,     setReports]     = useState<CampaignReport[]>([])
   const [allCalls,    setAllCalls]    = useState<any[]>([])
   const [allIntents,  setAllIntents]  = useState<any[]>([])
-  const [providers,         setProviders]         = useState<any[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignReport | null>(null)
   const [detailedLogs,     setDetailedLogs]     = useState<any[]>([])
   const [activeCalls,      setActiveCalls]      = useState<any[]>([])
@@ -272,23 +272,21 @@ export default function Page() {
         const today = new Date().toISOString().slice(0, 10)
         const results = await Promise.allSettled([
           getJson('/api/campaigns'),
-          getJson('/api/providers'),
           getJson('/api/security'),
           getJson('/api/companies'),
           getJson('/api/logs'),
           getJson(`/api/intents?date=${today}`),
         ])
         if (!active) return
-        const [jC, jP, jS, jCo, jL, jI] = results.map((r) => (r.status === 'fulfilled' ? r.value : null))
+        const [jC, jS, jCo, jL, jI] = results.map((r) => (r.status === 'fulfilled' ? r.value : null))
         if (jC) setCampaigns(jC.campaigns ?? [])
-        if (jP) setProviders(jP.providers ?? [])
         if (jS) setSecurityLogs(jS.logs ?? [])
         if (jCo) setCompaniesList(jCo.companies ?? [])
         if (jL) setAllCalls(jL.logs ?? [])
         if (jI) setAllIntents(jI.intents ?? [])
         results.forEach((r, i) => {
           if (r.status === 'rejected') {
-            console.warn('Dashboard partial load failed:', ['/api/campaigns', '/api/providers', '/api/security', '/api/companies', '/api/logs', '/api/intents'][i], r.reason)
+            console.warn('Dashboard partial load failed:', ['/api/campaigns', '/api/security', '/api/companies', '/api/logs', '/api/intents'][i], r.reason)
           }
         })
       } catch (err) {
@@ -773,7 +771,9 @@ export default function Page() {
           {view === 'sts' && <STSDashboard />}
 
           {/* ── SETTINGS ── */}
-          {view === 'settings' && <SettingsView role={role} providers={providers} setProviders={setProviders} />}
+          {view === 'telephony' && <TelephonyView />}
+
+          {view === 'settings' && <SettingsView role={role} />}
 
           {/* ── PROFILE ── */}
           {view === 'profile' && <ProfileView role={role} />}

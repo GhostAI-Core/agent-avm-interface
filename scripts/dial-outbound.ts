@@ -18,8 +18,6 @@ import {
   isLivekitConfigured,
   placeOutboundCall,
   resolveTrunkId,
-  routrTrunkConfigError,
-  campaignRoutingMode,
   startRoomRecording,
   isEgressConfigured,
   type DialResult,
@@ -43,7 +41,6 @@ type CampaignRow = {
   transfer_key?: string | null
   transfer_target?: string | null
   sip_trunk_id?: string | number | null
-  routing_mode?: string | null
 }
 
 function arg(name: string): string | undefined {
@@ -186,7 +183,6 @@ function printSummary(
   campaign: CampaignRow,
 ) {
   console.log(`\n── Dial summary (${rows.length} call${rows.length === 1 ? '' : 's'}) ──`)
-  console.log('  routing_mode:', campaignRoutingMode(campaign))
   console.log('  trunk: ', trunkId)
   console.log('  agent: ', agentName(campaign) ?? '(default)')
   for (const row of rows) {
@@ -241,18 +237,9 @@ async function main() {
     process.exit(1)
   }
 
-  const routrErr = routrTrunkConfigError(campaign)
-  if (routrErr) {
-    console.error(routrErr)
-    process.exit(1)
-  }
-
   const trunkId = await resolveTrunkId(supabase, campaign)
   if (!isLivekitConfigured(trunkId)) {
-    const hint = campaignRoutingMode(campaign) === 'routr'
-      ? 'Set LIVEKIT_SIP_ROUTR_TRUNK_ID in .env (LiveKit trunk → Routr)'
-      : 'Set campaigns.sip_trunk_id → sip_trunks, or LIVEKIT_SIP_OUTBOUND_TRUNK_ID in .env'
-    console.error('No SIP trunk:', hint)
+    console.error('No SIP trunk: Set campaigns.sip_trunk_id → sip_trunks, or LIVEKIT_SIP_OUTBOUND_TRUNK_ID in .env')
     process.exit(1)
   }
 

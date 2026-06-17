@@ -7,13 +7,10 @@ export {
   isEgressConfigured,
   parseRoomName,
   resolveTrunkId,
-  routrTrunkConfigError,
-  campaignRoutingMode,
   startRoomRecording,
   placeOutboundCall,
   type DialTarget,
   type DialResult,
-  type CampaignRoutingMode,
 } from '@/lib/outbound-call'
 
 const LK_KEY = process.env.LIVEKIT_API_KEY

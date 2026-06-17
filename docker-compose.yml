@@ -4,9 +4,6 @@ networks:
   shared:
     external: true
 
-volumes:
-  routr-pgdata:
-
 services:
   agent-avm-web-web:
     build:
@@ -24,13 +21,8 @@ services:
       PORT: ${WEB_PORT:-3000}
       # Docker sets HOSTNAME to the container id; Next binds to that IP, so localhost health checks fail.
       HOSTNAME: "0.0.0.0"
-      # M2: backend sync to Routr over shared network (no Cloudflare)
-      ROUTR_API_ENDPOINT: ${ROUTR_API_ENDPOINT:-insecure://agent-avm-sip-routr:51908}
     networks:
       - shared
-    depends_on:
-      agent-avm-sip-routr:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:$${PORT:-3000}/api/health || exit 1"]
       interval: 15s
@@ -38,41 +30,3 @@ services:
       retries: 3
       start_period: 20s
     restart: unless-stopped
-
-  agent-avm-sip-routr:
-    image: fonoster/routr-one:latest
-    environment:
-      EXTERNAL_ADDRS: ${ROUTR_PUBLIC_IP:?set ROUTR_PUBLIC_IP in .env to the server public IPv4}
-    volumes:
-      - routr-pgdata:/var/lib/postgresql/data
-    expose:
-      - "5060/tcp"
-      - "5060/udp"
-      - "51908/tcp"
-    ports:
-      - "5060:5060/udp"
-      - "5060:5060/tcp"
-      # Localhost admin API — use: ssh -L 51908:127.0.0.1:51908 deploy@server
-      - "127.0.0.1:51908:51908/tcp"
-    networks:
-      - shared
-    restart: unless-stopped
-
-  agent-avm-sip-routr-bootstrap:
-    build:
-      context: .
-      dockerfile: infrastructure/routr/Dockerfile.bootstrap
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      ROUTR_API: insecure://agent-avm-sip-routr:51908
-      ROUTR_CARRIER_SIP_PORT: ${ROUTR_CARRIER_SIP_PORT:-5060}
-      ROUTR_CARRIER_NAME: ${ROUTR_CARRIER_NAME:-carrier}
-      ROUTR_LIVEKIT_PEER_USERNAME: ${ROUTR_LIVEKIT_PEER_USERNAME:-livekit}
-    depends_on:
-      agent-avm-sip-routr:
-        condition: service_started
-    networks:
-      - shared
-    restart: "no"

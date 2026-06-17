@@ -8,20 +8,6 @@ CREATE TABLE IF NOT EXISTS voip_providers (
     name        VARCHAR(50)  NOT NULL,
     api_key     VARCHAR(255),
     api_secret  VARCHAR(255),
-    slug        VARCHAR(32)  NOT NULL DEFAULT '',
-    provider_type VARCHAR(20) NOT NULL DEFAULT 'twilio'
-        CHECK (provider_type IN ('twilio', 'telnyx', 'sangoma')),
-    sip_host    VARCHAR(255),
-    sip_port    INT          NOT NULL DEFAULT 5060,
-    sip_username VARCHAR(60),
-    sip_password VARCHAR(255),
-    send_register BOOLEAN    NOT NULL DEFAULT false,
-    routr_trunk_ref VARCHAR(64),
-    routr_credentials_ref VARCHAR(64),
-    sync_status VARCHAR(20)  NOT NULL DEFAULT 'pending'
-        CHECK (sync_status IN ('pending', 'synced', 'error')),
-    sync_error  TEXT,
-    last_synced_at TIMESTAMPTZ,
     created_at  TIMESTAMPTZ  DEFAULT NOW()
 );
 
@@ -87,7 +73,6 @@ CREATE TABLE IF NOT EXISTS system_settings (
     id              TEXT PRIMARY KEY,
     whitelisted_ips TEXT[],
     environment     TEXT DEFAULT 'staging',
-    config          JSONB,
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -177,8 +162,6 @@ CREATE TABLE IF NOT EXISTS sip_trunks (
 );
 
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS sip_trunk_id VARCHAR(64);
-ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS routing_mode VARCHAR(16) NOT NULL DEFAULT 'legacy'
-  CHECK (routing_mode IN ('legacy', 'routr'));
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS agent_name   VARCHAR(64);
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS voice_path   TEXT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS max_retries INT NOT NULL DEFAULT 2;

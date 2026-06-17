@@ -147,8 +147,7 @@ Copy `.env.example` → `.env` (local) or server `.env`. **Never commit real sec
 | `LIVEKIT_URL` | LiveKit project URL (`wss://…` is fine; server SDK normalizes to `https://`). |
 | `LIVEKIT_API_KEY` | LiveKit API key. |
 | `LIVEKIT_API_SECRET` | LiveKit API secret. |
-| `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` | Outbound trunk id (`ST_…`). From `lk sip outbound list`. **Legacy path** (`routing_mode = legacy`). |
-| `LIVEKIT_SIP_ROUTR_TRUNK_ID` | LiveKit trunk id pointing at **Routr** (`ST_…`). **Routr path** (`routing_mode = routr`). |
+| `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` | Outbound trunk id (`ST_…`). From `lk sip outbound list`. |
 | `LIVEKIT_AGENT_NAME` | Must match the agent worker’s registered name. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser + server anon client. |
@@ -164,32 +163,9 @@ Copy `.env.example` → `.env` (local) or server `.env`. **Never commit real sec
 
 ### Trunk resolution order
 
-**`campaigns.routing_mode`** (default `legacy`):
-
-| Mode | Trunk used |
-|------|------------|
-| `legacy` | See legacy order below |
-| `routr` | `LIVEKIT_SIP_ROUTR_TRUNK_ID` only (LiveKit → Routr → carrier) |
-
-**Legacy order** (`routing_mode = legacy` or unset):
-
 1. `campaigns.sip_trunk_id` if it is already `ST_…`
 2. Else numeric `sip_trunk_id` → lookup `sip_trunks.livekit_trunk_id`
 3. Else `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` env default
-
-Set a test campaign to Routr:
-
-```sql
-UPDATE campaigns SET routing_mode = 'routr' WHERE id = <id>;
-```
-
-Rollback (no deploy):
-
-```sql
-UPDATE campaigns SET routing_mode = 'legacy' WHERE id = <id>;
-```
-
-Staging setup and M1 checklist: [infrastructure/routr-m1-staging.md](../infrastructure/routr-m1-staging.md).
 
 Agent name resolution (dial script + API): `campaigns.agent_name` → `LIVEKIT_AGENT_NAME` → `campaigns.agent`.
 
@@ -199,7 +175,7 @@ Agent name resolution (dial script + API): `campaigns.agent_name` → `LIVEKIT_A
 
 | Table | Used for |
 |-------|----------|
-| `campaigns` | Campaign config; optional `agent_name`, `sip_trunk_id`, `routing_mode` (`legacy` \| `routr`), `voice_path`. |
+| `campaigns` | Campaign config; optional `agent_name`, `sip_trunk_id`, `voice_path`. |
 | `contacts` | Dial queue. Status: `pending` → `in_progress` → `dialed` / `failed` / `retry`. |
 | `sip_trunks` | Catalog mapping internal id → `livekit_trunk_id` + `from_number`. |
 | `call_records` | **Primary UI feed** for per-call rows (`phone`, `outcome`, `talk_seconds`, `room`, `recording_url`). |

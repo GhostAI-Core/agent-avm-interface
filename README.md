@@ -211,6 +211,8 @@ Copy `.env.local.example` (local) or `.env.example` (production). Key groups:
 | `LIVEKIT_AGENT_NAME` | Agent worker dispatch name (e.g. `outbound-agent`) |
 | `LIVEKIT_RECORD_*` | Optional S3-compatible egress for call recordings |
 | `AGENT_RESULT_SECRET` | Shared secret for `/api/calls/result` |
+| `INWORLD_API_KEY` | Inworld TTS Basic auth credential (base64, server only) for `/api/tts/generate` |
+| `AVM_SCRIPT_AUDIO_STORAGE_*` | Public `avm-scripts` bucket for generated campaign audio (`script-{campaign-slug}.mp3`) |
 | `NEXT_PUBLIC_POLL_INTERVAL_MS` | Dashboard refresh interval (default 15000) |
 
 Per-campaign overrides: `campaigns.sip_trunk_id` and `campaigns.agent_name` override the env defaults when set.
@@ -226,6 +228,8 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 | `/api/campaigns` | GET, POST | User | List / create campaigns |
 | `/api/campaigns/:id` | GET, PUT, DELETE | User | Campaign CRUD, status changes |
 | `/api/campaigns/:id/dial` | POST | User | Dispatch outbound calls via LiveKit |
+| `/api/tts/generate` | POST | User | Generate campaign voice audio via Inworld TTS |
+| `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts` (campaign-labeled) |
 | `/api/companies` | GET, POST | User | Company management |
 | `/api/logs` | GET | User | Per-call `call_records` |
 | `/api/reports` | GET | User | Aggregate `call_logs` |

@@ -15,15 +15,21 @@ import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
 import Chip from '@mui/material/Chip'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import GraphicEqIcon from '@mui/icons-material/GraphicEq'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import { WizardHeader, StepRail, SectionLabel } from '@/components/ui/WizardChrome'
+import VoiceGenerator from '@/components/VoiceGenerator'
 import { colors, semantic, radius } from '@/lib/tokens'
 import { parseContacts } from '@/lib/parseCsv'
 import { createClient } from '@/utils/supabase/client'
 
 interface Props { onClose: () => void; onCreated: () => void }
+
+type VoiceMode = 'upload' | 'generate'
 
 const STEPS = ['Campaign', 'Schedule', 'Voice & Contacts']
 const MAX_CSV_BYTES = 15 * 1024 * 1024 // 15MB upload cap
@@ -36,15 +42,25 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function FileField({ name, label, accept, required, icon, hint }: {
+function FileField({ name, label, accept, required, icon, hint, file, onFileChange }: {
   name: string
   label: string
   accept: string
   required?: boolean
   icon: ReactNode
   hint?: string
+  file?: File | null
+  onFileChange?: (file: File | null) => void
 }) {
-  const [file, setFile] = useState<File | null>(null)
+  const [internalFile, setInternalFile] = useState<File | null>(null)
+  const isControlled = onFileChange !== undefined
+  const selectedFile = isControlled ? (file ?? null) : internalFile
+
+  function handleChange(next: File | null) {
+    if (isControlled) onFileChange!(next)
+    else setInternalFile(next)
+  }
+
   return (
     <Box>
       <Box
@@ -56,9 +72,9 @@ function FileField({ name, label, accept, required, icon, hint }: {
           gap: 1.75,
           px: 1.75,
           py: 1.5,
-          border: `1px dashed ${file ? semantic.accent : colors.border3}`,
+          border: `1px dashed ${selectedFile ? semantic.accent : colors.border3}`,
           borderRadius: `${radius.md}px`,
-          bgcolor: file ? 'rgba(55,166,96,0.07)' : colors.bg2,
+          bgcolor: selectedFile ? 'rgba(55,166,96,0.07)' : colors.bg2,
           cursor: 'pointer',
           transition: 'border-color .18s ease, background-color .18s ease, transform .18s ease, box-shadow .18s ease',
           '&:hover': {
@@ -74,8 +90,8 @@ function FileField({ name, label, accept, required, icon, hint }: {
           sx={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 36, height: 36, borderRadius: `${radius.sm}px`, flexShrink: 0,
-            bgcolor: file ? 'rgba(55,166,96,0.16)' : colors.bg3,
-            color: file ? semantic.accentBright : semantic.textSoft,
+            bgcolor: selectedFile ? 'rgba(55,166,96,0.16)' : colors.bg3,
+            color: selectedFile ? semantic.accentBright : semantic.textSoft,
             transition: 'background-color .18s ease, color .18s ease',
           }}
         >
@@ -85,18 +101,24 @@ function FileField({ name, label, accept, required, icon, hint }: {
           <Typography variant="caption" sx={{ color: semantic.textSoft, display: 'block', letterSpacing: '0.04em' }}>
             {label}{required ? ' *' : ''}
           </Typography>
-          <Typography variant="body2" noWrap sx={{ color: file ? semantic.text : semantic.textMuted, fontWeight: file ? 600 : 400 }}>
-            {file ? file.name : 'Drag in or click to choose a file'}
+          <Typography variant="body2" noWrap sx={{ color: selectedFile ? semantic.text : semantic.textMuted, fontWeight: selectedFile ? 600 : 400 }}>
+            {selectedFile ? selectedFile.name : 'Drag in or click to choose a file'}
           </Typography>
         </Box>
-        {file && (
+        {selectedFile && (
           <Chip
             size="small"
-            label={formatSize(file.size)}
+            label={formatSize(selectedFile.size)}
             sx={{ bgcolor: 'rgba(55,166,96,0.16)', color: semantic.accentBright, border: `1px solid rgba(55,166,96,0.35)`, fontWeight: 600 }}
           />
         )}
-        <input type="file" name={name} accept={accept} hidden onChange={e => setFile(e.target.files?.[0] ?? null)} />
+        <input
+          type="file"
+          name={name}
+          accept={accept}
+          hidden
+          onChange={e => handleChange(e.target.files?.[0] ?? null)}
+        />
       </Box>
       {hint && <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 0.25, display: 'block' }}>{hint}</Typography>}
     </Box>
@@ -108,10 +130,24 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('upload')
+  const [voiceFile, setVoiceFile] = useState<File | null>(null)
+  const [voiceRecordingUrl, setVoiceRecordingUrl] = useState<string | null>(null)
 
   function back() {
     setError('')
     setStep(s => Math.max(s - 1, 0))
+  }
+
+  function handleVoiceModeChange(_: React.MouseEvent<HTMLElement>, next: VoiceMode | null) {
+    if (!next) return
+    setVoiceMode(next)
+    setError('')
+    if (next === 'upload') {
+      setVoiceRecordingUrl(null)
+    } else {
+      setVoiceFile(null)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -153,25 +189,27 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
       }
       payload.contacts = contacts
 
-      // Upload the voice recording (if any) to the private Supabase Storage bucket.
-      // The campaign keeps only the object path; the dial route signs it at call time.
-      const voiceFile = formData.get('voice_file') as File | null
-      if (voiceFile && voiceFile.size > 0) {
-        if (voiceFile.size > MAX_VOICE_BYTES) {
-          setError(`Voice recording is too large (max ${MAX_VOICE_BYTES / 1024 / 1024}MB).`)
-          return
+      if (voiceMode === 'generate' && voiceRecordingUrl) {
+        payload.voice_recording_url = voiceRecordingUrl
+      } else if (voiceMode === 'upload') {
+        const uploadFile = voiceFile ?? (formData.get('voice_file') as File | null)
+        if (uploadFile && uploadFile.size > 0) {
+          if (uploadFile.size > MAX_VOICE_BYTES) {
+            setError(`Voice recording is too large (max ${MAX_VOICE_BYTES / 1024 / 1024}MB).`)
+            return
+          }
+          const ext = (uploadFile.name.split('.').pop() || 'mp4').toLowerCase()
+          const path = `${crypto.randomUUID()}.${ext}`
+          const supabase = createClient()
+          const { error: upErr } = await supabase.storage
+            .from(VOICE_BUCKET)
+            .upload(path, uploadFile, { contentType: uploadFile.type || undefined, upsert: false })
+          if (upErr) {
+            setError(`Could not upload the voice recording: ${upErr.message}`)
+            return
+          }
+          payload.voice_path = path
         }
-        const ext = (voiceFile.name.split('.').pop() || 'mp4').toLowerCase()
-        const path = `${crypto.randomUUID()}.${ext}`
-        const supabase = createClient()
-        const { error: upErr } = await supabase.storage
-          .from(VOICE_BUCKET)
-          .upload(path, voiceFile, { contentType: voiceFile.type || undefined, upsert: false })
-        if (upErr) {
-          setError(`Could not upload the voice recording: ${upErr.message}`)
-          return
-        }
-        payload.voice_path = path
       }
 
       const res = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -209,7 +247,7 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
       <StepRail steps={STEPS} active={step} />
 
       <form onSubmit={handleSubmit}>
-        <DialogContent sx={{ pt: 3 }}>
+        <DialogContent sx={{ pt: 3, maxHeight: step === 2 ? 'min(70vh, 560px)' : undefined, overflowY: step === 2 ? 'auto' : undefined }}>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
           {/* Step 1 — Campaign (kept mounted; toggled so FormData stays intact) */}
@@ -259,9 +297,43 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
 
           {/* Step 3 — Voice & contacts */}
           <Box sx={{ display: step === 2 ? 'block' : 'none' }}>
-            <Stack sx={{ gap: 1.5 }}>
+            <Stack sx={{ gap: 2 }}>
               <SectionLabel>Voice &amp; Contacts</SectionLabel>
-              <FileField name="voice_file" label="Voice Recording" accept="audio/*" icon={<GraphicEqIcon fontSize="small" />} hint="Optional — MP3 / WAV / MP4 audio played to the lead." />
+
+              <ToggleButtonGroup
+                exclusive
+                fullWidth
+                size="small"
+                value={voiceMode}
+                onChange={handleVoiceModeChange}
+              >
+                <ToggleButton value="upload">Upload recording</ToggleButton>
+                <ToggleButton value="generate">
+                  <AutoAwesomeIcon sx={{ fontSize: 16, mr: 0.75 }} />
+                  Generate with AI
+                </ToggleButton>
+              </ToggleButtonGroup>
+
+              {voiceMode === 'upload' ? (
+                <FileField
+                  name="voice_file"
+                  label="Voice Recording"
+                  accept="audio/*"
+                  icon={<GraphicEqIcon fontSize="small" />}
+                  hint="Optional — MP3 / WAV / MP4 audio played to the lead."
+                  file={voiceFile}
+                  onFileChange={setVoiceFile}
+                />
+              ) : (
+                <VoiceGenerator
+                  key="voice-generator"
+                  campaignName={name}
+                  voiceRecordingUrl={voiceRecordingUrl}
+                  onVoiceRecordingUrlChange={setVoiceRecordingUrl}
+                  disabled={loading}
+                />
+              )}
+
               <FileField name="csv_file" label="Contact List (CSV)" accept=".csv" required icon={<UploadFileIcon fontSize="small" />} hint="Expected columns: phone, first_name, last_name" />
             </Stack>
           </Box>

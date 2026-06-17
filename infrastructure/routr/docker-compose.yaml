@@ -1,2 +1,0 @@
-# Routr Connect — deployed via root `docker-compose.yml` as `agent-avm-sip-routr`.
-# See infrastructure/deploy/runbook.md and infrastructure/routr-m1-staging.md.

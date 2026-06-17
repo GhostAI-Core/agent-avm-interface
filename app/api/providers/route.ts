@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { maskProviderForClient, normalizeProvider } from '@/lib/routr/mask-provider'
+import { maskProviderForClient, normalizeProvider } from '@/lib/voip-provider'
 import { slugifyName, validateCarrierInput } from '@/lib/validate-carrier'
 
 export const dynamic = 'force-dynamic'
@@ -52,30 +52,14 @@ export async function POST(req: NextRequest) {
       sip_username: fields.sip_username,
       sip_password: fields.sip_password,
       send_register: fields.send_register,
-      sync_status: 'pending',
     })
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const { syncProviderRow } = await import('@/lib/routr/sync-provider-row')
-  const normalized = normalizeProvider(row)
-  const sync = await syncProviderRow(auth.supabase, normalized)
-  if (!sync.ok) {
-    return NextResponse.json(
-      {
-        provider: maskProviderForClient(normalized),
-        sync_error: sync.error,
-        routr_unreachable: sync.status === 503,
-      },
-      { status: sync.status === 503 ? 503 : 201 },
-    )
-  }
-
-  const { data: updated } = await auth.supabase.from('voip_providers').select('*').eq('id', row.id).single()
   return NextResponse.json(
-    { provider: maskProviderForClient(normalizeProvider(updated || row)) },
+    { provider: maskProviderForClient(normalizeProvider(row)) },
     { status: 201 },
   )
 }

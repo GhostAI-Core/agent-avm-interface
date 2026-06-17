@@ -1,56 +1,29 @@
-import type { CampaignRoutingMode, ResolveTrunkResult } from '../lib/outbound-call'
+import type { ResolveTrunkResult } from '../lib/outbound-call'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type CampaignDialRow = {
   sip_trunk_id?: string | number | null
-  routing_mode?: string | null
 }
 
-/** Load campaign fields for trunk resolution; tolerates DB without routing_mode column. */
 export async function fetchCampaignForDial(
   supabase: SupabaseClient,
   campaignId: string,
 ): Promise<{ campaign: CampaignDialRow | null; error?: string }> {
   const { data, error } = await supabase
     .from('campaigns')
-    .select('sip_trunk_id, routing_mode')
+    .select('sip_trunk_id')
     .eq('id', campaignId)
     .single()
 
-  if (!error && data) return { campaign: data }
-
-  if (error?.message?.includes('routing_mode')) {
-    const fallback = await supabase
-      .from('campaigns')
-      .select('sip_trunk_id')
-      .eq('id', campaignId)
-      .single()
-    if (fallback.error || !fallback.data) {
-      return { campaign: null, error: fallback.error?.message ?? error.message }
-    }
-    return { campaign: { ...fallback.data, routing_mode: 'legacy' } }
+  if (error || !data) {
+    return { campaign: null, error: error?.message ?? 'not found' }
   }
-
-  return { campaign: null, error: error?.message ?? 'not found' }
+  return { campaign: data }
 }
 
 export function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`)
   return i >= 0 ? process.argv[i + 1] : undefined
-}
-
-export function parseRouteArg(raw: string | undefined): CampaignRoutingMode | undefined {
-  if (!raw) return undefined
-  if (raw === 'legacy' || raw === 'routr') return raw
-  console.error(`Invalid --route value: "${raw}". Supported: legacy, routr`)
-  process.exit(1)
-}
-
-export function effectiveCampaign<T extends { routing_mode?: string | null }>(
-  campaign: T,
-  routeOverride: CampaignRoutingMode | undefined,
-): T {
-  return routeOverride ? { ...campaign, routing_mode: routeOverride } : campaign
 }
 
 export function printDialPlan(
@@ -62,8 +35,6 @@ export function printDialPlan(
 ): void {
   console.log('campaign_id:     ', campaignId)
   console.log('contact_id:      ', contactLabel)
-  console.log('stored_mode:     ', trunk.storedRoutingMode)
-  console.log('effective_mode:  ', trunk.effectiveRoutingMode)
   console.log('selected_trunk:  ', trunk.trunkId ?? '(none)')
   console.log('trunk_source:    ', trunk.source ?? '(none)')
   console.log('agent:           ', agent ?? '(default)')
@@ -107,13 +78,4 @@ export async function pollCallRecordOutcome(
     await new Promise(r => setTimeout(r, 2000))
   }
   return null
-}
-
-export function printRouteDryRun(campaignId: string, trunk: ResolveTrunkResult): void {
-  console.log('campaign_id:     ', campaignId)
-  console.log('stored_mode:     ', trunk.storedRoutingMode)
-  console.log('effective_mode:  ', trunk.effectiveRoutingMode)
-  console.log('selected_trunk:  ', trunk.trunkId ?? '(none)')
-  console.log('trunk_source:    ', trunk.source ?? '(none)')
-  console.log('config_error:    ', trunk.configError ?? '(none)')
 }

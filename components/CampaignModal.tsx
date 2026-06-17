@@ -7,7 +7,6 @@ import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
-import FormHelperText from '@mui/material/FormHelperText'
 import Grid from '@mui/material/Grid'
 import Stack from '@mui/material/Stack'
 import Box from '@mui/material/Box'
@@ -274,21 +273,6 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
                   <TextField name="window_end" label="Window End" type="time" size="small" fullWidth defaultValue="20:00" slotProps={{ inputLabel: { shrink: true } }} />
                 </Grid>
               </Grid>
-            </Stack>
-
-            {/* Routing */}
-            <Stack sx={{ gap: 1.5 }}>
-              <SectionLabel>Outbound routing</SectionLabel>
-              <FormControl size="small" fullWidth>
-                <InputLabel id="routing-mode-label" shrink>Routing mode</InputLabel>
-                <Select labelId="routing-mode-label" name="routing_mode" label="Routing mode" defaultValue="legacy" notched>
-                  <MenuItem value="legacy">Direct carrier (legacy)</MenuItem>
-                  <MenuItem value="routr">Via Routr</MenuItem>
-                </Select>
-                <FormHelperText>
-                  Routr mode uses server LIVEKIT_SIP_ROUTR_TRUNK_ID (LiveKit → Routr → carrier).
-                </FormHelperText>
-              </FormControl>
             </Stack>
 
             {/* Media & contacts */}

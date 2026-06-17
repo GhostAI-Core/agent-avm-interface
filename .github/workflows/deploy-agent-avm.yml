@@ -73,15 +73,10 @@ jobs:
             fi
             command -v npm >/dev/null || { echo 'ERROR: npm is not installed on the deploy host' >&2; exit 1; }
 
-            # Host CLI (dial, test:routr) — not used inside the web container
+            # Host CLI (dial) — not used inside the web container
             npm ci --include=dev
 
-            # Long-running services only (bootstrap is profile-gated)
             docker compose up -d --build
-
-            # Routr peer / carrier trunk / outbound number — once per deploy
-            docker compose --profile bootstrap build agent-avm-sip-routr-bootstrap
-            docker compose --profile bootstrap run --rm agent-avm-sip-routr-bootstrap
 
             docker compose ps
           "

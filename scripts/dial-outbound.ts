@@ -9,7 +9,6 @@ import './preload-env'
  *   npm run dial -- --campaign-id 9 --batch 5         # next 5 pending contacts
  *   npm run dial -- --campaign-id 9 --contact-id 112 # single contact
  *   npm run dial -- --campaign-id 9 --phone +2782…     # single ad-hoc number
- *   npm run dial -- --campaign-id 9 --contact-id 112 --route routr  # one-off Routr test
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
@@ -27,8 +26,6 @@ import {
 import { normalizePhone } from '../lib/phone'
 import {
   arg,
-  effectiveCampaign,
-  parseRouteArg,
   printDialPlan,
   printDialResult,
   pollCallRecordOutcome,
@@ -51,7 +48,6 @@ type CampaignRow = {
   transfer_key?: string | null
   transfer_target?: string | null
   sip_trunk_id?: string | number | null
-  routing_mode?: string | null
 }
 
 function requireEnv(keys: string[]): void {
@@ -146,7 +142,7 @@ async function dialContact(
     } else {
       console.log(
         'webhook_outcome: ',
-        'still pending after 20s — SIP likely never connected (check Routr logs, carrier route, LiveKit trunk auth)',
+        'still pending after 20s — SIP likely never connected (check carrier route, LiveKit trunk auth)',
       )
     }
   }
@@ -214,7 +210,7 @@ async function dialManualPhone(
     } else {
       console.log(
         'webhook_outcome: ',
-        'still pending after 20s — SIP likely never connected (check Routr logs, carrier route, LiveKit trunk auth)',
+        'still pending after 20s — SIP likely never connected (check carrier route, LiveKit trunk auth)',
       )
     }
   }
@@ -225,13 +221,12 @@ async function main() {
   const campaignId = arg('campaign-id')
   const contactId = arg('contact-id')
   const phoneArg = arg('phone')
-  const routeOverride = parseRouteArg(arg('route'))
   const waitUntilAnswered = process.argv.includes('--wait')
   const batchSize = Math.max(1, Number(arg('batch') ?? DEFAULT_BATCH) || DEFAULT_BATCH)
 
   if (!campaignId) {
     console.error(
-      'Usage: npm run dial -- --campaign-id <id> [--batch 3] [--contact-id <id>] [--phone <e164>] [--route legacy|routr] [--wait]',
+      'Usage: npm run dial -- --campaign-id <id> [--batch 3] [--contact-id <id>] [--phone <e164>] [--wait]',
     )
     process.exit(1)
   }
@@ -264,19 +259,10 @@ async function main() {
     process.exit(1)
   }
 
-  const effective = effectiveCampaign(campaign, routeOverride)
-  const trunk = await resolveTrunkWithSource(supabase, campaign, effective)
-
-  if (trunk.configError) {
-    console.error(trunk.configError)
-    process.exit(1)
-  }
+  const trunk = await resolveTrunkWithSource(supabase, campaign)
 
   if (!isLivekitConfigured(trunk.trunkId)) {
-    const hint = trunk.effectiveRoutingMode === 'routr'
-      ? 'Set LIVEKIT_SIP_ROUTR_TRUNK_ID in .env (LiveKit trunk → Routr)'
-      : 'Set campaigns.sip_trunk_id → sip_trunks, or LIVEKIT_SIP_OUTBOUND_TRUNK_ID in .env'
-    console.error('No SIP trunk:', hint)
+    console.error('No SIP trunk: set campaigns.sip_trunk_id → sip_trunks, or LIVEKIT_SIP_OUTBOUND_TRUNK_ID in .env')
     process.exit(1)
   }
 

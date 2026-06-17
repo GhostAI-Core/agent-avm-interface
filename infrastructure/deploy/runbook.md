@@ -18,7 +18,11 @@
 | --- | --- | --- | --- |
 | `agent-avm-web-web` | Next.js web app | 3000 | Yes |
 
-Supabase is external SaaS — no database container in this stack. Outbound SIP is configured in LiveKit Cloud (trunks) and optional carrier records in Supabase `voip_providers`.
+Supabase is external SaaS — no database container in this stack. Outbound SIP is configured in LiveKit Cloud (trunks).
+
+The web app is on the `shared` network so the reverse proxy / tunnel can reach it by service name.
+
+## Cloudflare tunnel
 
 Configure in **Cloudflare Zero Trust → Networks → Tunnels → \[tunnel\] → Public Hostname**.
 

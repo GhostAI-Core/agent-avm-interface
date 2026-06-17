@@ -12,20 +12,20 @@ import Stack from '@mui/material/Stack'
 import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
-import IconButton from '@mui/material/IconButton'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
 import Chip from '@mui/material/Chip'
 import CampaignIcon from '@mui/icons-material/Campaign'
-import CloseIcon from '@mui/icons-material/Close'
 import GraphicEqIcon from '@mui/icons-material/GraphicEq'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
+import { WizardHeader, StepRail, SectionLabel } from '@/components/ui/WizardChrome'
 import { colors, semantic, radius } from '@/lib/tokens'
 import { parseContacts } from '@/lib/parseCsv'
 import { createClient } from '@/utils/supabase/client'
 
 interface Props { onClose: () => void; onCreated: () => void }
 
+const STEPS = ['Campaign', 'Schedule', 'Voice & Contacts']
 const MAX_CSV_BYTES = 15 * 1024 * 1024 // 15MB upload cap
 const MAX_VOICE_BYTES = 50 * 1024 * 1024 // 50MB voice-recording cap
 const VOICE_BUCKET = 'voice-recordings'
@@ -34,17 +34,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
-function SectionLabel({ children }: { children: ReactNode }) {
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Box sx={{ width: 3, height: 13, borderRadius: 2, bgcolor: semantic.accent, boxShadow: `0 0 8px ${semantic.accentGlow}55` }} />
-      <Typography variant="caption" sx={{ color: semantic.textMuted, textTransform: 'uppercase', letterSpacing: '0.13em', fontWeight: 700 }}>
-        {children}
-      </Typography>
-    </Box>
-  )
 }
 
 function FileField({ name, label, accept, required, icon, hint }: {
@@ -115,12 +104,30 @@ function FileField({ name, label, accept, required, icon, hint }: {
 }
 
 export default function CampaignModal({ onClose, onCreated }: Props) {
+  const [step, setStep] = useState(0)
+  const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  function back() {
+    setError('')
+    setStep(s => Math.max(s - 1, 0))
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
+
+    // Step rail: advance instead of submitting until the last step.
+    if (step < STEPS.length - 1) {
+      if (step === 0 && !name.trim()) {
+        setError('Please name the campaign before continuing.')
+        return
+      }
+      setStep(step + 1)
+      return
+    }
+
     const formData = new FormData(e.currentTarget)
     const payload: Record<string, unknown> = Object.fromEntries(formData.entries())
     delete payload.csv_file
@@ -183,6 +190,8 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
     }
   }
 
+  const isLast = step === STEPS.length - 1
+
   return (
     <Dialog
       open
@@ -191,58 +200,26 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
       fullWidth
       slotProps={{ paper: { sx: { overflow: 'hidden', borderRadius: `${radius.lg}px` } } }}
     >
-      {/* Header — gradient glow band */}
-      <Box
-        sx={{
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.75,
-          px: 3,
-          pt: 2.75,
-          pb: 2.25,
-          background: `linear-gradient(135deg, rgba(55,166,96,0.16) 0%, rgba(55,166,96,0.03) 48%, transparent 100%)`,
-          '&::after': {
-            content: '""',
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: '1px',
-            background: `linear-gradient(90deg, ${semantic.accent} 0%, rgba(55,166,96,0.15) 40%, ${colors.border1} 100%)`,
-          },
-        }}
-      >
-        <Box
-          sx={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 42, height: 42, borderRadius: `${radius.md}px`, flexShrink: 0,
-            bgcolor: 'rgba(55,166,96,0.16)', border: `1px solid rgba(55,166,96,0.4)`, color: semantic.accentBright,
-            boxShadow: `0 0 18px -4px ${semantic.accentGlow}66`,
-          }}
-        >
-          <CampaignIcon fontSize="small" />
-        </Box>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: 19, lineHeight: 1.2, letterSpacing: '-0.01em' }}>New Campaign</Typography>
-          <Typography variant="body2" color="text.secondary">Set up dialing, schedule, and your contact list.</Typography>
-        </Box>
-        <IconButton onClick={onClose} size="small" aria-label="Close" sx={{ color: semantic.textSoft, alignSelf: 'flex-start', mt: -0.5 }}>
-          <CloseIcon fontSize="small" />
-        </IconButton>
-      </Box>
+      <WizardHeader
+        icon={<CampaignIcon fontSize="small" />}
+        title="New Campaign"
+        subtitle="Set up dialing, schedule, and your contact list."
+        onClose={onClose}
+      />
+      <StepRail steps={STEPS} active={step} />
 
       <form onSubmit={handleSubmit}>
         <DialogContent sx={{ pt: 3 }}>
-          <Stack sx={{ gap: 3 }}>
-            {error && <Alert severity="error">{error}</Alert>}
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-            {/* Campaign */}
+          {/* Step 1 — Campaign (kept mounted; toggled so FormData stays intact) */}
+          <Box sx={{ display: step === 0 ? 'block' : 'none' }}>
             <Stack sx={{ gap: 1.5 }}>
               <SectionLabel>Campaign</SectionLabel>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 8 }}>
-                  <TextField name="name" label="Campaign Name" placeholder="e.g. 1Life BMI AI V5.0" size="small" fullWidth required />
+                  <TextField name="name" label="Campaign Name" placeholder="e.g. 1Life BMI AI V5.0" size="small" fullWidth required
+                    value={name} onChange={e => setName(e.target.value)} />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
                   <FormControl size="small" fullWidth>
@@ -258,36 +235,45 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
                 </Grid>
               </Grid>
             </Stack>
+          </Box>
 
-            {/* Schedule & speed */}
-            <Stack sx={{ gap: 1.5 }}>
-              <SectionLabel>Schedule &amp; Speed</SectionLabel>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <TextField name="dialing_speed" label="Dialing Speed (calls/sec)" type="number" size="small" fullWidth defaultValue="1" slotProps={{ htmlInput: { min: 1, max: 10 } }} />
+          {/* Step 2 — Schedule & routing */}
+          <Box sx={{ display: step === 1 ? 'block' : 'none' }}>
+            <Stack sx={{ gap: 3 }}>
+              <Stack sx={{ gap: 1.5 }}>
+                <SectionLabel>Schedule &amp; Speed</SectionLabel>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField name="dialing_speed" label="Dialing Speed (calls/sec)" type="number" size="small" fullWidth defaultValue="1" slotProps={{ htmlInput: { min: 1, max: 10 } }} />
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 4 }}>
+                    <TextField name="window_start" label="Window Start" type="time" size="small" fullWidth defaultValue="08:00" slotProps={{ inputLabel: { shrink: true } }} />
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 4 }}>
+                    <TextField name="window_end" label="Window End" type="time" size="small" fullWidth defaultValue="20:00" slotProps={{ inputLabel: { shrink: true } }} />
+                  </Grid>
                 </Grid>
-                <Grid size={{ xs: 6, sm: 4 }}>
-                  <TextField name="window_start" label="Window Start" type="time" size="small" fullWidth defaultValue="08:00" slotProps={{ inputLabel: { shrink: true } }} />
-                </Grid>
-                <Grid size={{ xs: 6, sm: 4 }}>
-                  <TextField name="window_end" label="Window End" type="time" size="small" fullWidth defaultValue="20:00" slotProps={{ inputLabel: { shrink: true } }} />
-                </Grid>
-              </Grid>
+              </Stack>
             </Stack>
+          </Box>
 
-            {/* Media & contacts */}
+          {/* Step 3 — Voice & contacts */}
+          <Box sx={{ display: step === 2 ? 'block' : 'none' }}>
             <Stack sx={{ gap: 1.5 }}>
               <SectionLabel>Voice &amp; Contacts</SectionLabel>
               <FileField name="voice_file" label="Voice Recording" accept="audio/*" icon={<GraphicEqIcon fontSize="small" />} hint="Optional — MP3 / WAV / MP4 audio played to the lead." />
               <FileField name="csv_file" label="Contact List (CSV)" accept=".csv" required icon={<UploadFileIcon fontSize="small" />} hint="Expected columns: phone, first_name, last_name" />
             </Stack>
-
-          </Stack>
+          </Box>
         </DialogContent>
 
         <DialogActions sx={{ px: 3, pb: 2.75, pt: 1 }}>
-          <Button onClick={onClose} variant="outlined">Cancel</Button>
-          <Button type="submit" variant="contained" disabled={loading}>{loading ? 'Creating…' : 'Create Campaign'}</Button>
+          {step > 0 && <Button onClick={back} variant="outlined" type="button">Back</Button>}
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={onClose} variant="text" type="button" sx={{ color: semantic.textSoft }}>Cancel</Button>
+          <Button type="submit" variant="contained" disabled={loading}>
+            {isLast ? (loading ? 'Creating…' : 'Create Campaign') : 'Next'}
+          </Button>
         </DialogActions>
       </form>
     </Dialog>

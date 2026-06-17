@@ -6,8 +6,11 @@ Post-deploy checks for the **web stack** on the production host.
 
 | Item | Value |
 | --- | --- |
+| Compose project | `agent-avm-web` |
 | Deploy path | `/opt/docker/production/evra_avm` |
 | Compose service | `agent-avm-web-web` |
+| Stack | Next.js web app |
+| External network | Docker network `shared` (must exist) |
 | Public access | Cloudflare Tunnel → `agent-avm-web-web:3000` |
 
 ## 1. Compose status

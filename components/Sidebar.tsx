@@ -24,6 +24,12 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: 'Telephony',
+    items: [
+      { id: 'telephony', label: 'Telephony' },
+    ],
+  },
+  {
     label: 'Operations',
     items: [
       { id: 'security', label: 'Security Audit' },

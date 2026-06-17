@@ -8,14 +8,6 @@ CREATE TABLE IF NOT EXISTS voip_providers (
     name        VARCHAR(50)  NOT NULL,
     api_key     VARCHAR(255),
     api_secret  VARCHAR(255),
-    slug        VARCHAR(32)  NOT NULL DEFAULT '',
-    provider_type VARCHAR(20) NOT NULL DEFAULT 'twilio'
-        CHECK (provider_type IN ('twilio', 'telnyx', 'sangoma', 'utility_connect')),
-    sip_host    VARCHAR(255),
-    sip_port    INT          NOT NULL DEFAULT 5060,
-    sip_username VARCHAR(60),
-    sip_password VARCHAR(255),
-    send_register BOOLEAN    NOT NULL DEFAULT false,
     created_at  TIMESTAMPTZ  DEFAULT NOW()
 );
 
@@ -81,7 +73,6 @@ CREATE TABLE IF NOT EXISTS system_settings (
     id              TEXT PRIMARY KEY,
     whitelisted_ips TEXT[],
     environment     TEXT DEFAULT 'staging',
-    config          JSONB,
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 

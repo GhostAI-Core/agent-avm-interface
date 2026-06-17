@@ -130,7 +130,7 @@ Migrations live in `supabase/migrations/` (apply via Supabase CLI or SQL editor)
 | Table | Purpose |
 |-------|---------|
 | `companies` | Client organizations (`name`, optional `contact_name/email/phone`) |
-| `campaigns` | Dialing campaigns — agent persona, status, time window, voice prompt, transfer settings, company link, LiveKit overrides (`sip_trunk_id`, `agent_name`, `routing_mode`), pacing (`max_retries`, `max_concurrent`, …) |
+| `campaigns` | Dialing campaigns — agent persona, status, time window, voice prompt, transfer settings, company link, LiveKit overrides (`sip_trunk_id`, `agent_name`), pacing (`max_retries`, `max_concurrent`, …) |
 | `contacts` | Per-campaign dial list — phone, name, status lifecycle (`pending` → `in_progress` → `dialed` / `failed` / `retry`) |
 | `profiles` | App user profile linked to `auth.users` — role, passkey credential |
 | `voip_providers` | Stored gateway credentials (Twilio, Vonage, Sangoma) for settings UI |
@@ -173,7 +173,7 @@ The app does **not** call Twilio or Telnyx directly. Those providers are configu
 1. **Operator starts campaign** — UI sets status to `running` and calls `POST /api/campaigns/:id/dial`.
 2. **Dial route** (`app/api/campaigns/[id]/dial/route.ts`):
    - Loads up to **25** `pending` contacts.
-   - Resolves SIP trunk via `resolveTrunkId()` — `sip_trunk_id` / `sip_trunks` / `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`.
+   - Resolves SIP trunk via `resolveTrunkId()` — campaign `sip_trunk_id` / `sip_trunks` / `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`.
    - Signs voice recording URL via `resolveVoiceUrl()`.
    - For each contact, calls `placeOutboundCall()` (`lib/outbound-call.ts`):
      - Creates room name `avm_<campaignId>_<contactId>_<random>`.

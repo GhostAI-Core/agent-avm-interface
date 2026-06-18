@@ -33,6 +33,11 @@ export interface Campaign {
   voice_recording_url?: string
   transfer_key?: string | null
   transfer_target?: string | null
+  // In-call behavior knobs read by the agent worker (see lib/call-behavior.ts).
+  answer_delay_sec?: number | null
+  silence_timeout_sec?: number | null
+  amd_enabled?: boolean | null
+  voicemail_action?: 'hangup' | 'leave_message' | 'continue' | null
   company_id?: number | null
   company?: string | null
   created_at?: string
@@ -73,6 +78,26 @@ export interface CallRecord {
   transferred: boolean
   recording_url?: string | null
   called_at: string
+}
+
+/** Raw row the LiveKit agent dumps into `call_events`; a DB trigger ETLs it into call_records. */
+export interface CallEvent {
+  id: number
+  room: string
+  campaign_id?: number | null
+  contact_id?: number | null
+  phone?: string | null
+  event_type:
+    | 'answered'
+    | 'voicemail_detected'
+    | 'dropped_no_response'
+    | 'outcome'
+    | 'recording'
+    | 'intent'
+    | string
+  payload: Record<string, unknown>
+  processed: boolean
+  created_at: string
 }
 
 export interface IntentStat {

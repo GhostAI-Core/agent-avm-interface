@@ -16,7 +16,6 @@ import SecurityView from '@/components/SecurityView'
 import SettingsView from '@/components/SettingsView'
 import TelephonyView from '@/components/TelephonyView'
 import { OutcomeDonut, CampaignBar, SpendChart, FunnelChart } from '@/components/Charts'
-import STSDashboard from '@/components/STSDashboard'
 import ProfileView from '@/components/ProfileView'
 import CampaignDetail from '@/components/CampaignDetail'
 import CallQuality from '@/components/CallQuality'
@@ -70,7 +69,6 @@ const VIEW_TITLES: Record<string, string> = {
   reports:   'Campaign Report',
   quality:   'Call Quality',
   security:  'Security Audit Log',
-  sts:       'STS Dashboard',
   settings:  'System Settings',
   profile:   'Profile & Appearance',
 }
@@ -762,9 +760,6 @@ export default function Page() {
           {/* ── SECURITY ── */}
           {view === 'security' && <SecurityView securityLogs={securityLogs} />}
 
-          {/* ── STS DASHBOARD ── */}
-          {view === 'sts' && <STSDashboard />}
-
           {/* ── SETTINGS ── */}
           {view === 'telephony' && <TelephonyView />}
 
@@ -824,7 +819,14 @@ export default function Page() {
         )
       })()}
 
-      {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} />}
+      {showModal && (
+        <CampaignModal
+          onClose={() => setShowModal(false)}
+          onCreated={fetchData}
+          companies={companiesList}
+          onNeedCompany={() => { setShowModal(false); setShowCompanyModal(true) }}
+        />
+      )}
       <Dialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth
         slotProps={{ paper: { sx: { overflow: 'hidden', borderRadius: `${radius.lg}px` } } }}
       >

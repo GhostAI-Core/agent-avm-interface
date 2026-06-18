@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { isLivekitAuthConfigured, webhookReceiver } from '@/lib/livekit'
 import { createAdminClient } from '@/utils/supabase/admin'
+import { rollNumberState } from '@/lib/compliance/rollover'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -49,6 +50,8 @@ export async function POST(req: Request) {
         // Only the dialed callee matters (identity is `caller_<contactId>`), not the agent.
         if (room && event.participant?.identity?.startsWith('caller_')) {
           await admin.from('call_records').update({ outcome: 'connected' }).eq('room', room).eq('outcome', 'pending')
+          // The callee answered → reached. End the day for this number (cross-campaign).
+          await rollNumberState(admin, room, true)
         }
         break
       }
@@ -72,8 +75,15 @@ export async function POST(req: Request) {
             await admin.from('call_records').update({ talk_seconds: secs })
               .eq('room', room.name).eq('outcome', 'connected').eq('talk_seconds', 0)
           }
-          // Never answered → no_answer.
+          // Never answered → no_answer. Bump the retryable attempt count + spaced next_eligible_at,
+          // but only for rows that were still 'pending' (i.e. this event is what made it no_answer).
+          const { data: stillPending } = await admin
+            .from('call_records').select('id').eq('room', room.name).eq('outcome', 'pending').maybeSingle()
           await admin.from('call_records').update({ outcome: 'no_answer' }).eq('room', room.name).eq('outcome', 'pending')
+          if (stillPending) {
+            await rollNumberState(admin, room.name, false)
+            await admin.rpc('apply_call_score', { p_room: room.name, p_outcome: 'no_answer' }) // -1: cost us a dial, no contact
+          }
         }
         break
       }

@@ -1,5 +1,5 @@
 import 'server-only'
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 
 let s3Client: S3Client | null = null
 
@@ -72,6 +72,31 @@ export function buildCampaignScriptKey(campaignName: string, date = new Date()):
 export function publicScriptUrl(storageKey: string): string {
   const base = requiredEnv('AVM_SCRIPT_AUDIO_STORAGE_ENDPOINT').replace(/\/$/, '')
   return `${base}/${storageKey}`
+}
+
+export interface SavedScript {
+  storageKey: string
+  publicUrl: string
+  name: string
+  lastModified: string | null
+}
+
+/** List the script audio objects saved in the bucket (issue #31 #6 — the edit dropdown). */
+export async function listCampaignScripts(): Promise<SavedScript[]> {
+  if (!isScriptStorageConfigured()) return []
+  const bucket = requiredEnv('AVM_SCRIPT_AUDIO_STORAGE_BUCKET')
+  const prefix = process.env.AVM_SCRIPT_AUDIO_STORAGE_PREFIX ?? 'script-'
+  const res = await getS3Client().send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }))
+  return (res.Contents ?? [])
+    .filter(o => o.Key && o.Key.toLowerCase().endsWith('.mp3'))
+    .map(o => ({
+      storageKey: o.Key!,
+      publicUrl: publicScriptUrl(o.Key!),
+      // Friendly label: strip the prefix, the trailing dd-mm-yyyy date, and the extension.
+      name: o.Key!.slice(prefix.length).replace(/\.mp3$/i, '').replace(/-\d{2}-\d{2}-\d{4}$/, ''),
+      lastModified: o.LastModified ? o.LastModified.toISOString() : null,
+    }))
+    .sort((a, b) => (b.lastModified ?? '').localeCompare(a.lastModified ?? ''))
 }
 
 export async function uploadCampaignScript(

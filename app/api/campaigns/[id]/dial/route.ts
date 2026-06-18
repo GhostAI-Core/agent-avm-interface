@@ -204,6 +204,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const egressIds = await Promise.all(
     placed.map(x => (isEgressConfigured() ? startRoomRecording(x.r.room) : Promise.resolve(null))),
   )
+  // Which script this campaign dialed with — recorded per call (issue #31 item 6).
+  const scriptPath = campaign.audio_path ?? campaign.voice_recording_url ?? campaign.voice_path ?? null
   const records = placed.map((x, i) => ({
     campaign_id: Number(id),
     contact_id: x.c.id,
@@ -212,6 +214,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     egress_id: egressIds[i]?.egressId ?? null,
     outcome: 'pending',
     recording_disclosed: recordingDisclosed,
+    script_path: scriptPath,
     called_at: nowIso,
   }))
   if (records.length) {

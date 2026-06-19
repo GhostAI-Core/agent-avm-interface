@@ -368,28 +368,28 @@ export default function Page() {
     }
   }
 
-  async function updateStatus(id: number, status: string) {
-    await fetch(`/api/campaigns/${id}`, { 
-      method:'PUT', 
-      headers:{'Content-Type':'application/json'}, 
-      body: JSON.stringify({ status }) 
-    })
+  // Lifecycle transitions are owned by evra-callops (issue #34); proxy them server-side so the
+  // shared secret never reaches the browser. Other status changes stay a plain Supabase write.
+  const LIFECYCLE: Record<string, string> = { running: 'start', paused: 'pause', stopped: 'stop' }
 
-    if (status === 'running') {
-      try {
-        // Dispatch real outbound calls via the LiveKit gateway (same path as Seeker/Grace).
-        const res = await fetch(`/api/campaigns/${id}/dial`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        })
+  async function updateStatus(id: number, status: string) {
+    const action = LIFECYCLE[status]
+    try {
+      if (action) {
+        const res = await fetch(`/api/campaigns/${id}/${action}`, { method: 'POST' })
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))
-          console.error('Dial dispatch failed:', j?.error ?? res.statusText)
+          console.error(`Campaign ${action} failed:`, j?.error ?? res.statusText)
         }
-      } catch (err) {
-        console.error('Dial dispatch failed:', err)
+      } else {
+        await fetch(`/api/campaigns/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        })
       }
+    } catch (err) {
+      console.error(`Campaign status update (${status}) failed:`, err)
     }
 
     fetchData()
@@ -506,7 +506,7 @@ export default function Page() {
                 reports: dashReports, calls: dashCalls, intents: dashIntents, campaigns: dashCampaigns,
                 actions: {
                   onPlayPause: c => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running'),
-                  onStop: c => updateStatus(c.id, 'completed'),
+                  onStop: c => updateStatus(c.id, 'stopped'),
                   onEdit: c => setCampaignAction({ mode: 'edit', campaign: c }),
                   onReuse: c => setCampaignAction({ mode: 'reuse', campaign: c }),
                   onArchive: c => updateStatus(c.id, 'archived'),
@@ -627,12 +627,12 @@ export default function Page() {
                             <TableCell sx={{ fontWeight: 600 }}>{c.name}</TableCell>
                             <TableCell><AgentChip agent={c.agent} /></TableCell>
                             <TableCell sx={{ color: 'text.secondary' }}>{c.company || '—'}</TableCell>
-                            <TableCell><StatusChip status={c.status} /></TableCell>
+                            <TableCell><StatusChip status={c.status} autoPaused={c.auto_paused} /></TableCell>
                             <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8rem' }}>{c.time_window_start}–{c.time_window_end} · {c.dialing_speed}/s</TableCell>
                             <TableCell align="right" onClick={e => e.stopPropagation()}>
                               <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
                                 <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}><MuiIconButton size="small" color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>{c.status === 'running' ? <PauseIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}</MuiIconButton></Tooltip>
-                                <Tooltip title="Stop"><MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}><StopIcon sx={{ fontSize: 17 }} /></MuiIconButton></Tooltip>
+                                <Tooltip title="Stop"><MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'stopped')}><StopIcon sx={{ fontSize: 17 }} /></MuiIconButton></Tooltip>
                                 <Tooltip title="Edit (change MP4)"><MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
                                 <Tooltip title="Reuse as template"><MuiIconButton size="small" aria-label={`Reuse ${c.name}`} onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })}><ContentCopyIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
                                 <Tooltip title="Archive"><MuiIconButton size="small" aria-label={`Archive ${c.name}`} onClick={() => updateStatus(c.id, 'archived')} sx={{ color: 'warning.main' }}><ArchiveIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
@@ -661,7 +661,7 @@ export default function Page() {
                             <Typography sx={{ fontWeight: 600 }}>{c.name}</Typography>
                             <AgentChip agent={c.agent} />
                           </Box>
-                          <StatusChip status={c.status} />
+                          <StatusChip status={c.status} autoPaused={c.auto_paused} />
                         </Stack>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                           <strong>Company:</strong> {c.company || '—'}
@@ -683,7 +683,7 @@ export default function Page() {
                           </MuiIconButton>
                         </Tooltip>
                         <Tooltip title="Stop">
-                          <MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}><StopIcon sx={{ fontSize: 19 }} /></MuiIconButton>
+                          <MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'stopped')}><StopIcon sx={{ fontSize: 19 }} /></MuiIconButton>
                         </Tooltip>
                         <Tooltip title="Edit (change MP4)">
                           <MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 18 }} /></MuiIconButton>

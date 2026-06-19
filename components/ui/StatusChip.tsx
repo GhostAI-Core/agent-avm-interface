@@ -7,13 +7,16 @@ function toKey(status: string) {
   return (status || '').trim().toLowerCase().replace(/[_-]+/g, ' ')
 }
 
-export default function StatusChip({ status }: { status: string }) {
-  const tone = statusChipTone(toKey(status))
+export default function StatusChip({ status, autoPaused }: { status: string; autoPaused?: boolean }) {
+  // callops auto-pauses outside the calling window (status stays 'paused', auto_paused=true).
+  // Surface that distinctly from a manual pause; it resumes itself when the window reopens.
+  const isAutoPaused = !!autoPaused && toKey(status) === 'paused'
+  const tone = statusChipTone(isAutoPaused ? 'auto paused' : toKey(status))
 
   return (
     <Chip
       size="small"
-      label={status || 'Unknown'}
+      label={isAutoPaused ? 'Auto-paused' : (status || 'Unknown')}
       sx={{
         height: 22,
         fontSize: '0.7rem',

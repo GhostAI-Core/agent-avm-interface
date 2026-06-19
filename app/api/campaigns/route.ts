@@ -48,9 +48,12 @@ export async function POST(req: Request) {
       return Number.isFinite(n) ? Math.trunc(n) : fallback
     }
 
-    // 1. Insert Campaign — agent is optional in the fast-dial flow (stored NULL when unset).
+    // 1. Insert Campaign — `agent` is the persona (seeker/grace, optional). `agent_name`
+    // is the LiveKit worker callops dispatches to; only 'outbound-recorder' is deployed,
+    // so always set it — otherwise callops falls back to `agent` and dispatches to a
+    // worker that isn't registered, and no agent joins the call.
     const { data: campaign, error: cErr } = await supabase.from('campaigns').insert({
-      name, agent: agent || null, status: 'draft',
+      name, agent: agent || null, agent_name: 'outbound-recorder', status: 'draft',
       dialing_speed: dialing_speed ?? 1,
       time_window_start: window_start ?? '08:00',
       time_window_end: window_end ?? '20:00',

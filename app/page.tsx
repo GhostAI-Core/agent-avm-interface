@@ -62,7 +62,7 @@ import GlassCard from '@/components/ui/GlassCard'
 import BusinessIcon from '@mui/icons-material/Business'
 import CloseIcon from '@mui/icons-material/Close'
 import { colors, semantic, radius } from '@/lib/tokens'
-import type { Campaign, CampaignReport, Company } from '@/types'
+import type { Campaign, CampaignReport, Company, CampaignLiveStatus } from '@/types'
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Control Room',
   companies: 'Companies',
@@ -102,6 +102,7 @@ export default function Page() {
   const [sideOpen,    setSideOpen]    = useState(false)
   const [showModal,   setShowModal]   = useState(false)
   const [campaigns,   setCampaigns]   = useState<Campaign[]>([])
+  const [liveStatus,  setLiveStatus]  = useState<Record<number, CampaignLiveStatus>>({})
   const [reports,     setReports]     = useState<CampaignReport[]>([])
   const [allCalls,    setAllCalls]    = useState<any[]>([])
   const [allIntents,  setAllIntents]  = useState<any[]>([])
@@ -248,6 +249,27 @@ export default function Page() {
     }
   }, [filterAgent, filterDate, getJson])
 
+  // Live dispatch stats straight from callops (active calls / queued / dialed / failed),
+  // so the dashboard shows what's actually happening — not just the stored status. Only
+  // polled for campaigns in a live state; tolerant of 502/unconfigured (skips silently).
+  const refreshLiveStatus = useCallback(async (camps: Campaign[]) => {
+    const active = camps.filter(c => c.status === 'running' || c.status === 'paused')
+    if (!active.length) return
+    const entries = await Promise.all(active.map(async (c) => {
+      try {
+        const res = await fetch(`/api/campaigns/${c.id}/status`)
+        if (!res.ok) return null
+        const j = await res.json()
+        return typeof j?.active_calls === 'number' ? ([c.id, j as CampaignLiveStatus] as const) : null
+      } catch { return null }
+    }))
+    setLiveStatus(prev => {
+      const next = { ...prev }
+      for (const e of entries) if (e) next[e[0]] = e[1]
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     if (!auth) return
     let timeout: NodeJS.Timeout
@@ -279,7 +301,7 @@ export default function Page() {
         ])
         if (!active) return
         const [jC, jS, jCo, jL, jI] = results.map((r) => (r.status === 'fulfilled' ? r.value : null))
-        if (jC) setCampaigns(jC.campaigns ?? [])
+        if (jC) { setCampaigns(jC.campaigns ?? []); refreshLiveStatus(jC.campaigns ?? []) }
         if (jS) setSecurityLogs(jS.logs ?? [])
         if (jCo) setCompaniesList(jCo.companies ?? [])
         if (jL) setAllCalls(jL.logs ?? [])
@@ -294,7 +316,7 @@ export default function Page() {
       }
     })()
     return () => { active = false }
-  }, [auth, getJson])
+  }, [auth, getJson, refreshLiveStatus])
 
   // Reports depend on the agent/date filters — fetched separately so changing a
   // filter doesn't re-pull everything else.
@@ -332,7 +354,7 @@ export default function Page() {
           getJson('/api/logs'),
           getJson(`/api/intents?date=${today}`),
         ])
-        if (jC) setCampaigns(jC.campaigns ?? [])
+        if (jC) { setCampaigns(jC.campaigns ?? []); refreshLiveStatus(jC.campaigns ?? []) }
         if (jR) setReports(jR.reports ?? [])
         if (jL) setAllCalls(jL.logs ?? [])
         if (jI) setAllIntents(jI.intents ?? [])
@@ -342,7 +364,7 @@ export default function Page() {
     }
     const id = setInterval(tick, ms)
     return () => clearInterval(id)
-  }, [auth, filterAgent, filterDate, getJson])
+  }, [auth, filterAgent, filterDate, getJson, refreshLiveStatus])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -393,6 +415,8 @@ export default function Page() {
     }
 
     fetchData()
+    // Pull live stats for this campaign right away so the change is visible immediately.
+    refreshLiveStatus([{ id, status: 'running' } as Campaign])
   }
 
 
@@ -672,6 +696,28 @@ export default function Page() {
                         <Typography variant="body2" color="text.secondary">
                           <strong>Window:</strong> {c.time_window_start} – {c.time_window_end}
                         </Typography>
+                        {(() => {
+                          const ls = liveStatus[c.id]
+                          if (!ls) return null
+                          const stats: [string, number, boolean][] = [
+                            ['active', ls.active_calls, true],
+                            ['queued', ls.queued, false],
+                            ['in progress', ls.in_progress, false],
+                            ['dialed', ls.dialed, false],
+                            ['failed', ls.failed, false],
+                          ]
+                          return (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, mt: 1.25, pt: 1.25, borderTop: `1px dashed ${colors.border3}` }}>
+                              {stats.map(([label, value, accent]) => (
+                                <Box key={label} sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+                                  <Typography component="span" sx={{ fontWeight: 700, fontSize: 13, lineHeight: 1,
+                                    color: label === 'failed' && value > 0 ? 'error.main' : accent && value > 0 ? semantic.accentBright : 'text.primary' }}>{value}</Typography>
+                                  <Typography component="span" variant="caption" sx={{ color: 'text.secondary' }}>{label}</Typography>
+                                </Box>
+                              ))}
+                            </Box>
+                          )
+                        })()}
                       </CardContent>
 
                       <Divider />

@@ -44,6 +44,21 @@ export interface Campaign {
   updated_at?: string
 }
 
+// Live dispatch stats from callops GET /campaigns/{id}/status (via the proxy).
+export interface CampaignLiveStatus {
+  campaign_id: number
+  status: string
+  auto_paused?: boolean
+  active_calls: number
+  queued: number
+  pending: number
+  in_progress: number
+  dialed: number
+  failed: number
+  retry: number
+  completed_today: number
+}
+
 export interface CampaignReport {
   id: number
   campaign_id: number

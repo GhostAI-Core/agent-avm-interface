@@ -57,8 +57,8 @@ export async function POST(req: Request) {
       max_concurrent: toInt(max_concurrent, 5),
       max_retries: toInt(max_retries, 2),
       retry_cooldown_seconds: toInt(retry_cooldown_seconds, 3600),
-      // LiveKit trunk id (ST_…) callops dials through. NULL → callops env default.
-      sip_trunk_id: sip_trunk_id || null,
+      // FK to sip_trunks.id; callops resolves it to the LiveKit trunk for dialing.
+      sip_trunk_id: sip_trunk_id != null && sip_trunk_id !== '' ? Number(sip_trunk_id) : null,
       voice_recording_url: voice_recording_url ?? '',
       voice_path: voice_path ?? null,
       transfer_key: body.transfer_key ?? '',

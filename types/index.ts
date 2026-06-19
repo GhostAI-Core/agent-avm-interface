@@ -34,7 +34,7 @@ export interface Campaign {
   max_retries?: number
   retry_cooldown_seconds?: number
   auto_paused?: boolean
-  sip_trunk_id?: string | null
+  sip_trunk_id?: number | null
   voice_recording_url?: string
   transfer_key?: string | null
   transfer_target?: string | null

@@ -30,7 +30,7 @@ import { createClient } from '@/utils/supabase/client'
 interface Props { onClose: () => void; onCreated: () => void }
 
 type VoiceMode = 'upload' | 'generate'
-interface Trunk { trunk_id: string; name: string; from_number: string | null }
+interface Trunk { id: number; name: string; from_number: string | null }
 
 const STEPS = ['Campaign', 'Schedule', 'Voice & Contacts']
 const MAX_CSV_BYTES = 15 * 1024 * 1024 // 15MB upload cap
@@ -135,7 +135,7 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
   const [voiceRecordingUrl, setVoiceRecordingUrl] = useState<string | null>(null)
   const [trunks, setTrunks] = useState<Trunk[]>([])
-  const [trunkId, setTrunkId] = useState('')
+  const [trunkId, setTrunkId] = useState<number | ''>('')
 
   // Load the live SIP trunks callops can dial through. A campaign with no trunk is
   // rejected by callops on start, so when only one exists we pre-select it.
@@ -147,7 +147,7 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
         if (!active) return
         const list = data.trunks ?? []
         setTrunks(list)
-        if (list.length === 1) setTrunkId(list[0].trunk_id)
+        if (list.length === 1) setTrunkId(list[0].id)
       })
       .catch(() => { /* picker stays empty; create route falls back to callops default */ })
     return () => { active = false }
@@ -188,12 +188,12 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
     delete payload.csv_file
     delete payload.voice_file
 
-    // callops dials through this trunk; a campaign without one fails to start.
-    if (trunks.length > 0 && !trunkId) {
+    // callops dials through this trunk (sip_trunks.id FK); no trunk -> start fails.
+    if (trunks.length > 0 && trunkId === '') {
       setError('Please choose a SIP trunk — the campaign can’t place calls without one.')
       return
     }
-    payload.sip_trunk_id = trunkId || null
+    payload.sip_trunk_id = trunkId === '' ? null : trunkId
 
     const csvFile = formData.get('csv_file') as File | null
     if (!csvFile || csvFile.size === 0) {
@@ -301,15 +301,16 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
                   <FormControl size="small" fullWidth required={trunks.length > 0}>
                     <InputLabel id="trunk-label" shrink>SIP Trunk (caller ID)</InputLabel>
                     <Select labelId="trunk-label" label="SIP Trunk (caller ID)" displayEmpty notched
-                      value={trunkId} onChange={e => setTrunkId(e.target.value)}
+                      value={trunkId === '' ? '' : String(trunkId)}
+                      onChange={e => setTrunkId(e.target.value === '' ? '' : Number(e.target.value))}
                       renderValue={(v) => {
                         if (!v) return <Box component="span" sx={{ color: semantic.textSoft }}>{trunks.length ? 'Select a trunk…' : 'No trunks available'}</Box>
-                        const t = trunks.find(x => x.trunk_id === v)
+                        const t = trunks.find(x => String(x.id) === v)
                         return t ? `${t.name}${t.from_number ? ` — ${t.from_number}` : ''}` : v
                       }}
                     >
                       {trunks.map(t => (
-                        <MenuItem key={t.trunk_id} value={t.trunk_id}>
+                        <MenuItem key={t.id} value={String(t.id)}>
                           {t.name}{t.from_number ? ` — ${t.from_number}` : ''}
                         </MenuItem>
                       ))}

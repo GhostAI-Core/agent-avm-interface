@@ -1,5 +1,5 @@
 export type Agent = 'seeker' | 'grace' | 'sangoma'
-export type CampaignStatus = 'draft' | 'running' | 'paused' | 'completed' | 'deleted'
+export type CampaignStatus = 'draft' | 'running' | 'paused' | 'stopped' | 'completed' | 'archived' | 'deleted'
 
 export interface Company {
   id: number
@@ -30,6 +30,11 @@ export interface Campaign {
   dialing_speed: number
   time_window_start: string
   time_window_end: string
+  max_concurrent?: number
+  max_retries?: number
+  retry_cooldown_seconds?: number
+  auto_paused?: boolean
+  sip_trunk_id?: string | null
   voice_recording_url?: string
   transfer_key?: string | null
   transfer_target?: string | null

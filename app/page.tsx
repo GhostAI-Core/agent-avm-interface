@@ -62,7 +62,7 @@ import GlassCard from '@/components/ui/GlassCard'
 import BusinessIcon from '@mui/icons-material/Business'
 import CloseIcon from '@mui/icons-material/Close'
 import { colors, semantic, radius } from '@/lib/tokens'
-import type { Campaign, CampaignReport, Company } from '@/types'
+import type { Campaign, CampaignReport, Company, CampaignLiveStatus } from '@/types'
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Control Room',
   companies: 'Companies',
@@ -102,6 +102,7 @@ export default function Page() {
   const [sideOpen,    setSideOpen]    = useState(false)
   const [showModal,   setShowModal]   = useState(false)
   const [campaigns,   setCampaigns]   = useState<Campaign[]>([])
+  const [liveStatus,  setLiveStatus]  = useState<Record<number, CampaignLiveStatus>>({})
   const [reports,     setReports]     = useState<CampaignReport[]>([])
   const [allCalls,    setAllCalls]    = useState<any[]>([])
   const [allIntents,  setAllIntents]  = useState<any[]>([])
@@ -248,6 +249,27 @@ export default function Page() {
     }
   }, [filterAgent, filterDate, getJson])
 
+  // Live dispatch stats straight from callops (active calls / queued / dialed / failed),
+  // so the dashboard shows what's actually happening — not just the stored status. Only
+  // polled for campaigns in a live state; tolerant of 502/unconfigured (skips silently).
+  const refreshLiveStatus = useCallback(async (camps: Campaign[]) => {
+    const active = camps.filter(c => c.status === 'running' || c.status === 'paused')
+    if (!active.length) return
+    const entries = await Promise.all(active.map(async (c) => {
+      try {
+        const res = await fetch(`/api/campaigns/${c.id}/status`)
+        if (!res.ok) return null
+        const j = await res.json()
+        return typeof j?.active_calls === 'number' ? ([c.id, j as CampaignLiveStatus] as const) : null
+      } catch { return null }
+    }))
+    setLiveStatus(prev => {
+      const next = { ...prev }
+      for (const e of entries) if (e) next[e[0]] = e[1]
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     if (!auth) return
     let timeout: NodeJS.Timeout
@@ -279,7 +301,7 @@ export default function Page() {
         ])
         if (!active) return
         const [jC, jS, jCo, jL, jI] = results.map((r) => (r.status === 'fulfilled' ? r.value : null))
-        if (jC) setCampaigns(jC.campaigns ?? [])
+        if (jC) { setCampaigns(jC.campaigns ?? []); refreshLiveStatus(jC.campaigns ?? []) }
         if (jS) setSecurityLogs(jS.logs ?? [])
         if (jCo) setCompaniesList(jCo.companies ?? [])
         if (jL) setAllCalls(jL.logs ?? [])
@@ -294,7 +316,7 @@ export default function Page() {
       }
     })()
     return () => { active = false }
-  }, [auth, getJson])
+  }, [auth, getJson, refreshLiveStatus])
 
   // Reports depend on the agent/date filters — fetched separately so changing a
   // filter doesn't re-pull everything else.
@@ -332,7 +354,7 @@ export default function Page() {
           getJson('/api/logs'),
           getJson(`/api/intents?date=${today}`),
         ])
-        if (jC) setCampaigns(jC.campaigns ?? [])
+        if (jC) { setCampaigns(jC.campaigns ?? []); refreshLiveStatus(jC.campaigns ?? []) }
         if (jR) setReports(jR.reports ?? [])
         if (jL) setAllCalls(jL.logs ?? [])
         if (jI) setAllIntents(jI.intents ?? [])
@@ -342,7 +364,7 @@ export default function Page() {
     }
     const id = setInterval(tick, ms)
     return () => clearInterval(id)
-  }, [auth, filterAgent, filterDate, getJson])
+  }, [auth, filterAgent, filterDate, getJson, refreshLiveStatus])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -368,31 +390,33 @@ export default function Page() {
     }
   }
 
-  async function updateStatus(id: number, status: string) {
-    await fetch(`/api/campaigns/${id}`, { 
-      method:'PUT', 
-      headers:{'Content-Type':'application/json'}, 
-      body: JSON.stringify({ status }) 
-    })
+  // Lifecycle transitions are owned by evra-callops (issue #34); proxy them server-side so the
+  // shared secret never reaches the browser. Other status changes stay a plain Supabase write.
+  const LIFECYCLE: Record<string, string> = { running: 'start', paused: 'pause', stopped: 'stop' }
 
-    if (status === 'running') {
-      try {
-        // Dispatch real outbound calls via the LiveKit gateway (same path as Seeker/Grace).
-        const res = await fetch(`/api/campaigns/${id}/dial`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        })
+  async function updateStatus(id: number, status: string) {
+    const action = LIFECYCLE[status]
+    try {
+      if (action) {
+        const res = await fetch(`/api/campaigns/${id}/${action}`, { method: 'POST' })
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))
-          console.error('Dial dispatch failed:', j?.error ?? res.statusText)
+          console.error(`Campaign ${action} failed:`, j?.error ?? res.statusText)
         }
-      } catch (err) {
-        console.error('Dial dispatch failed:', err)
+      } else {
+        await fetch(`/api/campaigns/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        })
       }
+    } catch (err) {
+      console.error(`Campaign status update (${status}) failed:`, err)
     }
 
     fetchData()
+    // Pull live stats for this campaign right away so the change is visible immediately.
+    refreshLiveStatus([{ id, status: 'running' } as Campaign])
   }
 
 
@@ -506,7 +530,7 @@ export default function Page() {
                 reports: dashReports, calls: dashCalls, intents: dashIntents, campaigns: dashCampaigns,
                 actions: {
                   onPlayPause: c => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running'),
-                  onStop: c => updateStatus(c.id, 'completed'),
+                  onStop: c => updateStatus(c.id, 'stopped'),
                   onEdit: c => setCampaignAction({ mode: 'edit', campaign: c }),
                   onReuse: c => setCampaignAction({ mode: 'reuse', campaign: c }),
                   onArchive: c => updateStatus(c.id, 'archived'),
@@ -627,12 +651,12 @@ export default function Page() {
                             <TableCell sx={{ fontWeight: 600 }}>{c.name}</TableCell>
                             <TableCell><AgentChip agent={c.agent} /></TableCell>
                             <TableCell sx={{ color: 'text.secondary' }}>{c.company || '—'}</TableCell>
-                            <TableCell><StatusChip status={c.status} /></TableCell>
+                            <TableCell><StatusChip status={c.status} autoPaused={c.auto_paused} /></TableCell>
                             <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8rem' }}>{c.time_window_start}–{c.time_window_end} · {c.dialing_speed}/s</TableCell>
                             <TableCell align="right" onClick={e => e.stopPropagation()}>
                               <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
                                 <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}><MuiIconButton size="small" color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>{c.status === 'running' ? <PauseIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}</MuiIconButton></Tooltip>
-                                <Tooltip title="Stop"><MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}><StopIcon sx={{ fontSize: 17 }} /></MuiIconButton></Tooltip>
+                                <Tooltip title="Stop"><MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'stopped')}><StopIcon sx={{ fontSize: 17 }} /></MuiIconButton></Tooltip>
                                 <Tooltip title="Edit (change MP4)"><MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
                                 <Tooltip title="Reuse as template"><MuiIconButton size="small" aria-label={`Reuse ${c.name}`} onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })}><ContentCopyIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
                                 <Tooltip title="Archive"><MuiIconButton size="small" aria-label={`Archive ${c.name}`} onClick={() => updateStatus(c.id, 'archived')} sx={{ color: 'warning.main' }}><ArchiveIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
@@ -661,7 +685,7 @@ export default function Page() {
                             <Typography sx={{ fontWeight: 600 }}>{c.name}</Typography>
                             <AgentChip agent={c.agent} />
                           </Box>
-                          <StatusChip status={c.status} />
+                          <StatusChip status={c.status} autoPaused={c.auto_paused} />
                         </Stack>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                           <strong>Company:</strong> {c.company || '—'}
@@ -672,6 +696,28 @@ export default function Page() {
                         <Typography variant="body2" color="text.secondary">
                           <strong>Window:</strong> {c.time_window_start} – {c.time_window_end}
                         </Typography>
+                        {(() => {
+                          const ls = liveStatus[c.id]
+                          if (!ls) return null
+                          const stats: [string, number, boolean][] = [
+                            ['active', ls.active_calls, true],
+                            ['queued', ls.queued, false],
+                            ['in progress', ls.in_progress, false],
+                            ['dialed', ls.dialed, false],
+                            ['failed', ls.failed, false],
+                          ]
+                          return (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, mt: 1.25, pt: 1.25, borderTop: `1px dashed ${colors.border3}` }}>
+                              {stats.map(([label, value, accent]) => (
+                                <Box key={label} sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+                                  <Typography component="span" sx={{ fontWeight: 700, fontSize: 13, lineHeight: 1,
+                                    color: label === 'failed' && value > 0 ? 'error.main' : accent && value > 0 ? semantic.accentBright : 'text.primary' }}>{value}</Typography>
+                                  <Typography component="span" variant="caption" sx={{ color: 'text.secondary' }}>{label}</Typography>
+                                </Box>
+                              ))}
+                            </Box>
+                          )
+                        })()}
                       </CardContent>
 
                       <Divider />
@@ -683,7 +729,7 @@ export default function Page() {
                           </MuiIconButton>
                         </Tooltip>
                         <Tooltip title="Stop">
-                          <MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'completed')}><StopIcon sx={{ fontSize: 19 }} /></MuiIconButton>
+                          <MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'stopped')}><StopIcon sx={{ fontSize: 19 }} /></MuiIconButton>
                         </Tooltip>
                         <Tooltip title="Edit (change MP4)">
                           <MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 18 }} /></MuiIconButton>

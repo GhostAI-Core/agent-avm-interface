@@ -91,6 +91,8 @@ export function statusChipTone(status: string): { bg: string; text: string; bord
   const map: Record<string, { bg: string; text: string; border: string }> = {
     running:   { bg: 'rgba(55,166,96,0.18)', text: '#60BC84', border: 'rgba(55,166,96,0.38)' },
     paused:    { bg: 'rgba(201,154,45,0.18)', text: '#E0C078', border: 'rgba(201,154,45,0.38)' },
+    'auto paused': { bg: 'rgba(109,194,255,0.18)', text: '#9DD4FF', border: 'rgba(109,194,255,0.38)' },
+    stopped:   { bg: 'rgba(144,144,144,0.18)', text: '#C8C8C8', border: 'rgba(144,144,144,0.38)' },
     completed: { bg: 'rgba(144,144,144,0.18)', text: '#C8C8C8', border: 'rgba(144,144,144,0.38)' },
     connected: { bg: 'rgba(55,166,96,0.18)', text: '#60BC84', border: 'rgba(55,166,96,0.38)' },
     qualified: { bg: 'rgba(55,166,96,0.22)', text: '#5BE8BE', border: 'rgba(91,232,190,0.38)' },

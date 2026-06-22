@@ -24,5 +24,5 @@ export function normalizePhone(input: string): string {
     return `+27${digits.slice(1)}`
   }
 
-  return hasPlus || s.startsWith('+') ? `+${digits}` : `+${digits}`
+  return `+${digits}`
 }

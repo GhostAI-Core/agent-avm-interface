@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "dial": "npx tsx scripts/dial-outbound.ts"
+    "dial": "npx tsx scripts/dial-outbound.ts",
+    "callops": "npx tsx scripts/callops-test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1070.0",
@@ -21,12 +22,10 @@
     "@supabase/supabase-js": "^2.105.1",
     "chart.js": "^4.5.1",
     "livekit-server-sdk": "^2.15.4",
-    "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "react": "19.2.4",
     "react-chartjs-2": "^5.3.1",
-    "react-dom": "19.2.4",
-    "react-webcam": "^7.2.0"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

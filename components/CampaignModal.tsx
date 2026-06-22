@@ -1,5 +1,5 @@
 'use client'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
@@ -30,6 +30,7 @@ import { createClient } from '@/utils/supabase/client'
 interface Props { onClose: () => void; onCreated: () => void }
 
 type VoiceMode = 'upload' | 'generate'
+interface Trunk { id: number; name: string; from_number: string | null }
 
 const STEPS = ['Campaign', 'Schedule', 'Voice & Contacts']
 const MAX_CSV_BYTES = 15 * 1024 * 1024 // 15MB upload cap
@@ -133,6 +134,24 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('upload')
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
   const [voiceRecordingUrl, setVoiceRecordingUrl] = useState<string | null>(null)
+  const [trunks, setTrunks] = useState<Trunk[]>([])
+  const [trunkId, setTrunkId] = useState<number | ''>('')
+
+  // Load the live SIP trunks callops can dial through. A campaign with no trunk is
+  // rejected by callops on start, so when only one exists we pre-select it.
+  useEffect(() => {
+    let active = true
+    fetch('/api/trunks')
+      .then(r => r.json())
+      .then((data: { trunks?: Trunk[] }) => {
+        if (!active) return
+        const list = data.trunks ?? []
+        setTrunks(list)
+        if (list.length === 1) setTrunkId(list[0].id)
+      })
+      .catch(() => { /* picker stays empty; create route falls back to callops default */ })
+    return () => { active = false }
+  }, [])
 
   function back() {
     setError('')
@@ -168,6 +187,13 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
     const payload: Record<string, unknown> = Object.fromEntries(formData.entries())
     delete payload.csv_file
     delete payload.voice_file
+
+    // callops dials through this trunk (sip_trunks.id FK); no trunk -> start fails.
+    if (trunks.length > 0 && trunkId === '') {
+      setError('Please choose a SIP trunk — the campaign can’t place calls without one.')
+      return
+    }
+    payload.sip_trunk_id = trunkId === '' ? null : trunkId
 
     const csvFile = formData.get('csv_file') as File | null
     if (!csvFile || csvFile.size === 0) {
@@ -271,6 +297,29 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
                     </Select>
                   </FormControl>
                 </Grid>
+                <Grid size={{ xs: 12 }}>
+                  <FormControl size="small" fullWidth required={trunks.length > 0}>
+                    <InputLabel id="trunk-label" shrink>SIP Trunk (caller ID)</InputLabel>
+                    <Select labelId="trunk-label" label="SIP Trunk (caller ID)" displayEmpty notched
+                      value={trunkId === '' ? '' : String(trunkId)}
+                      onChange={e => setTrunkId(e.target.value === '' ? '' : Number(e.target.value))}
+                      renderValue={(v) => {
+                        if (!v) return <Box component="span" sx={{ color: semantic.textSoft }}>{trunks.length ? 'Select a trunk…' : 'No trunks available'}</Box>
+                        const t = trunks.find(x => String(x.id) === v)
+                        return t ? `${t.name}${t.from_number ? ` — ${t.from_number}` : ''}` : v
+                      }}
+                    >
+                      {trunks.map(t => (
+                        <MenuItem key={t.id} value={String(t.id)}>
+                          {t.name}{t.from_number ? ` — ${t.from_number}` : ''}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 0.25 }}>
+                      The number leads see and the carrier route used to dial.
+                    </Typography>
+                  </FormControl>
+                </Grid>
               </Grid>
             </Stack>
           </Box>
@@ -289,6 +338,21 @@ export default function CampaignModal({ onClose, onCreated }: Props) {
                   </Grid>
                   <Grid size={{ xs: 6, sm: 4 }}>
                     <TextField name="window_end" label="Window End" type="time" size="small" fullWidth defaultValue="20:00" slotProps={{ inputLabel: { shrink: true } }} />
+                  </Grid>
+                </Grid>
+              </Stack>
+
+              <Stack sx={{ gap: 1.5 }}>
+                <SectionLabel>Concurrency &amp; Retries</SectionLabel>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField name="max_concurrent" label="Max simultaneous calls" type="number" size="small" fullWidth defaultValue="5" slotProps={{ htmlInput: { min: 1, max: 100 } }} helperText="Callops won't exceed this" />
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 4 }}>
+                    <TextField name="max_retries" label="Retry attempts" type="number" size="small" fullWidth defaultValue="2" slotProps={{ htmlInput: { min: 0, max: 10 } }} helperText="No-answer / busy" />
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 4 }}>
+                    <TextField name="retry_cooldown_seconds" label="Retry wait (sec)" type="number" size="small" fullWidth defaultValue="3600" slotProps={{ htmlInput: { min: 0 } }} helperText="Min gap between retries" />
                   </Grid>
                 </Grid>
               </Stack>

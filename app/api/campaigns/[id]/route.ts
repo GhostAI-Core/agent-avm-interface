@@ -5,7 +5,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params
     const body = await req.json()
-    const allowed = ['status','dialing_speed','time_window_start','time_window_end','voice_recording_url']
+    const allowed = ['status','dialing_speed','time_window_start','time_window_end','voice_recording_url',
+      'max_concurrent','max_retries','retry_cooldown_seconds']
     const payload = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)))
     if (!Object.keys(payload).length) return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
 

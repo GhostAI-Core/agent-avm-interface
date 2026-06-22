@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext } from 'react'
 
 interface ColorModeCtx {
   mode: 'dark' | 'light'
@@ -10,4 +10,3 @@ export const ColorModeContext = createContext<ColorModeCtx>({
   toggle: () => {},
 })
 
-export const useColorMode = () => useContext(ColorModeContext)

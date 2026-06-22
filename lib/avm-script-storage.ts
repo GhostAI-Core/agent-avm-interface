@@ -56,10 +56,7 @@ export function slugifyCampaignName(name: string): string {
 }
 
 function formatDateStamp(date = new Date()): string {
-  const dd = String(date.getDate()).padStart(2, '0')
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const yyyy = date.getFullYear()
-  return `${dd}-${mm}-${yyyy}`
+  return date.toLocaleDateString('en-GB').replace(/\//g, '-')
 }
 
 /** Object key in the avm-scripts bucket, e.g. script-my-campaign-17-06-2026.mp3 */

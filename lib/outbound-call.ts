@@ -1,6 +1,7 @@
 import {
   SipClient, AgentDispatchClient, TwirpError,
   EgressClient, EncodedFileOutput, EncodedFileType, S3Upload,
+  WebhookReceiver,
 } from 'livekit-server-sdk'
 import { normalizePhone } from '@/lib/phone'
 
@@ -156,6 +157,10 @@ export interface DialResult {
   contactId: number | string
   ok: boolean
   error?: string
+}
+
+export function webhookReceiver(): WebhookReceiver {
+  return new WebhookReceiver(lkKey()!, lkSecret()!)
 }
 
 export async function placeOutboundCall(target: DialTarget): Promise<DialResult> {

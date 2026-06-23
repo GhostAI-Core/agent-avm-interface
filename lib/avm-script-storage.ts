@@ -94,3 +94,59 @@ export async function uploadCampaignScript(
 
   return { storageKey, publicUrl: publicScriptUrl(storageKey) }
 }
+
+// ── Per-voice consent response scripts (opt-in / opt-out) ──────────────────────
+// Each voice carries two pre-generated response clips played on DTMF after the pitch:
+//   opt-in  → press 1 (STS SUBSCRIBE)   opt-out → press 9 (STS OPT OUT)
+// They live in the dedicated public `avm_response_scripts` bucket, keyed by voice so a clip is
+// generated once per voice and reused across every campaign that picks it. The DTMF result gates
+// to STS and writes back to product_consent / suppression_list (see lib/sts/outcomes.ts).
+
+export const RESPONSE_SCRIPT_BUCKET = 'avm_response_scripts'
+
+export type ResponseKind = 'opt-in' | 'opt-out'
+
+/** Slug for a voice id/name — same rules as campaign slugs, falls back to 'voice'. */
+export function slugifyVoice(voice: string): string {
+  return voice
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'voice'
+}
+
+/** Object key for a voice's response clip, e.g. `grace/opt-in.mp3`. */
+export function buildVoiceResponseKey(voice: string, kind: ResponseKind): string {
+  return `${slugifyVoice(voice)}/${kind}.mp3`
+}
+
+/** Public URL for a stored response clip (dial-time playback). */
+export function voiceResponseScriptUrl(voice: string, kind: ResponseKind): string {
+  const base = requiredEnv('NEXT_PUBLIC_SUPABASE_URL').replace(/\/$/, '')
+  return `${base}/storage/v1/object/public/${RESPONSE_SCRIPT_BUCKET}/${buildVoiceResponseKey(voice, kind)}`
+}
+
+/** Upload (or overwrite) a voice's opt-in/opt-out response clip. */
+export async function uploadVoiceResponseScript(
+  voice: string,
+  kind: ResponseKind,
+  audio: Buffer,
+  contentType = 'audio/mpeg',
+): Promise<{ storageKey: string; publicUrl: string }> {
+  if (!isScriptStorageConfigured()) {
+    throw new Error('Script audio storage is not configured')
+  }
+  const storageKey = buildVoiceResponseKey(voice, kind)
+
+  await getS3Client().send(
+    new PutObjectCommand({
+      Bucket: RESPONSE_SCRIPT_BUCKET,
+      Key: storageKey,
+      Body: audio,
+      ContentType: contentType,
+    }),
+  )
+
+  return { storageKey, publicUrl: voiceResponseScriptUrl(voice, kind) }
+}

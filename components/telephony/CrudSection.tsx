@@ -17,7 +17,7 @@ import TableRow from '@mui/material/TableRow'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/EditOutlined'
 import DeleteIcon from '@mui/icons-material/DeleteOutlined'
-import EntityFormDialog, { type FieldDef, type FormValues } from '@/components/telephony/EntityFormDialog'
+import EntityFormDrawer, { type FieldDef, type FormValues } from '@/components/telephony/EntityFormDrawer'
 
 export type Column<T> = {
   key: string
@@ -146,7 +146,7 @@ export default function CrudSection<T>({
         </Table>
       </TableContainer>
 
-      <EntityFormDialog
+      <EntityFormDrawer
         key={seq}
         open={open}
         title={editingKey ? `Edit ${entityLabel.toLowerCase()}` : `Add ${entityLabel.toLowerCase()}`}

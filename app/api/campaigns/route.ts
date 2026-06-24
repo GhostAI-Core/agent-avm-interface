@@ -35,6 +35,7 @@ export async function POST(req: Request) {
     const { supabase, user } = await getAuthUser()
     if (!user) return unauthorized()
 
+    const body = await req.json()
     const {
       name, agent, company_id, sip_trunk_id, audio_path,
       dialing_speed, window_start, window_end, start_date, end_date, contacts,
@@ -110,7 +111,6 @@ export async function POST(req: Request) {
           .upsert(links, { onConflict: 'campaign_id,contact_id', ignoreDuplicates: true })
         if (linkErr) console.error('Error linking contacts:', linkErr)
       }
-    }
     }
 
     return NextResponse.json({ campaign }, { status: 201 })

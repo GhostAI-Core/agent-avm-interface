@@ -37,7 +37,6 @@ export interface Campaign {
   sip_trunk_id?: number | null
   voice_recording_url?: string
   audio_path?: string | null
-  sip_trunk_id?: string | null
   start_date?: string | null
   end_date?: string | null
   transfer_key?: string | null

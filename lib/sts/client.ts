@@ -4,95 +4,62 @@ import { toE164 } from './phone'
 export { toE164 }
 
 /**
- * STS SmartCall SDP client — the carrier platform (step 1) that owns opt-out/DNC truth and the AVM
- * channel. This is purely additive: it reads STS and feeds Supabase. It does NOT place calls (callops
- * owns dialing), so nothing here touches the working app→callops→LiveKit stream.
+ * STS SmartCall SDP client — the carrier platform (step 1) and the SYSTEM OF RECORD for subscription /
+ * opt-out state. Our only job is a one-way relay: when an AI agent call captures a keypress we TELL STS
+ * "this number subscribed (press 1) / opted out (press 9)" so STS manages contact on its side. We keep
+ * no consent tables of our own. Outbound only — nothing here touches the working app→callops→LiveKit stream.
  *
- * Config (additive env, all optional — unconfigured = the client reports not-ready, never throws on import):
- *   STS_SDP_BASE_URL   default http://sdp.smartcalltech.co.za
- *   STS_GUID           per-partner service identifier, provided by STS
+ * The GUID is PER AGENT (per product): seeker has its own GUID, grace has its own. A campaign dialing
+ * with the seeker agent relays under the seeker GUID. Configured via env:
+ *   STS_GUID_SEEKER, STS_GUID_GRACE, …   (STS_GUID_<AGENT-UPPERCASED>)
+ *   STS_SDP_BASE_URL                     default http://sdp.smartcalltech.co.za
  *
  * Endpoints (SDP spec rev 1.5):
- *   GET /avm/optouts/{GUID}                       → daily opt-out (DNC) list
- *   GET /subscriberinfo/query/{GUID}/{MSISDN}     → { network, dnc, contentblocked, subscriptions }
+ *   POST /avm/{GUID}/{MSISDN}     → register a subscription   (press 1)
+ *   POST /cancel/{GUID}/{MSISDN}  → cancel / opt out          (press 9)
  */
 
 function baseUrl(): string {
   return (process.env.STS_SDP_BASE_URL?.trim() || 'http://sdp.smartcalltech.co.za').replace(/\/$/, '')
 }
 
+/** The STS GUID configured for an agent (product), or null when that agent isn't wired to STS. */
+export function guidForAgent(agent: string): string | null {
+  const key = `STS_GUID_${agent.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`
+  return process.env[key]?.trim() || null
+}
+
+/** True when at least one agent GUID is configured (so STS routes can report ready). */
 export function isStsConfigured(): boolean {
-  return Boolean(process.env.STS_GUID?.trim())
+  return Object.keys(process.env).some((k) => k.startsWith('STS_GUID_') && process.env[k]?.trim())
 }
 
-function guid(): string {
-  const g = process.env.STS_GUID?.trim()
-  if (!g) throw new Error('STS_GUID is not configured')
-  return g
+/** STS wants the bare MSISDN (no leading +). */
+function bareMsisdn(msisdn: string): string {
+  return toE164(msisdn).slice(1)
 }
 
-export interface StsSubscriberInfo {
-  msisdn: string
-  network: string | null
-  /** Do-Not-Contact flag — true means never contact. */
-  dnc: boolean
-  contentBlocked: boolean
-  subscriptions: boolean
-  serviceList: Array<{ name: string; status: string }>
-}
+export type StsAction = 'subscribe' | 'opt_out'
 
-async function getJson(path: string): Promise<unknown> {
-  const res = await fetch(`${baseUrl()}${path}`, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
-  })
-  if (!res.ok) throw new Error(`STS ${path} → HTTP ${res.status}`)
-  const text = await res.text()
-  try {
-    return JSON.parse(text)
-  } catch {
-    return text
-  }
+export interface StsRelayResult {
+  ok: boolean
+  agent: string
+  action: StsAction
+  status: number
+  body: string
 }
 
 /**
- * Pull the daily opt-out (DNC) list. STS may return a JSON array of msisdns or a newline/comma list;
- * we accept either and return normalized +E.164 phones, de-duplicated.
+ * Relay a keypress decision to STS. press 1 → subscribe (/avm), press 9 → opt out (/cancel).
+ * Throws if the agent has no GUID configured (the caller decides how to surface that).
  */
-export async function fetchOptOuts(): Promise<string[]> {
-  const data = await getJson(`/avm/optouts/${encodeURIComponent(guid())}`)
-  let raw: string[]
-  if (Array.isArray(data)) {
-    raw = data.map((d) => (typeof d === 'string' ? d : String((d as { msisdn?: string }).msisdn ?? '')))
-  } else if (typeof data === 'string') {
-    raw = data.split(/[\s,]+/)
-  } else {
-    raw = []
-  }
-  const seen = new Set<string>()
-  for (const r of raw) {
-    if (!r) continue
-    seen.add(toE164(r))
-  }
-  return [...seen]
-}
+export async function relayToSts(agent: string, msisdn: string, action: StsAction): Promise<StsRelayResult> {
+  const guid = guidForAgent(agent)
+  if (!guid) throw new Error(`No STS GUID configured for agent "${agent}" (set STS_GUID_${agent.toUpperCase()})`)
 
-/** Look up one subscriber's DNC / network / subscription state. */
-export async function fetchSubscriberInfo(msisdn: string): Promise<StsSubscriberInfo> {
-  const m = toE164(msisdn).slice(1) // STS wants the bare msisdn (no +)
-  const data = (await getJson(`/subscriberinfo/query/${encodeURIComponent(guid())}/${encodeURIComponent(m)}`)) as Record<string, unknown>
-  return {
-    msisdn: toE164(String(data.msisdn ?? msisdn)),
-    network: (data.network as string) ?? null,
-    dnc: Boolean(data.dnc),
-    contentBlocked: Boolean(data.contentblocked),
-    subscriptions: Boolean(data.subscriptions),
-    serviceList: Array.isArray(data.servicelist)
-      ? (data.servicelist as Array<Record<string, unknown>>).map((s) => ({
-          name: String(s.name ?? ''),
-          status: String(s.status ?? ''),
-        }))
-      : [],
-  }
+  const m = bareMsisdn(msisdn)
+  const path = action === 'subscribe' ? `/avm/${guid}/${m}` : `/cancel/${guid}/${m}`
+  const res = await fetch(`${baseUrl()}${path}`, { method: 'POST', cache: 'no-store' })
+  const body = await res.text()
+  return { ok: res.ok, agent, action, status: res.status, body: body.slice(0, 300) }
 }

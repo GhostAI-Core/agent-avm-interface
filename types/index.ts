@@ -36,6 +36,10 @@ export interface Campaign {
   auto_paused?: boolean
   sip_trunk_id?: number | null
   voice_recording_url?: string
+  audio_path?: string | null
+  sip_trunk_id?: string | null
+  start_date?: string | null
+  end_date?: string | null
   transfer_key?: string | null
   transfer_target?: string | null
   // In-call behavior knobs read by the agent worker (see lib/call-behavior.ts).

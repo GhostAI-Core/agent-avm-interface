@@ -16,7 +16,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import GlassCard from '@/components/ui/GlassCard'
 import StatusChip from '@/components/ui/StatusChip'
 import CrudSection, { type Column } from '@/components/telephony/CrudSection'
-import type { FieldDef, FormValues } from '@/components/telephony/EntityFormDialog'
+import type { FieldDef, FormValues } from '@/components/telephony/EntityFormDrawer'
 import { useTelephonyStore, type TestResult, type DialResult } from '@/lib/telephony-mock'
 import type {
   SipProvider, OutboundTrunk, DispatchRule, TelephonyAgent, SystemStatus,

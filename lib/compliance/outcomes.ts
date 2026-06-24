@@ -7,6 +7,12 @@
  * attempt cap and randomized spacing.
  */
 const REACHED = new Set([
+  // callops / STS dispositions where a live person picked up
+  'answered', // callops + STS ANSWERED — reached (was missing: answered calls didn't end the day)
+  'subscribed', // STS SUBSCRIBE — answered + converted (billing opt-in)
+  'unsubscribed', // STS UNSUBSCRIBE — answered + churned the product
+  'opted_out', // STS OPT OUT — answered + global DNC
+  // legacy IVR dispositions
   'connected',
   'qualified',
   'no_speech', // line opened, human there, just didn't speak — still reached

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "tsx --test \"lib/**/*.test.ts\"",
     "dial": "npx tsx scripts/dial-outbound.ts",
     "callops": "npx tsx scripts/callops-test.ts"
   },

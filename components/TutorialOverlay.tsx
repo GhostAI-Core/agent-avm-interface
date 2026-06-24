@@ -22,7 +22,6 @@ export const TOUR_STEPS: TourStep[] = [
 
   // The left bar, tab by tab
   { key: 'nav-dashboard', target: 'nav-dashboard', title: 'Control Room', body: 'Your live command centre — every number and chart for your campaigns in one place.' },
-  { key: 'nav-sts',       target: 'nav-sts',       title: 'STS Dashboard', body: 'Speech-to-speech overview: how your voice agents are performing in real time.' },
   { key: 'nav-companies', target: 'nav-companies', title: 'Companies', body: 'The clients you run campaigns for. Each company holds its own campaigns and contact.' },
   { key: 'nav-campaigns', target: 'nav-campaigns', title: 'Campaigns', body: 'Every calling campaign you create — start, pause, edit or archive them here.' },
   { key: 'nav-reports',   target: 'nav-reports',   title: 'Campaign Report', body: 'The full results table: dialled, connected, qualified, spend — exportable to CSV.' },

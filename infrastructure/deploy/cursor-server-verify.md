@@ -39,27 +39,45 @@ docker network inspect shared | grep agent-avm-web-web
 
 **Pass:** Web container attached to `shared` network (if tunnel routes through it).
 
-## 4. Environment (LiveKit + Supabase)
+## 4. Environment (Supabase + callops + LiveKit)
 
 ```bash
-grep -E '^(LIVEKIT_|NEXT_PUBLIC_SUPABASE|SUPABASE_SERVICE)' .env | sed 's/=.*/=***/'
+grep -E '^(CALLOPS_|LIVEKIT_|NEXT_PUBLIC_SUPABASE|SUPABASE_SERVICE|INWORLD_|AVM_SCRIPT_)' .env | sed 's/=.*/=***/'
 ```
 
-**Pass for outbound dialing:**
+**Pass for production lifecycle:**
+
+- `CALLOPS_URL`, `CALLOPS_WEBHOOK_SECRET` set
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` set
+- `SUPABASE_SERVICE_ROLE_KEY` set for webhook writes and diagnostic scripts
+
+**Pass for LiveKit webhook / diagnostics:**
 
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` set
-- `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` set (or campaigns use per-trunk `sip_trunk_id`)
-- `SUPABASE_SERVICE_ROLE_KEY` set (webhooks + agent result)
+- `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` set if using `npm run dial`
 
-## 5. Manual dial smoke test (optional)
+**Pass for campaign voice generation (if enabled):**
+
+- `INWORLD_API_KEY` set
+- `AVM_SCRIPT_AUDIO_STORAGE_BUCKET`, `AVM_SCRIPT_AUDIO_STORAGE_ACCESS_KEY`, `AVM_SCRIPT_AUDIO_STORAGE_SECRET`, `AVM_SCRIPT_AUDIO_STORAGE_ENDPOINT` set
+
+## 5. callops smoke test
 
 From the deploy host (with `.env` loaded):
+
+```bash
+npm run callops -- status <campaignId>
+```
+
+**Pass:** CLI returns live campaign counters from callops, or a clear upstream error to investigate.
+
+## 6. Direct LiveKit diagnostic dial (optional)
 
 ```bash
 npm run dial -- --campaign-id <id> --contact-id <id>
 ```
 
-**Pass:** CLI prints `selected_trunk` and `result: ok` (or a clear SIP error from LiveKit).
+**Pass:** CLI prints `selected_trunk` and `result: ok` (or a clear SIP error from LiveKit). This is not the production dashboard path.
 
 ## Summary template
 
@@ -67,5 +85,6 @@ npm run dial -- --campaign-id <id> --contact-id <id>
 | --- | --- | --- |
 | agent-avm-web-web | PASS/FAIL | |
 | /api/health | PASS/FAIL | |
-| LiveKit env | PASS/FAIL | |
-| Manual dial | PASS/FAIL/SKIP | |
+| callops env | PASS/FAIL | |
+| callops status | PASS/FAIL | |
+| LiveKit diagnostic dial | PASS/FAIL/SKIP | |

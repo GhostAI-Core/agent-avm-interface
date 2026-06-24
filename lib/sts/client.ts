@@ -23,13 +23,13 @@ function baseUrl(): string {
   return (process.env.STS_SDP_BASE_URL?.trim() || 'http://sdp.smartcalltech.co.za').replace(/\/$/, '')
 }
 
-/** The STS GUID configured for an agent (product), or null when that agent isn't wired to STS. */
-export function guidForAgent(agent: string): string | null {
-  const key = `STS_GUID_${agent.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`
+/** The STS GUID configured for a product, or null when that product isn't wired to STS. */
+export function guidForProduct(product: string): string | null {
+  const key = `STS_GUID_${product.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`
   return process.env[key]?.trim() || null
 }
 
-/** True when at least one agent GUID is configured (so STS routes can report ready). */
+/** True when at least one product GUID is configured (so STS routes can report ready). */
 export function isStsConfigured(): boolean {
   return Object.keys(process.env).some((k) => k.startsWith('STS_GUID_') && process.env[k]?.trim())
 }
@@ -43,23 +43,55 @@ export type StsAction = 'subscribe' | 'opt_out'
 
 export interface StsRelayResult {
   ok: boolean
-  agent: string
+  product: string
   action: StsAction
   status: number
   body: string
 }
 
+/** STS subscribe needs a 'YYYY-MM-DD HH:mm:ss' timestamp. */
+function stsDate(callDate?: string): string {
+  return callDate?.trim() || new Date().toISOString().slice(0, 19).replace('T', ' ')
+}
+
 /**
- * Relay a keypress decision to STS. press 1 → subscribe (/avm), press 9 → opt out (/cancel).
- * Throws if the agent has no GUID configured (the caller decides how to surface that).
+ * Relay a keypress decision to STS. press 1 → subscribe (POST /avm with the result body), press 9 →
+ * opt out (POST /cancel). Throws if the product has no GUID configured.
+ *
+ * Verified against STS 2026-06-24: /avm requires a {number, CallDuration, CallDate, Result} body and
+ * a minimum call duration; production subscribes also need this server's IP whitelisted by STS
+ * ("Interface auth failed" otherwise). /cancel needs only the path and returns `true`.
  */
-export async function relayToSts(agent: string, msisdn: string, action: StsAction): Promise<StsRelayResult> {
-  const guid = guidForAgent(agent)
-  if (!guid) throw new Error(`No STS GUID configured for agent "${agent}" (set STS_GUID_${agent.toUpperCase()})`)
+export async function relayToSts(
+  product: string,
+  msisdn: string,
+  action: StsAction,
+  meta: { durationSeconds?: number; callDate?: string } = {},
+): Promise<StsRelayResult> {
+  const guid = guidForProduct(product)
+  if (!guid) throw new Error(`No STS GUID configured for product "${product}" (set STS_GUID_${product.toUpperCase()})`)
 
   const m = bareMsisdn(msisdn)
-  const path = action === 'subscribe' ? `/avm/${guid}/${m}` : `/cancel/${guid}/${m}`
-  const res = await fetch(`${baseUrl()}${path}`, { method: 'POST', cache: 'no-store' })
+  let res: Response
+  if (action === 'subscribe') {
+    res = await fetch(`${baseUrl()}/avm/${guid}/${m}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({
+        number: m,
+        CallDuration: String(meta.durationSeconds ?? 0),
+        CallDate: stsDate(meta.callDate),
+        Result: 'SUBSCRIBE',
+      }),
+    })
+  } else {
+    res = await fetch(`${baseUrl()}/cancel/${guid}/${m}`, {
+      method: 'POST',
+      headers: { 'Content-Length': '0' },
+      cache: 'no-store',
+    })
+  }
   const body = await res.text()
-  return { ok: res.ok, agent, action, status: res.status, body: body.slice(0, 300) }
+  return { ok: res.ok, product, action, status: res.status, body: body.slice(0, 300) }
 }

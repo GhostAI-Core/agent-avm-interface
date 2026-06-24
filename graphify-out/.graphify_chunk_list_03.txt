@@ -1,0 +1,11 @@
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/ui/AgentChip.tsx
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/ui/GlassCard.tsx
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/ui/StatusChip.tsx
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/ui/WizardChrome.tsx
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/openapi.json
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/README.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/app-api-reference.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/livekit-outbound-integration.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/voicelist.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/infrastructure/deploy/cursor-server-verify.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/infrastructure/deploy/runbook.md

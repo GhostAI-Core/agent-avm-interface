@@ -1,0 +1,1 @@
+{"nodes": [{"id": "supabase_server_createclient", "label": "Server Supabase client (cookie-backed SSR)", "file_type": "code", "source_file": "utils/supabase/server.ts", "source_location": "7-33", "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

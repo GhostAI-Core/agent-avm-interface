@@ -1,0 +1,9 @@
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-outbound-v1/specs/routr-outbound-routing/spec.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/chart-visual-system/spec.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/evra-component-reskin/spec.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/evra-design-tokens/spec.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/evra-mui-theme/spec.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/legacy-outbound-calling/spec.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/supabase-database/spec.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/voip-provider-config/spec.md
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/plans/issue-34-callops-integration.md

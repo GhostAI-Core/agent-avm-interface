@@ -1,0 +1,1 @@
+{"nodes": [{"id": "voip_provider_config_spec_local_crud", "label": "VoIP providers stored without external sync", "file_type": "document", "source_file": "openspec/changes/archive/2026-06-17-remove-routr/specs/voip-provider-config/spec.md", "source_location": "L3-L15", "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

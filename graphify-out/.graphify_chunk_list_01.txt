@@ -1,0 +1,4 @@
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/security/route.ts
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/trunks/route.ts
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/tts/generate/route.ts
+/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/tts/save/route.ts

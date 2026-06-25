@@ -14,7 +14,8 @@ import MenuItem from '@mui/material/MenuItem'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
-import type { Campaign } from '@/types'
+import Grid from '@mui/material/Grid'
+import type { Campaign, Company } from '@/types'
 import { parseContacts } from '@/lib/parseCsv'
 
 type Mode = 'edit' | 'reuse'
@@ -34,6 +35,15 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Edit-mode fields mirroring the campaigns table (name, agent, company, speed, window).
+  // Reuse mode never reads these — its payload carries the source campaign's values verbatim.
+  const [agent, setAgent] = useState<string>(campaign.agent ?? '')
+  const [companyId, setCompanyId] = useState<number | ''>(campaign.company_id ?? '')
+  const [dialingSpeed, setDialingSpeed] = useState<number>(campaign.dialing_speed ?? 1)
+  const [windowStart, setWindowStart] = useState<string>(campaign.time_window_start ?? '')
+  const [windowEnd, setWindowEnd] = useState<string>(campaign.time_window_end ?? '')
+  const [companies, setCompanies] = useState<Company[]>([])
+
   // Load the saved S3 scripts for the dropdown.
   useEffect(() => {
     let cancelled = false
@@ -44,13 +54,32 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
     return () => { cancelled = true }
   }, [])
 
+  // Load companies for the edit-mode dropdown (same source as the create modal).
+  useEffect(() => {
+    if (mode !== 'edit') return
+    let cancelled = false
+    fetch('/api/companies')
+      .then(r => (r.ok ? r.json() : { companies: [] }))
+      .then(j => { if (!cancelled) setCompanies(j.companies ?? []) })
+      .catch(() => { /* leave empty → dropdown shows the current/empty company */ })
+    return () => { cancelled = true }
+  }, [mode])
+
   async function submit() {
     setLoading(true); setError('')
     try {
       if (mode === 'edit') {
         const res = await fetch(`/api/campaigns/${campaign.id}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ audio_path: scriptUrl }),
+          body: JSON.stringify({
+            name: name.trim(),
+            agent: agent || null,
+            company_id: companyId === '' ? null : companyId,
+            dialing_speed: dialingSpeed,
+            time_window_start: windowStart,
+            time_window_end: windowEnd,
+            audio_path: scriptUrl,
+          }),
         })
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to update')
       } else {
@@ -86,7 +115,7 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
   return (
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ fontWeight: 700 }}>
-        {mode === 'edit' ? 'Edit Campaign — Script' : 'Reuse as Template'}
+        {mode === 'edit' ? 'Edit Campaign' : 'Reuse as Template'}
         <Typography variant="body2" color="text.secondary">
           {mode === 'edit' ? campaign.name : `Clones "${campaign.name}" — change the script and call list, everything else is reused.`}
         </Typography>
@@ -96,6 +125,50 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
           {error && <Alert severity="error">{error}</Alert>}
           {mode === 'reuse' && (
             <TextField label="New campaign name" value={name} onChange={e => setName(e.target.value)} fullWidth size="small" />
+          )}
+
+          {mode === 'edit' && (
+            <>
+              <TextField label="Campaign Name" value={name} onChange={e => setName(e.target.value)} fullWidth size="small" required />
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 7 }}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="edit-company-label">Company</InputLabel>
+                    <Select labelId="edit-company-label" label="Company" value={companyId}
+                      onChange={e => setCompanyId(Number(e.target.value) || '')} displayEmpty>
+                      <MenuItem value=""><em>No company</em></MenuItem>
+                      {companies.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 5 }}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="edit-agent-label">Product</InputLabel>
+                    <Select labelId="edit-agent-label" label="Product" value={agent} displayEmpty
+                      onChange={e => setAgent(e.target.value)}>
+                      <MenuItem value="">Auto</MenuItem>
+                      <MenuItem value="seeker">Seeker</MenuItem>
+                      <MenuItem value="grace">Grace</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <TextField label="Dialing Speed (calls/sec)" type="number" size="small" fullWidth
+                    value={dialingSpeed} onChange={e => setDialingSpeed(Math.max(1, Number(e.target.value) || 1))}
+                    slotProps={{ htmlInput: { min: 1, max: 10 } }} />
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField label="Window Start" type="time" size="small" fullWidth
+                    value={windowStart} onChange={e => setWindowStart(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }} />
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField label="Window End" type="time" size="small" fullWidth
+                    value={windowEnd} onChange={e => setWindowEnd(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }} />
+                </Grid>
+              </Grid>
+            </>
           )}
 
           <FormControl fullWidth size="small" disabled={scripts.length === 0}>

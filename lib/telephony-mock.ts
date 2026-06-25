@@ -65,6 +65,9 @@ function load(): TelephonyData | null {
 
 export type TestResult = { ok: boolean; message: string }
 export type DialResult = { ok: boolean; room?: string; message: string }
+// Trunk create/update + test-call go through the real callops proxies (not the mock store).
+export type TrunkSaveResult = { ok: boolean; trunk_id?: string; message: string }
+export type TrunkTestResult = { ok: boolean; sip_status?: string; message: string }
 
 export type TelephonyStore = {
   // LiveKit settings
@@ -77,12 +80,15 @@ export type TelephonyStore = {
   updateProvider: (id: string, values: Partial<SipProvider>) => void
   deleteProvider: (id: string) => void
   toggleProvider: (id: string) => void
-  // Outbound trunks
+  // Outbound trunks. createTrunk/updateTrunk mutate local store only; saveTrunk and
+  // testTrunkCall hit the real callops proxies (server-side, secret-protected).
   trunks: OutboundTrunk[]
   createTrunk: (values: Omit<OutboundTrunk, 'id'>) => void
   updateTrunk: (id: string, values: Partial<OutboundTrunk>) => void
   deleteTrunk: (id: string) => void
   toggleTrunk: (id: string) => void
+  saveTrunk: (values: Omit<OutboundTrunk, 'id'>) => Promise<TrunkSaveResult>
+  testTrunkCall: (sipTrunkId: string, phone: string) => Promise<TrunkTestResult>
   // Dispatch rules
   rules: DispatchRule[]
   createRule: (values: Omit<DispatchRule, 'id'>) => void
@@ -175,6 +181,60 @@ export function useTelephonyStore(): TelephonyStore {
     updateTrunk: (id, values) => patchIn('trunks', id, values),
     deleteTrunk: (id) => removeFrom('trunks', id),
     toggleTrunk: (id) => toggleIn('trunks', id),
+
+    // POST → /api/trunks proxy → callops /livekit/trunks (create or idempotent re-create).
+    // callops returns { trunk_id, name, address, numbers, auth_username } (no auth_password).
+    saveTrunk: async (values) => {
+      try {
+        const res = await fetch('/api/trunks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: values.name,
+            address: values.address,
+            numbers: values.numbers,
+            auth_username: values.auth_username,
+            auth_password: values.auth_password ?? '',
+          }),
+        })
+        const json = (await res.json().catch(() => ({}))) as { trunk_id?: string; error?: string }
+        if (!res.ok) {
+          return { ok: false, message: json.error ?? `Save failed (${res.status}).` }
+        }
+        return { ok: true, trunk_id: json.trunk_id, message: `Trunk "${values.name}" saved.` }
+      } catch {
+        return { ok: false, message: 'Could not reach the dashboard API.' }
+      }
+    },
+
+    // POST → /api/trunks/test-call proxy → callops /livekit/test-call. A failed *call* still
+    // returns 200 with ok:false; only request/upstream faults are non-2xx.
+    testTrunkCall: async (sipTrunkId, phone) => {
+      if (!phone) return { ok: false, message: 'Phone number is required.' }
+      if (!sipTrunkId) return { ok: false, message: 'Select a trunk.' }
+      try {
+        const res = await fetch('/api/trunks/test-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, sip_trunk_id: sipTrunkId }),
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          ok?: boolean; sip_status?: string; message?: string; error?: string
+        }
+        if (!res.ok) {
+          return { ok: false, message: json.error ?? `Test call failed (${res.status}).` }
+        }
+        const ok = Boolean(json.ok)
+        const detail = [json.sip_status, json.message].filter(Boolean).join(' — ')
+        return {
+          ok,
+          sip_status: json.sip_status,
+          message: detail || (ok ? `Test call to ${phone} connected.` : `Test call to ${phone} did not connect.`),
+        }
+      } catch {
+        return { ok: false, message: 'Could not reach the dashboard API.' }
+      }
+    },
 
     rules: data.rules,
     createRule: (values) => addTo('rules', { ...values, id: uid() }),

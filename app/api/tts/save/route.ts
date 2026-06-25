@@ -9,7 +9,7 @@ export const runtime = 'nodejs'
 const MAX_AUDIO_BYTES = 50 * 1024 * 1024
 
 export async function POST(req: Request) {
-  const { user } = await getAuthUser()
+  const { supabase, user } = await getAuthUser()
   if (!user) return unauthorized()
 
   if (!isScriptStorageConfigured()) {
@@ -32,6 +32,9 @@ export async function POST(req: Request) {
   const voiceId = typeof (body as { voiceId?: unknown }).voiceId === 'string'
     ? (body as { voiceId: string }).voiceId
     : undefined
+  const text = typeof (body as { text?: unknown }).text === 'string'
+    ? (body as { text: string }).text.trim()
+    : ''
 
   if (!campaignName) {
     return NextResponse.json({ error: 'campaignName is required' }, { status: 400 })
@@ -59,6 +62,16 @@ export async function POST(req: Request) {
 
   try {
     const { storageKey, publicUrl } = await uploadCampaignScript(campaignName, audio)
+
+    // Persist the source text so the voice generator can offer this script for reuse later.
+    // Best-effort: the audio is already saved, so a library-row failure must not fail the save.
+    if (text) {
+      const { error: insErr } = await supabase
+        .from('voice_scripts')
+        .insert({ text, voice_id: voiceId ?? null, audio_url: publicUrl, campaign_name: campaignName })
+      if (insErr) console.error('voice_scripts insert failed (audio saved OK):', insErr)
+    }
+
     return NextResponse.json({
       storageKey,
       publicUrl,

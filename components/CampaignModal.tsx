@@ -151,7 +151,7 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
 
   // Step 2 — outbound trunk
   const [trunks, setTrunks] = useState<Trunk[]>([])
-  const [sipTrunkId, setSipTrunkId] = useState('') // livekit_trunk_id; '' = env default
+  const [sipTrunkId, setSipTrunkId] = useState('') // sip_trunks.id (integer FK, as string); '' = env default
 
   // Step 3 — voice (→ audio_path)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('upload')
@@ -370,12 +370,12 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
                 onChange={e => setSipTrunkId(e.target.value)}
                 renderValue={(v) => {
                   if (!v) return <Box component="span" sx={{ color: semantic.textSoft }}>Default trunk (env)</Box>
-                  const t = trunks.find(x => x.livekit_trunk_id === v)
+                  const t = trunks.find(x => String(x.id) === v)
                   return t ? `${t.name} — ${t.from_number}` : v
                 }}>
                 <MenuItem value="">Default trunk (env)</MenuItem>
                 {trunks.map(t => (
-                  <MenuItem key={t.id} value={t.livekit_trunk_id}>{t.name} — {t.from_number}</MenuItem>
+                  <MenuItem key={t.id} value={String(t.id)}>{t.name} — {t.from_number}</MenuItem>
                 ))}
               </Select>
             </FormControl>

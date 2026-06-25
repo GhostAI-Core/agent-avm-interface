@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
+import Tooltip from '@mui/material/Tooltip'
 import FormControl from '@mui/material/FormControl'
 import Grid from '@mui/material/Grid'
 import InputLabel from '@mui/material/InputLabel'
@@ -33,6 +35,15 @@ interface Props {
   disabled?: boolean
 }
 
+type SavedVoiceScript = {
+  id: number
+  text: string
+  voice_id: string | null
+  audio_url: string | null
+  campaign_name: string | null
+  created_at: string
+}
+
 function base64ToBlob(base64: string, contentType: string): Blob {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
@@ -60,9 +71,28 @@ export default function VoiceGenerator({
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [savedMessage, setSavedMessage] = useState('')
+  const [savedScripts, setSavedScripts] = useState<SavedVoiceScript[]>([])
 
   const sampleRef = useRef<HTMLAudioElement>(null)
   const generatedRef = useRef<HTMLAudioElement>(null)
+  const bubbleRef = useRef<HTMLAudioElement>(null)
+
+  // Reuse bubbles: previously-saved scripts (text + voice + audio), newest first.
+  function refreshSavedScripts() {
+    fetch('/api/voice-scripts')
+      .then(r => (r.ok ? r.json() : { scripts: [] }))
+      .then(j => setSavedScripts(Array.isArray(j.scripts) ? j.scripts : []))
+      .catch(() => { /* ignore — the bubbles just won't show */ })
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/voice-scripts')
+      .then(r => (r.ok ? r.json() : { scripts: [] }))
+      .then(j => { if (!cancelled) setSavedScripts(Array.isArray(j.scripts) ? j.scripts : []) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   const selectedVoice = useMemo(() => findVoice(voiceId), [voiceId])
   const ethnicityOptions = useMemo(() => ethnicities(gender), [gender])
@@ -172,6 +202,7 @@ export default function VoiceGenerator({
           campaignName: campaignName.trim(),
           audioBase64,
           voiceId,
+          text: script.trim(),
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -181,6 +212,7 @@ export default function VoiceGenerator({
       }
       onVoiceRecordingUrlChange(json.publicUrl)
       setSavedMessage(`Recording saved as ${json.storageKey ?? 'script'} for "${campaignName.trim()}".`)
+      refreshSavedScripts() // surface the just-saved script as a reuse bubble
     } catch {
       setError('Could not save recording')
     } finally {
@@ -193,6 +225,27 @@ export default function VoiceGenerator({
     if (!el || !selectedVoice) return
     el.src = selectedVoice.samplePath
     el.play().catch(() => {})
+  }
+
+  // Listen to a saved script's audio without changing the editor.
+  function playBubble(url: string) {
+    const el = bubbleRef.current
+    if (!el) return
+    el.src = url
+    el.play().catch(() => {})
+  }
+
+  // Load a saved script into the editor: its text + the voice it was generated with (both editable).
+  function applySavedScript(s: SavedVoiceScript) {
+    clearGenerated()
+    setScript(s.text)
+    const v = s.voice_id ? findVoice(s.voice_id) : null
+    if (v) {
+      setGender(v.gender)
+      setEthnicity(v.ethnicity)
+      setVoiceId(v.voiceId)
+    }
+    setError('')
   }
 
   return (
@@ -260,6 +313,36 @@ export default function VoiceGenerator({
             Play voice sample
           </Button>
           <audio ref={sampleRef} hidden preload="none" />
+        </Box>
+      )}
+
+      {savedScripts.length > 0 && (
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            Reuse a previous script — ▶ to listen, click to load &amp; edit
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {savedScripts.map(s => (
+              <Tooltip key={s.id} title={s.text} arrow>
+                <Chip
+                  variant="outlined"
+                  size="small"
+                  icon={s.audio_url ? (
+                    <PlayArrowIcon
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={e => { e.stopPropagation(); playBubble(s.audio_url!) }}
+                      sx={{ cursor: 'pointer' }}
+                    />
+                  ) : undefined}
+                  label={s.text.length > 42 ? `${s.text.slice(0, 42)}…` : s.text}
+                  onClick={() => applySavedScript(s)}
+                  disabled={disabled || generating}
+                  sx={{ maxWidth: 320 }}
+                />
+              </Tooltip>
+            ))}
+          </Box>
+          <audio ref={bubbleRef} hidden preload="none" />
         </Box>
       )}
 

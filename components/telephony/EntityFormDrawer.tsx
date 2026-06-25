@@ -13,9 +13,15 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
+import Autocomplete from '@mui/material/Autocomplete'
+import Chip from '@mui/material/Chip'
 import CloseIcon from '@mui/icons-material/Close'
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 
-export type FieldType = 'text' | 'password' | 'select' | 'switch'
+// 'chips' is a freeSolo Autocomplete: press Enter to add a value, click ✕ to remove,
+// drag a chip to reorder. Its value is a string[] (not a string), so FormValues widens
+// to include string[] for these fields only.
+export type FieldType = 'text' | 'password' | 'select' | 'switch' | 'chips'
 
 export type FieldDef = {
   name: string
@@ -27,7 +33,7 @@ export type FieldDef = {
   helperText?: string
 }
 
-export type FormValues = Record<string, string | boolean>
+export type FormValues = Record<string, string | boolean | string[]>
 
 /**
  * Right-anchored Drawer holding an entity create/edit form. Drop-in replacement for the old
@@ -52,21 +58,45 @@ export default function EntityFormDrawer({
 }) {
   const [values, setValues] = useState<FormValues>(initial)
   const [error, setError] = useState('')
+  // Index of the chip currently being dragged (per most-recent dragstart), keyed by field name.
+  const [dragField, setDragField] = useState<string | null>(null)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
 
-  const set = (name: string, v: string | boolean) => setValues((prev) => ({ ...prev, [name]: v }))
+  const set = (name: string, v: string | boolean | string[]) =>
+    setValues((prev) => ({ ...prev, [name]: v }))
 
   function submit() {
     for (const f of fields) {
-      if (f.required && f.type !== 'switch') {
-        const val = values[f.name]
-        if (typeof val !== 'string' || val.trim() === '') {
+      if (!f.required) continue
+      if (f.type === 'switch') continue
+      const val = values[f.name]
+      if (f.type === 'chips') {
+        if (!Array.isArray(val) || val.length === 0) {
           setError(`${f.label} is required.`)
           return
         }
+        continue
+      }
+      if (typeof val !== 'string' || val.trim() === '') {
+        setError(`${f.label} is required.`)
+        return
       }
     }
     setError('')
     onSubmit(values)
+  }
+
+  // Reorder a chips field's value, moving item `from` to index `to`.
+  function reorder(name: string, from: number, to: number) {
+    setValues((prev) => {
+      const current = prev[name]
+      if (!Array.isArray(current)) return prev
+      if (from === to || from < 0 || to < 0 || from >= current.length || to >= current.length) return prev
+      const next = current.slice()
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return { ...prev, [name]: next }
+    })
   }
 
   return (
@@ -92,6 +122,61 @@ export default function EntityFormDrawer({
           <Stack spacing={2}>
             {error && <Alert severity="error">{error}</Alert>}
             {fields.map((f) => {
+              if (f.type === 'chips') {
+                const chips = Array.isArray(values[f.name]) ? (values[f.name] as string[]) : []
+                return (
+                  <Autocomplete<string, true, false, true>
+                    key={f.name}
+                    multiple
+                    freeSolo
+                    options={[] as string[]}
+                    value={chips}
+                    onChange={(_, next) => {
+                      // Dedupe + trim on add; Autocomplete owns add/remove, drag owns order.
+                      const cleaned: string[] = []
+                      for (const raw of next) {
+                        const v = String(raw).trim()
+                        if (v && !cleaned.includes(v)) cleaned.push(v)
+                      }
+                      set(f.name, cleaned)
+                    }}
+                    renderValue={(value, getItemProps) =>
+                      value.map((option, index) => {
+                        const { key, ...itemProps } = getItemProps({ index })
+                        return (
+                          <Chip
+                            {...itemProps}
+                            key={key}
+                            label={option}
+                            size="small"
+                            icon={<DragIndicatorIcon fontSize="small" sx={{ cursor: 'grab' }} />}
+                            draggable
+                            onDragStart={() => { setDragField(f.name); setDragIndex(index) }}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => {
+                              e.preventDefault()
+                              if (dragField === f.name && dragIndex !== null) reorder(f.name, dragIndex, index)
+                              setDragField(null); setDragIndex(null)
+                            }}
+                            onDragEnd={() => { setDragField(null); setDragIndex(null) }}
+                            sx={{ '& .MuiChip-icon': { ml: 0.5, mr: -0.25 } }}
+                          />
+                        )
+                      })
+                    }
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label={f.label}
+                        size="small"
+                        required={f.required}
+                        placeholder={f.placeholder}
+                        helperText={f.helperText}
+                      />
+                    )}
+                  />
+                )
+              }
               if (f.type === 'switch') {
                 return (
                   <FormControlLabel

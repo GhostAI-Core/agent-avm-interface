@@ -123,8 +123,8 @@ export default function Page() {
   const [campaignAction,   setCampaignAction]   = useState<{ mode: 'edit' | 'reuse'; campaign: Campaign } | null>(null)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [tourStep,         setTourStep]         = useState<number | null>(null)
-  const [companiesView,    setCompaniesView]    = useState<'cards' | 'table'>('cards')
-  const [campaignsView,    setCampaignsView]    = useState<'cards' | 'table'>('cards')
+  const [companiesView,    setCompaniesView]    = useState<'cards' | 'table'>('table')
+  const [campaignsView,    setCampaignsView]    = useState<'cards' | 'table'>('table')
   const dash = useDashboardLayout()
 
   useEffect(() => { setMounted(true) }, [])
@@ -588,8 +588,8 @@ export default function Page() {
                 </Grid>
               ) : (
                 <GlassCard sx={{ p: 0, overflow: 'auto' }}>
-                  <TableContainer>
-                    <Table size="small" sx={{ minWidth: 640 }}>
+                  <TableContainer sx={{ maxHeight: 'calc(100vh - 260px)' }}>
+                    <Table stickyHeader size="small" sx={{ minWidth: 640, '& .MuiTableCell-head': { bgcolor: 'background.paper' } }}>
                       <TableHead>
                         <TableRow>
                           {['Company', 'Contact', 'Active', 'Total Camps', 'Total CPL'].map((h, i) => (
@@ -634,8 +634,8 @@ export default function Page() {
 
               {campaignsView === 'table' ? (
                 <GlassCard sx={{ p: 0, overflow: 'auto' }}>
-                  <TableContainer>
-                    <Table size="small" sx={{ minWidth: 820 }}>
+                  <TableContainer sx={{ maxHeight: 'calc(100vh - 260px)' }}>
+                    <Table stickyHeader size="small" sx={{ minWidth: 820, '& .MuiTableCell-head': { bgcolor: 'background.paper' } }}>
                       <TableHead>
                         <TableRow>
                           {['Campaign', 'Agent', 'Company', 'Status', 'Window / Speed', 'Actions'].map((h, i) => (
@@ -771,8 +771,8 @@ export default function Page() {
               </Stack>
 
               <GlassCard sx={{ p: 0, overflow: 'auto' }}>
-                <TableContainer>
-                  <Table size="small" sx={{ minWidth: 1100 }}>
+                <TableContainer sx={{ maxHeight: 'calc(100vh - 260px)' }}>
+                  <Table stickyHeader size="small" sx={{ minWidth: 1100, '& .MuiTableCell-head': { bgcolor: 'background.paper' } }}>
                     <TableHead>
                       <TableRow>
                         {['Campaign','Dialed','Connected','Qualified','Voicemail','No Speech','Hangup','NI','DNQ','Callback','NA','Busy','Failed','Duration','CPL','Spent'].map(h => (

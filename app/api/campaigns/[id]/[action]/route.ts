@@ -53,7 +53,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) {
-      return NextResponse.json({ error: json?.detail ?? json?.error ?? `callops ${res.status}` }, { status: 502 })
+      // Pass a callops client error (e.g. 422 campaign_missing_sip_trunk) through with its real status +
+      // detail so the dashboard shows the actionable reason. Only true upstream faults (5xx) read as 502.
+      const status = res.status >= 400 && res.status < 500 ? res.status : 502
+      return NextResponse.json({ error: json?.detail ?? json?.error ?? `callops ${res.status}` }, { status })
     }
     return NextResponse.json({ mode: 'callops', ...json })
   } catch (err) {
@@ -78,7 +81,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       cache: 'no-store',
     })
     const json = await res.json().catch(() => ({}))
-    if (!res.ok) return NextResponse.json({ error: json?.detail ?? `callops ${res.status}` }, { status: 502 })
+    if (!res.ok) {
+      const status = res.status >= 400 && res.status < 500 ? res.status : 502
+      return NextResponse.json({ error: json?.detail ?? `callops ${res.status}` }, { status })
+    }
     return NextResponse.json(json)
   } catch (err) {
     console.error('callops status proxy failed:', err)

@@ -17,7 +17,7 @@ import GlassCard from '@/components/ui/GlassCard'
 import StatusChip from '@/components/ui/StatusChip'
 import CrudSection, { type Column } from '@/components/telephony/CrudSection'
 import type { FieldDef, FormValues } from '@/components/telephony/EntityFormDrawer'
-import { useTelephonyStore, type TestResult, type DialResult } from '@/lib/telephony-mock'
+import { useTelephonyStore, type TestResult, type DialResult, type TrunkTestResult } from '@/lib/telephony-mock'
 import type {
   SipProvider, OutboundTrunk, DispatchRule, TelephonyAgent, SystemStatus,
 } from '@/types/telephony'
@@ -141,38 +141,122 @@ function ProvidersPanel({ store }: { store: Store }) {
 }
 
 /* ── 3. Outbound Trunks ────────────────────────────────────────────────── */
+// Trunk fields mirror the callops /livekit/trunks schema exactly. `numbers` is a
+// string[] upstream; the drawer edits it as a chips field (Enter to add, drag to
+// reorder), so the form value is already a string[].
+function parseNumbers(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean)
+  return String(raw ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+// Trunk-list numbers summary: 0 → "—", exactly 1 → the number, 2+ → "multiple".
+// The full list is still editable in the drawer.
+function summariseNumbers(numbers?: string[]): string {
+  const list = (numbers ?? []).filter(Boolean)
+  if (list.length === 0) return '—'
+  if (list.length === 1) return list[0]
+  return 'multiple'
+}
+
 function TrunksPanel({ store }: { store: Store }) {
-  const providerName = (id: string) => store.providers.find((p) => p.id === id)?.name ?? '—'
+  // Surfaces the result of the most recent create/update proxy call.
+  const [save, setSave] = useState<{ ok: boolean; message: string } | null>(null)
+  // Test-call form + result.
+  const [testTrunk, setTestTrunk] = useState('')
+  const [testPhone, setTestPhone] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<TrunkTestResult | null>(null)
+
   const fields: FieldDef[] = [
     { name: 'name', label: 'Name', type: 'text', required: true },
-    { name: 'provider_id', label: 'Provider', type: 'select', required: true,
-      options: store.providers.map((p) => ({ value: p.id, label: p.name })) },
-    { name: 'trunk_id', label: 'LiveKit Trunk ID', type: 'text', placeholder: 'ST_…' },
-    { name: 'caller_id', label: 'Caller ID', type: 'text' },
+    { name: 'address', label: 'SIP Address', type: 'text', required: true, placeholder: 'sip.provider.com' },
+    { name: 'numbers', label: 'Numbers', type: 'chips', required: true,
+      placeholder: '+27111234567', helperText: 'Press Enter to add a number; drag chips to reorder.' },
+    { name: 'auth_username', label: 'Auth Username', type: 'text', required: true },
+    { name: 'auth_password', label: 'Auth Password', type: 'password', required: true,
+      helperText: 'Re-enter on every save — callops never returns it.' },
     { name: 'enabled', label: 'Enabled', type: 'switch' },
   ]
   const columns: Column<OutboundTrunk>[] = [
     { key: 'name', label: 'Name' },
-    { key: 'provider_id', label: 'Provider', render: (r) => providerName(r.provider_id) },
-    { key: 'trunk_id', label: 'Trunk ID', render: (r) => r.trunk_id || '—' },
+    { key: 'address', label: 'Address' },
+    { key: 'numbers', label: 'Numbers', render: (r) => summariseNumbers(r.numbers) },
+    { key: 'trunk_id', label: 'LiveKit Trunk', render: (r) => r.trunk_id || '—' },
   ]
   const fromForm = (v: FormValues): Omit<OutboundTrunk, 'id'> => ({
-    name: String(v.name ?? ''), provider_id: String(v.provider_id ?? ''),
-    trunk_id: v.trunk_id ? String(v.trunk_id) : undefined,
-    caller_id: v.caller_id ? String(v.caller_id) : undefined, enabled: Boolean(v.enabled),
+    name: String(v.name ?? ''), address: String(v.address ?? ''),
+    numbers: parseNumbers(v.numbers), auth_username: String(v.auth_username ?? ''),
+    auth_password: v.auth_password ? String(v.auth_password) : undefined,
+    enabled: Boolean(v.enabled),
   })
+
+  // POST the trunk to the create/update proxy, then mirror it into the local store so the
+  // table reflects the saved row (and the callops-returned trunk_id). callops has no separate
+  // update endpoint, so create and edit both re-POST the same body.
+  async function persist(values: Omit<OutboundTrunk, 'id'>, id?: string) {
+    setSave(null)
+    const res = await store.saveTrunk(values)
+    if (!res.ok) {
+      setSave({ ok: false, message: res.message })
+      return
+    }
+    const stored: Omit<OutboundTrunk, 'id'> = { ...values, trunk_id: res.trunk_id ?? values.trunk_id }
+    if (id) store.updateTrunk(id, stored)
+    else store.createTrunk(stored)
+    setSave({ ok: true, message: res.message })
+  }
+
+  async function runTestCall() {
+    setTesting(true); setTestResult(null)
+    setTestResult(await store.testTrunkCall(testTrunk, testPhone))
+    setTesting(false)
+  }
+
   return (
-    <CrudSection<OutboundTrunk>
-      title="Outbound Trunks" entityLabel="Trunk"
-      items={store.trunks} columns={columns} fields={fields}
-      rowKey={(r) => r.id}
-      toFormValues={(r) => ({ name: r.name, provider_id: r.provider_id, trunk_id: r.trunk_id ?? '', caller_id: r.caller_id ?? '', enabled: r.enabled })}
-      emptyForm={{ name: '', provider_id: '', trunk_id: '', caller_id: '', enabled: true }}
-      onCreate={(v) => store.createTrunk(fromForm(v))}
-      onUpdate={(id, v) => store.updateTrunk(id, fromForm(v))}
-      onDelete={store.deleteTrunk}
-      onToggle={store.toggleTrunk}
-    />
+    <Stack spacing={3}>
+      {save && <Alert severity={save.ok ? 'success' : 'error'} onClose={() => setSave(null)}>{save.message}</Alert>}
+      <CrudSection<OutboundTrunk>
+        title="Outbound Trunks" entityLabel="Trunk"
+        items={store.trunks} columns={columns} fields={fields}
+        rowKey={(r) => r.id}
+        toFormValues={(r) => ({
+          name: r.name, address: r.address, numbers: [...(r.numbers ?? [])],
+          auth_username: r.auth_username, auth_password: '', enabled: r.enabled,
+        })}
+        emptyForm={{ name: '', address: '', numbers: [], auth_username: '', auth_password: '', enabled: true }}
+        onCreate={(v) => persist(fromForm(v))}
+        onUpdate={(id, v) => persist(fromForm(v), id)}
+        onDelete={store.deleteTrunk}
+        onToggle={store.toggleTrunk}
+      />
+
+      <Paper sx={{ p: 3, maxWidth: 620 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Test call</Typography>
+        <Stack spacing={2}>
+          {testResult && (
+            <Alert severity={testResult.ok ? 'success' : 'error'}>{testResult.message}</Alert>
+          )}
+          <TextField label="Trunk" size="small" fullWidth select value={testTrunk}
+            onChange={(e) => setTestTrunk(e.target.value)} disabled={store.trunks.length === 0}
+            helperText={store.trunks.length === 0 ? 'Create a trunk first.' : undefined}>
+            {store.trunks.map((t) => (
+              <MenuItem key={t.id} value={t.trunk_id ?? ''} disabled={!t.trunk_id}>
+                {t.name}{t.trunk_id ? '' : ' (not provisioned)'}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField label="Phone Number" size="small" fullWidth value={testPhone}
+            onChange={(e) => setTestPhone(e.target.value)} placeholder="+27 82 123 4567" />
+          <Box>
+            <Button variant="contained" onClick={runTestCall}
+              disabled={testing || !testTrunk || !testPhone}
+              startIcon={testing ? <CircularProgress size={16} /> : undefined}>
+              {testing ? 'Calling…' : 'Place test call'}
+            </Button>
+          </Box>
+        </Stack>
+      </Paper>
+    </Stack>
   )
 }
 

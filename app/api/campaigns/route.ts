@@ -104,13 +104,27 @@ export async function POST(req: Request) {
       }
 
       // Link every contact to this campaign (unique per campaign).
-      const links = [...byPhone.values()].map(contact_id => ({ campaign_id: campaign.id, contact_id }))
+      const contactIds = [...byPhone.values()]
+      const links = contactIds.map(contact_id => ({ campaign_id: campaign.id, contact_id }))
       if (links.length) {
         const { error: linkErr } = await supabase
           .from('campaign_contacts')
           .upsert(links, { onConflict: 'campaign_id,contact_id', ignoreDuplicates: true })
         if (linkErr) console.error('Error linking contacts:', linkErr)
       }
+
+      // callops enumerates contacts by contacts.campaign_id (NOT the campaign_contacts M:N join), so
+      // a wizard campaign whose contacts have campaign_id=null is invisible to the dialer and dials
+      // nobody (verified 2026-06-24: setting campaign_id flipped callops pending 0→3). Point every
+      // linked contact at this campaign so callops can see + queue them.
+      // CAVEAT: this is single-campaign ownership — a contact reused across campaigns ends up owned by
+      // the last one. The proper long-term fix is callops reading campaign_contacts; see ROADMAP.
+      if (contactIds.length) {
+        const { error: cidErr } = await supabase
+          .from('contacts').update({ campaign_id: campaign.id }).in('id', contactIds)
+        if (cidErr) console.error('Error setting contacts.campaign_id:', cidErr)
+      }
+      console.log(`[campaign ${campaign.id}] contacts: ${contactIds.length} linked + campaign_id set (callops-visible)`)
     }
 
     return NextResponse.json({ campaign }, { status: 201 })

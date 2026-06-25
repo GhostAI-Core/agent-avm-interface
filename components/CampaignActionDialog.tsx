@@ -17,9 +17,16 @@ import Alert from '@mui/material/Alert'
 import Grid from '@mui/material/Grid'
 import type { Campaign, Company } from '@/types'
 import { parseContacts } from '@/lib/parseCsv'
+import VoiceGenerator from '@/components/VoiceGenerator'
 
 type Mode = 'edit' | 'reuse'
 type SavedScript = { storageKey: string; publicUrl: string; name: string; lastModified: string | null }
+type Trunk = { id: number; name: string; livekit_trunk_id: string; from_number: string }
+
+/** Coerce a stored date (ISO timestamp or date) into the YYYY-MM-DD a date input wants. */
+function toDateInput(v: string | null | undefined): string {
+  return v ? v.slice(0, 10) : ''
+}
 
 export default function CampaignActionDialog({ mode, campaign, onClose, onDone }: {
   mode: Mode
@@ -42,7 +49,11 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
   const [dialingSpeed, setDialingSpeed] = useState<number>(campaign.dialing_speed ?? 1)
   const [windowStart, setWindowStart] = useState<string>(campaign.time_window_start ?? '')
   const [windowEnd, setWindowEnd] = useState<string>(campaign.time_window_end ?? '')
+  const [sipTrunkId, setSipTrunkId] = useState<string>(campaign.sip_trunk_id != null ? String(campaign.sip_trunk_id) : '')
+  const [startDate, setStartDate] = useState<string>(toDateInput(campaign.start_date))
+  const [endDate, setEndDate] = useState<string>(toDateInput(campaign.end_date))
   const [companies, setCompanies] = useState<Company[]>([])
+  const [trunks, setTrunks] = useState<Trunk[]>([])
 
   // Load the saved S3 scripts for the dropdown.
   useEffect(() => {
@@ -54,7 +65,7 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
     return () => { cancelled = true }
   }, [])
 
-  // Load companies for the edit-mode dropdown (same source as the create modal).
+  // Load companies + trunks for the edit-mode dropdowns (same sources as the create modal).
   useEffect(() => {
     if (mode !== 'edit') return
     let cancelled = false
@@ -62,6 +73,10 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
       .then(r => (r.ok ? r.json() : { companies: [] }))
       .then(j => { if (!cancelled) setCompanies(j.companies ?? []) })
       .catch(() => { /* leave empty → dropdown shows the current/empty company */ })
+    fetch('/api/trunks')
+      .then(r => (r.ok ? r.json() : { trunks: [] }))
+      .then(j => { if (!cancelled) setTrunks(j.trunks ?? []) })
+      .catch(() => { /* leave empty → keep current/default trunk */ })
     return () => { cancelled = true }
   }, [mode])
 
@@ -78,6 +93,9 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
             dialing_speed: dialingSpeed,
             time_window_start: windowStart,
             time_window_end: windowEnd,
+            sip_trunk_id: sipTrunkId === '' ? null : Number(sipTrunkId),
+            start_date: startDate || null,
+            end_date: endDate || null,
             audio_path: scriptUrl,
           }),
         })
@@ -167,18 +185,57 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
                     value={windowEnd} onChange={e => setWindowEnd(e.target.value)}
                     slotProps={{ inputLabel: { shrink: true } }} />
                 </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel id="edit-trunk-label" shrink>Outbound Trunk</InputLabel>
+                    <Select labelId="edit-trunk-label" label="Outbound Trunk" value={sipTrunkId} displayEmpty notched
+                      onChange={e => setSipTrunkId(e.target.value)}
+                      renderValue={(v) => {
+                        if (!v) return <em>Default trunk (env)</em>
+                        const t = trunks.find(x => String(x.id) === v)
+                        return t ? `${t.name} — ${t.from_number}` : v
+                      }}>
+                      <MenuItem value=""><em>Default trunk (env)</em></MenuItem>
+                      {trunks.map(t => <MenuItem key={t.id} value={String(t.id)}>{t.name} — {t.from_number}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField label="Start Date" type="date" size="small" fullWidth
+                    value={startDate} onChange={e => setStartDate(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }} />
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField label="End Date" type="date" size="small" fullWidth
+                    value={endDate} onChange={e => setEndDate(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }} />
+                </Grid>
               </Grid>
             </>
           )}
 
-          <FormControl fullWidth size="small" disabled={scripts.length === 0}>
-            <InputLabel id="script-label">Saved script (S3)</InputLabel>
-            <Select labelId="script-label" label="Saved script (S3)" value={dropdownValue}
-              onChange={e => setScriptUrl(e.target.value)} displayEmpty>
-              <MenuItem value=""><em>{scripts.length === 0 ? 'No saved scripts' : 'Choose a saved script…'}</em></MenuItem>
-              {scripts.map(s => <MenuItem key={s.storageKey} value={s.publicUrl}>{s.name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          {/* Edit: full voice editor — click a saved script to load its text + voice, edit it,
+              and generate a new voice. The saved audio URL becomes this campaign's audio_path. */}
+          {mode === 'edit' && (
+            <VoiceGenerator
+              campaignName={campaign.name}
+              voiceRecordingUrl={scriptUrl || null}
+              onVoiceRecordingUrlChange={url => setScriptUrl(url ?? '')}
+              disabled={loading}
+            />
+          )}
+
+          {/* Reuse: a quick saved-script picker (no editing — the template just points at audio). */}
+          {mode === 'reuse' && (
+            <FormControl fullWidth size="small" disabled={scripts.length === 0}>
+              <InputLabel id="script-label">Saved script (S3)</InputLabel>
+              <Select labelId="script-label" label="Saved script (S3)" value={dropdownValue}
+                onChange={e => setScriptUrl(e.target.value)} displayEmpty>
+                <MenuItem value=""><em>{scripts.length === 0 ? 'No saved scripts' : 'Choose a saved script…'}</em></MenuItem>
+                {scripts.map(s => <MenuItem key={s.storageKey} value={s.publicUrl}>{s.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
 
           <TextField label="…or paste an audio URL" value={scriptUrl} onChange={e => setScriptUrl(e.target.value)}
             fullWidth size="small" placeholder="https://…/script.mp3" />

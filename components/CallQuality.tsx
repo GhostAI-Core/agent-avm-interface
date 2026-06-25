@@ -8,10 +8,12 @@ import Button from '@mui/material/Button'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
-import DataTable from '@/components/ui/DataTable'
+import DataTable, { type DataTableColumn } from '@/components/ui/DataTable'
 import GlassCard from '@/components/ui/GlassCard'
-import type { GridColDef } from '@mui/x-data-grid'
+import { colors } from '@/lib/tokens'
 import type { Campaign, IntentStat } from '@/types'
+
+const MONO = "ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace"
 
 type IntentRow = IntentStat & { connectedPct: number; droppedPct: number | null }
 
@@ -23,7 +25,6 @@ export default function CallQuality({ campaigns }: { campaigns: Campaign[] }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [intents, setIntents] = useState<IntentStat[]>([])
   const [connectedTotal, setConnectedTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
 
   // Default to the first campaign once the list loads
   useEffect(() => {
@@ -33,12 +34,10 @@ export default function CallQuality({ campaigns }: { campaigns: Campaign[] }) {
   useEffect(() => {
     if (campaignId === '') return
     let active = true
-    setLoading(true)
     const p = new URLSearchParams({ campaignId: String(campaignId), date })
     fetch(`/api/intents?${p}`)
       .then(r => r.json())
       .then(j => { if (active) { setIntents(j.intents ?? []); setConnectedTotal(j.connectedTotal ?? 0) } })
-      .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [campaignId, date])
 
@@ -54,21 +53,20 @@ export default function CallQuality({ campaigns }: { campaigns: Campaign[] }) {
     })
   }, [intents, connectedTotal])
 
-  const columns: GridColDef<IntentRow>[] = [
-    { field: 'intent_name', headerName: 'Intent Name', flex: 1, minWidth: 200,
-      renderCell: (params) => <Box sx={{ fontWeight: 500 }}>{params.value}</Box> },
-    { field: 'reached', headerName: 'Count', type: 'number', width: 120, align: 'right', headerAlign: 'right',
-      valueFormatter: (value: number) => value.toLocaleString() },
-    { field: 'connectedPct', headerName: '% of Connected', type: 'number', width: 150, align: 'right', headerAlign: 'right',
-      valueFormatter: (value: number) => fmtPct(value) },
-    { field: 'droppedPct', headerName: '% dropped from previous', type: 'number', width: 200, align: 'right', headerAlign: 'right',
-      valueFormatter: (value: number | null) => (value === null ? '–' : fmtPct(value)),
-      renderCell: (params) => {
-        const v = params.value as number | null
+  const columns: DataTableColumn<IntentRow>[] = [
+    { key: 'intent_name', label: 'Intent Name', width: '2.2fr',
+      render: r => <span style={{ fontWeight: 500 }}>{r.intent_name}</span> },
+    { key: 'reached', label: 'Count', align: 'right', width: '1fr',
+      render: r => <span style={{ fontFamily: MONO }}>{r.reached.toLocaleString()}</span> },
+    { key: 'connectedPct', label: '% of Connected', align: 'right', width: '1.3fr',
+      render: r => <span style={{ fontFamily: MONO }}>{fmtPct(r.connectedPct)}</span> },
+    { key: 'droppedPct', label: '% dropped from previous', align: 'right', width: '1.6fr',
+      render: r => {
+        const v = r.droppedPct
         return (
-          <Box sx={{ fontWeight: 600, color: v === null ? 'text.disabled' : v >= 0 ? 'error.main' : 'success.main' }}>
+          <span style={{ fontFamily: MONO, fontWeight: 600, color: v === null ? colors.fg4 : v >= 0 ? colors.negative : colors.green }}>
             {v === null ? '–' : fmtPct(v)}
-          </Box>
+          </span>
         )
       } },
   ]
@@ -123,8 +121,6 @@ export default function CallQuality({ campaigns }: { campaigns: Campaign[] }) {
         rows={rows}
         columns={columns}
         getRowId={(row) => row.intent_name}
-        checkboxSelection={false}
-        loading={loading}
       />
     </>
   )

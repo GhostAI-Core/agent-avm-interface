@@ -3,17 +3,16 @@
 import { useState, type ReactNode } from 'react'
 import Box from '@mui/material/Box'
 import Stack from '@mui/material/Stack'
-import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
-import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Switch from '@mui/material/Switch'
-import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/EditOutlined'
 import DeleteIcon from '@mui/icons-material/DeleteOutlined'
-import type { GridColDef, GridValidRowModel } from '@mui/x-data-grid'
-import DataTable from '@/components/ui/DataTable'
+import DataTable, { type DataTableColumn } from '@/components/ui/DataTable'
 import EntityFormDrawer, { type FieldDef, type FormValues } from '@/components/telephony/EntityFormDrawer'
+import { colors } from '@/lib/tokens'
+
+type RowModel = Record<string, unknown>
 
 export type Column<T> = {
   key: string
@@ -21,7 +20,7 @@ export type Column<T> = {
   render?: (row: T) => ReactNode
 }
 
-export type CrudSectionProps<T extends GridValidRowModel> = {
+export type CrudSectionProps<T extends RowModel> = {
   title: string
   description?: string
   entityLabel: string // singular, e.g. "Provider" — used in Add/Edit titles
@@ -37,7 +36,7 @@ export type CrudSectionProps<T extends GridValidRowModel> = {
   onToggle: (key: string) => void
 }
 
-export default function CrudSection<T extends GridValidRowModel>({
+export default function CrudSection<T extends RowModel>({
   title,
   description,
   entityLabel,
@@ -80,61 +79,51 @@ export default function CrudSection<T extends GridValidRowModel>({
     onDelete(rowKey(row))
   }
 
-  // Map the per-panel column config to GridColDef, then append the Enabled toggle
-  // and Actions columns. Both interactive cells stopPropagation so they never bubble
-  // to a row click / selection.
-  const gridColumns: GridColDef<T>[] = [
-    ...columns.map<GridColDef<T>>((c) => ({
-      field: c.key,
-      headerName: c.label,
-      flex: 1,
-      minWidth: 120,
-      sortable: true,
-      renderCell: (params) =>
+  // Map the per-panel column config to DataTableColumn, then append the Enabled
+  // toggle and a sticky Actions column. Both interactive cells stopPropagation so
+  // they never bubble to a row click.
+  const gridColumns: DataTableColumn<T>[] = [
+    ...columns.map<DataTableColumn<T>>((c) => ({
+      key: c.key,
+      label: c.label,
+      width: '1fr',
+      render: (row) =>
         c.render ? (
-          <Box sx={{ fontSize: '0.82rem' }}>{c.render(params.row)}</Box>
+          <Box sx={{ fontSize: '0.82rem' }}>{c.render(row)}</Box>
         ) : (
           <Box sx={{ fontSize: '0.82rem' }}>
-            {String((params.row as Record<string, unknown>)[c.key] ?? '—')}
+            {String((row as Record<string, unknown>)[c.key] ?? '—')}
           </Box>
         ),
     })),
     {
-      field: '__enabled',
-      headerName: 'Enabled',
-      width: 110,
+      key: '__enabled',
+      label: 'Enabled',
       align: 'center',
-      headerAlign: 'center',
-      sortable: false,
-      filterable: false,
-      disableExport: true,
-      valueGetter: (_value, row) => Boolean((row as Record<string, unknown>).enabled),
-      renderCell: (params) => (
+      width: '110px',
+      render: (row) => (
         <Box onClick={(e) => e.stopPropagation()}>
           <Switch
             size="small"
-            checked={Boolean((params.row as Record<string, unknown>).enabled)}
-            onChange={() => onToggle(rowKey(params.row))}
+            checked={Boolean((row as Record<string, unknown>).enabled)}
+            onChange={() => onToggle(rowKey(row))}
             slotProps={{ input: { 'aria-label': `Toggle ${entityLabel}` } }}
           />
         </Box>
       ),
     },
     {
-      field: '__actions',
-      headerName: 'Actions',
-      width: 120,
+      key: '__actions',
+      label: 'Actions',
       align: 'right',
-      headerAlign: 'right',
-      sortable: false,
-      filterable: false,
-      disableExport: true,
-      renderCell: (params) => (
+      width: '120px',
+      sticky: true,
+      render: (row) => (
         <Stack direction="row" sx={{ justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
-          <IconButton size="small" aria-label={`Edit ${entityLabel}`} onClick={() => openEdit(params.row)}>
+          <IconButton size="small" aria-label={`Edit ${entityLabel}`} onClick={() => openEdit(row)}>
             <EditIcon fontSize="small" />
           </IconButton>
-          <IconButton size="small" aria-label={`Delete ${entityLabel}`} onClick={() => handleDelete(params.row)}>
+          <IconButton size="small" aria-label={`Delete ${entityLabel}`} onClick={() => handleDelete(row)}>
             <DeleteIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -143,24 +132,42 @@ export default function CrudSection<T extends GridValidRowModel>({
   ]
 
   return (
-    <Paper sx={{ p: 3 }}>
+    <Box>
       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{title}</Typography>
+          <Typography sx={{ fontSize: 17, fontWeight: 700 }}>{title}</Typography>
           {description && (
             <Typography variant="body2" color="text.secondary">{description}</Typography>
           )}
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-          Add {entityLabel.toLowerCase()}
-        </Button>
+        {/* Mockup-styled "+ Add" pill — green fill, ink text, deep-green border. */}
+        <Box
+          component="button"
+          type="button"
+          onClick={openCreate}
+          sx={{
+            background: colors.green,
+            color: colors.greenInk,
+            border: `1px solid ${colors.greenDeep}`,
+            borderRadius: '4px',
+            px: 1.75,
+            py: 1,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'filter .15s ease',
+            '&:hover': { filter: 'brightness(1.08)' },
+          }}
+        >
+          + Add {entityLabel.toLowerCase()}
+        </Box>
       </Stack>
 
       <DataTable<T>
         rows={items}
         columns={gridColumns}
         getRowId={(row) => rowKey(row)}
-        checkboxSelection={false}
+        checkbox
       />
 
       <EntityFormDrawer
@@ -172,6 +179,6 @@ export default function CrudSection<T extends GridValidRowModel>({
         onClose={() => setOpen(false)}
         onSubmit={handleSubmit}
       />
-    </Paper>
+    </Box>
   )
 }

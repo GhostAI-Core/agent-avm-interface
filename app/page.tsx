@@ -51,8 +51,8 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
-import DataTable from '@/components/ui/DataTable'
-import type { GridColDef } from '@mui/x-data-grid'
+import DataTable, { type DataTableColumn } from '@/components/ui/DataTable'
+import { AgentChip as TableAgentChip, StatusChip as TableStatusChip, ActionButton, ActionGroup } from '@/components/ui/tableCells'
 import BusinessIcon from '@mui/icons-material/Business'
 import CloseIcon from '@mui/icons-material/Close'
 import { colors, semantic, radius } from '@/lib/tokens'
@@ -494,53 +494,56 @@ export default function Page() {
   const dashCalls = scoped ? allCalls.filter(c => dashCampaignIds.has(c.campaign_id)) : allCalls
   const dashIntents = scoped ? allIntents.filter(i => dashCampaignIds.has(i.campaign_id)) : allIntents
 
-  // ── DataTable column definitions ──
+  // ── DataTable column definitions (bespoke CSS-grid table) ──
+  // `width` is a grid-template fragment; `mono` styling applied inline per cell.
+  const MONO = "ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace"
+
   // Companies: Company / Contact / Active / Total Camps / Total CPL. Row click → Control Room.
-  const companyColumns: GridColDef<CompanyRow>[] = [
-    { field: 'name', headerName: 'Company', flex: 1, minWidth: 180,
-      renderCell: (params) => <Box sx={{ fontWeight: 600 }}>{params.value}</Box> },
-    { field: 'contact', headerName: 'Contact', flex: 1, minWidth: 160,
-      valueGetter: (value) => value || '—',
-      renderCell: (params) => <Box sx={{ color: 'text.secondary' }}>{params.value}</Box> },
-    { field: 'active', headerName: 'Active', type: 'number', width: 110, align: 'right', headerAlign: 'right',
-      renderCell: (params) => <Box className="mono" sx={{ color: 'success.main' }}>{params.value}</Box> },
-    { field: 'total', headerName: 'Total Camps', type: 'number', width: 130, align: 'right', headerAlign: 'right',
-      cellClassName: 'mono' },
-    { field: 'cpl', headerName: 'Total CPL', type: 'number', width: 130, align: 'right', headerAlign: 'right',
-      valueFormatter: (value: number) => `R${value.toFixed(2)}`, cellClassName: 'mono' },
+  // TODO(mockup): expandable company rows — fast follow.
+  const companyColumns: DataTableColumn<CompanyRow>[] = [
+    { key: 'name', label: 'Company', width: '1.6fr',
+      render: r => <span style={{ fontWeight: 600 }}>{r.name}</span> },
+    { key: 'contact', label: 'Contact', width: '1.4fr',
+      render: r => <span style={{ color: colors.fg3 }}>{r.contact || '—'}</span> },
+    { key: 'active', label: 'Active', align: 'right', width: '0.8fr',
+      render: r => <span style={{ fontFamily: MONO, color: colors.green }}>{r.active}</span> },
+    { key: 'total', label: 'Total Camps', align: 'right', width: '1fr',
+      render: r => <span style={{ fontFamily: MONO }}>{r.total}</span> },
+    { key: 'cpl', label: 'Total CPL', align: 'right', width: '1fr',
+      render: r => <span style={{ fontFamily: MONO }}>R{r.cpl.toFixed(2)}</span> },
   ]
 
   // Campaigns: Campaign / Agent / Company / Status / Window+Speed / Actions. Row click → Control Room.
   // Action clicks stop propagation so they don't fire the row click.
-  const campaignColumns: GridColDef<Campaign>[] = [
-    { field: 'name', headerName: 'Campaign', flex: 1, minWidth: 160,
-      renderCell: (params) => <Box sx={{ fontWeight: 600 }}>{params.value}</Box> },
-    { field: 'agent', headerName: 'Agent', width: 130, sortable: false,
-      renderCell: (params) => <AgentChip agent={params.row.agent} /> },
-    { field: 'company', headerName: 'Company', flex: 1, minWidth: 140,
-      valueGetter: (value) => value || '—',
-      renderCell: (params) => <Box sx={{ color: 'text.secondary' }}>{params.value}</Box> },
-    { field: 'status', headerName: 'Status', width: 140, sortable: false,
-      renderCell: (params) => <StatusChip status={params.row.status} autoPaused={params.row.auto_paused} /> },
-    { field: 'window', headerName: 'Window / Speed', flex: 1, minWidth: 170, sortable: false, filterable: false,
-      valueGetter: (_value, row) => `${row.time_window_start}–${row.time_window_end} · ${row.dialing_speed}/s`,
-      renderCell: (params) => (
-        <Box sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8rem' }}>{params.value}</Box>
+  const campaignColumns: DataTableColumn<Campaign>[] = [
+    { key: 'name', label: 'Campaign', width: '1.5fr',
+      render: c => <span style={{ fontWeight: 600 }}>{c.name}</span> },
+    { key: 'agent', label: 'Agent', width: '0.9fr',
+      render: c => <TableAgentChip agent={c.agent} /> },
+    { key: 'company', label: 'Company', width: '1fr',
+      render: c => <span style={{ color: colors.fg3 }}>{c.company || '—'}</span> },
+    { key: 'status', label: 'Status', width: '0.9fr',
+      render: c => <TableStatusChip status={c.status} autoPaused={c.auto_paused} /> },
+    { key: 'window', label: 'Window / Speed', width: '1.4fr',
+      render: c => (
+        <span style={{ color: colors.fg3 }}>{c.time_window_start}–{c.time_window_end} · {c.dialing_speed}/s</span>
       ) },
-    { field: 'actions', headerName: 'Actions', width: 210, sortable: false, filterable: false,
-      align: 'right', headerAlign: 'right', disableExport: true,
-      renderCell: (params) => {
-        const c = params.row
-        return (
-          <Stack direction="row" sx={{ justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-            <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}><MuiIconButton size="small" color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>{c.status === 'running' ? <PauseIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}</MuiIconButton></Tooltip>
-            <Tooltip title="Stop"><MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'stopped')}><StopIcon sx={{ fontSize: 17 }} /></MuiIconButton></Tooltip>
-            <Tooltip title="Edit (change MP4)"><MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
-            <Tooltip title="Reuse as template"><MuiIconButton size="small" aria-label={`Reuse ${c.name}`} onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })}><ContentCopyIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
-            <Tooltip title="Archive"><MuiIconButton size="small" aria-label={`Archive ${c.name}`} onClick={() => updateStatus(c.id, 'archived')} sx={{ color: 'warning.main' }}><ArchiveIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
-          </Stack>
-        )
-      } },
+    { key: 'actions', label: 'Actions', align: 'right', width: '270px', sticky: true,
+      render: c => (
+        <ActionGroup>
+          <ActionButton icon={c.status === 'running' ? '⏸' : '▶'} title={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`}
+            variant={c.status === 'running' ? 'amber' : 'green'}
+            onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')} />
+          <ActionButton icon="■" title={`Stop ${c.name}`} variant="red"
+            onClick={() => updateStatus(c.id, 'stopped')} />
+          <ActionButton icon="✎" title={`Edit ${c.name}`}
+            onClick={() => setCampaignAction({ mode: 'edit', campaign: c })} />
+          <ActionButton icon="⧉" title={`Reuse ${c.name}`}
+            onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })} />
+          <ActionButton icon="🗀" title={`Archive ${c.name}`} variant="amber"
+            onClick={() => updateStatus(c.id, 'archived')} />
+        </ActionGroup>
+      ) },
   ]
 
   // Campaign Report: Campaign (AgentChip + name) then numeric REPORT_KEYS + Duration / CPL / Spent.
@@ -549,27 +552,24 @@ export default function Page() {
     no_speech: 'No Speech', hangup: 'Hangup', ni: 'NI', dnq: 'DNQ', callback: 'Callback',
     no_answer: 'NA', busy_line: 'Busy', failed: 'Failed',
   }
-  const reportColumns: GridColDef<CampaignReport>[] = [
-    { field: 'campaign', headerName: 'Campaign', flex: 1, minWidth: 170, sortable: false,
-      valueGetter: (_value, row) => row.campaign?.name ?? '',
-      renderCell: (params) => (
-        <Box>
-          <AgentChip agent={params.row.campaign?.agent ?? ''} />
-          <Typography variant="caption" sx={{ display: 'block' }}>{params.row.campaign?.name}</Typography>
-        </Box>
+  const reportColumns: DataTableColumn<CampaignReport>[] = [
+    { key: 'campaign', label: 'Campaign', width: '200px',
+      render: r => (
+        <div>
+          <TableAgentChip agent={r.campaign?.agent ?? ''} />
+          <div style={{ fontSize: 12, color: colors.fg2, marginTop: 4 }}>{r.campaign?.name}</div>
+        </div>
       ) },
-    ...REPORT_KEYS.map<GridColDef<CampaignReport>>(k => ({
-      field: k, headerName: REPORT_HEADERS[k], type: 'number', width: 100, align: 'right', headerAlign: 'right',
-      valueGetter: (value) => Number(value),
-      valueFormatter: (value: number) => value.toLocaleString(),
-      cellClassName: 'mono',
+    ...REPORT_KEYS.map<DataTableColumn<CampaignReport>>(k => ({
+      key: k, label: REPORT_HEADERS[k], align: 'right' as const, width: '84px',
+      render: r => <span style={{ fontFamily: MONO }}>{Number(r[k]).toLocaleString()}</span>,
     })),
-    { field: 'duration', headerName: 'Duration', width: 110, align: 'right', headerAlign: 'right', cellClassName: 'mono' },
-    { field: 'cpl', headerName: 'CPL', type: 'number', width: 100, align: 'right', headerAlign: 'right',
-      valueGetter: (value) => Number(value), valueFormatter: (value: number) => `R${value.toFixed(2)}`, cellClassName: 'mono' },
-    { field: 'total_spent', headerName: 'Spent', type: 'number', width: 120, align: 'right', headerAlign: 'right',
-      valueGetter: (value) => Number(value), valueFormatter: (value: number) => `R${value.toLocaleString()}`,
-      renderCell: (params) => <Box className="mono" sx={{ color: 'success.main', fontWeight: 600 }}>{params.formattedValue}</Box> },
+    { key: 'duration', label: 'Duration', align: 'right', width: '80px',
+      render: r => <span style={{ fontFamily: MONO }}>{r.duration}</span> },
+    { key: 'cpl', label: 'CPL', align: 'right', width: '80px',
+      render: r => <span style={{ fontFamily: MONO }}>R{Number(r.cpl).toFixed(2)}</span> },
+    { key: 'total_spent', label: 'Spent', align: 'right', width: '90px',
+      render: r => <span style={{ fontFamily: MONO, color: colors.greenBright, fontWeight: 600 }}>R{Number(r.total_spent).toLocaleString()}</span> },
   ]
 
 
@@ -673,7 +673,9 @@ export default function Page() {
                   rows={companyStats}
                   columns={companyColumns}
                   getRowId={(row) => row.name}
-                  onRowClick={(params) => openInControlRoom(params.row.name)}
+                  onRowClick={(row) => openInControlRoom(row.name)}
+                  checkbox
+                  minWidth="860px"
                 />
               )}
             </>
@@ -698,7 +700,9 @@ export default function Page() {
                   rows={campaigns}
                   columns={campaignColumns}
                   getRowId={(row) => row.id}
-                  onRowClick={(params) => openInControlRoom(params.row.company || '', String(params.row.id))}
+                  onRowClick={(row) => openInControlRoom(row.company || '', String(row.id))}
+                  checkbox
+                  minWidth="1080px"
                 />
               ) : (
               <Grid container spacing={2}>
@@ -805,7 +809,8 @@ export default function Page() {
                 rows={reports}
                 columns={reportColumns}
                 getRowId={(row) => row.id}
-                onRowClick={(params) => viewDetailedLogs(params.row)}
+                onRowClick={(row) => viewDetailedLogs(row)}
+                minWidth="1458px"
               />
             </>
           )}

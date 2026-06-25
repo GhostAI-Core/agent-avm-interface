@@ -37,8 +37,13 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   const { base, secret } = callopsEnv()
 
-  // No orchestrator wired → mirror the lifecycle locally so the dashboard stays usable.
+  // No orchestrator wired. In production this must NOT happen — callops owns lifecycle, so the
+  // dashboard refuses rather than writing campaigns.status itself. Outside production we mirror
+  // the lifecycle locally so the dashboard stays usable without callops running.
   if (!base || !secret) {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'callops not configured' }, { status: 503 })
+    }
     const patch: Record<string, unknown> = { status: spec.localStatus }
     if (action === 'start') patch.auto_paused = false // resuming clears an auto-pause
     const { data, error } = await supabase.from('campaigns').update(patch).eq('id', id).select('id, status').single()

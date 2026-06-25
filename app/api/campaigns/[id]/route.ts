@@ -5,7 +5,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params
     const body = await req.json()
-    const allowed = ['name','company_id','status','dialing_speed','time_window_start','time_window_end',
+    // NB: 'status' is intentionally NOT here — campaign lifecycle is owned by callops via the
+    // control proxy (POST /api/campaigns/{id}/{start|pause|stop}); the dashboard never writes it.
+    const allowed = ['name','company_id','dialing_speed','time_window_start','time_window_end',
       'voice_recording_url','audio_path','sip_trunk_id','start_date','end_date','agent',
       'max_concurrent','max_retries','retry_cooldown_seconds']
     const payload = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)))

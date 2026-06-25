@@ -80,14 +80,17 @@ export type TelephonyStore = {
   updateProvider: (id: string, values: Partial<SipProvider>) => void
   deleteProvider: (id: string) => void
   toggleProvider: (id: string) => void
-  // Outbound trunks. createTrunk/updateTrunk mutate local store only; saveTrunk and
-  // testTrunkCall hit the real callops proxies (server-side, secret-protected).
+  // Outbound trunks. createTrunk/updateTrunk/deleteTrunk mirror the local store; saveTrunk
+  // (create), patchTrunk (edit), deleteTrunkRemote (delete) and testTrunkCall hit the real
+  // callops proxies (server-side, secret-protected). Edit/delete address the LiveKit trunk_id.
   trunks: OutboundTrunk[]
   createTrunk: (values: Omit<OutboundTrunk, 'id'>) => void
   updateTrunk: (id: string, values: Partial<OutboundTrunk>) => void
   deleteTrunk: (id: string) => void
   toggleTrunk: (id: string) => void
   saveTrunk: (values: Omit<OutboundTrunk, 'id'>) => Promise<TrunkSaveResult>
+  patchTrunk: (trunkId: string, values: Partial<Pick<OutboundTrunk, 'name' | 'address' | 'numbers' | 'auth_username' | 'auth_password'>>) => Promise<TrunkSaveResult>
+  deleteTrunkRemote: (trunkId: string) => Promise<TestResult>
   testTrunkCall: (sipTrunkId: string, phone: string) => Promise<TrunkTestResult>
   // Dispatch rules
   rules: DispatchRule[]
@@ -182,7 +185,7 @@ export function useTelephonyStore(): TelephonyStore {
     deleteTrunk: (id) => removeFrom('trunks', id),
     toggleTrunk: (id) => toggleIn('trunks', id),
 
-    // POST → /api/trunks proxy → callops /livekit/trunks (create or idempotent re-create).
+    // POST → /api/trunks proxy → callops /livekit/trunks (CREATE only — edits go via patchTrunk).
     // callops returns { trunk_id, name, address, numbers, auth_username } (no auth_password).
     saveTrunk: async (values) => {
       try {
@@ -202,6 +205,39 @@ export function useTelephonyStore(): TelephonyStore {
           return { ok: false, message: json.error ?? `Save failed (${res.status}).` }
         }
         return { ok: true, trunk_id: json.trunk_id, message: `Trunk "${values.name}" saved.` }
+      } catch {
+        return { ok: false, message: 'Could not reach the dashboard API.' }
+      }
+    },
+
+    // PATCH → /api/trunks/{trunk_id} proxy → callops PATCH /livekit/trunks/{trunk_id}. Body is
+    // the already-diffed set of changed fields (caller omits a blank password = "unchanged").
+    patchTrunk: async (trunkId, values) => {
+      try {
+        const res = await fetch(`/api/trunks/${encodeURIComponent(trunkId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(values),
+        })
+        const json = (await res.json().catch(() => ({}))) as { trunk_id?: string; error?: string }
+        if (!res.ok) {
+          return { ok: false, message: json.error ?? `Update failed (${res.status}).` }
+        }
+        return { ok: true, trunk_id: json.trunk_id, message: 'Trunk updated.' }
+      } catch {
+        return { ok: false, message: 'Could not reach the dashboard API.' }
+      }
+    },
+
+    // DELETE → /api/trunks/{trunk_id} proxy → callops DELETE /livekit/trunks/{trunk_id}.
+    deleteTrunkRemote: async (trunkId) => {
+      try {
+        const res = await fetch(`/api/trunks/${encodeURIComponent(trunkId)}`, { method: 'DELETE' })
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        if (!res.ok) {
+          return { ok: false, message: json.error ?? `Delete failed (${res.status}).` }
+        }
+        return { ok: true, message: 'Trunk deleted.' }
       } catch {
         return { ok: false, message: 'Could not reach the dashboard API.' }
       }

@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react'
 import Box from '@mui/material/Box'
 import Stack from '@mui/material/Stack'
 import Paper from '@mui/material/Paper'
-import Tabs from '@mui/material/Tabs'
-import Tab from '@mui/material/Tab'
 import Typography from '@mui/material/Typography'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
@@ -18,6 +16,7 @@ import StatusChip from '@/components/ui/StatusChip'
 import CrudSection, { type Column } from '@/components/telephony/CrudSection'
 import type { FieldDef, FormValues } from '@/components/telephony/EntityFormDrawer'
 import { useTelephonyStore, type TestResult, type DialResult, type TrunkTestResult } from '@/lib/telephony-mock'
+import { colors } from '@/lib/tokens'
 import type {
   SipProvider, OutboundTrunk, DispatchRule, TelephonyAgent, SystemStatus,
 } from '@/types/telephony'
@@ -29,21 +28,42 @@ export default function TelephonyView() {
   const [tab, setTab] = useState(0)
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto' }}>
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>Telephony</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+    <Box>
+      <Typography sx={{ fontSize: 22, fontWeight: 800, mb: 0.5 }}>Telephony</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         LiveKit telephony management. Mock data — changes are saved to this browser.
       </Typography>
 
-      <Tabs
-        value={tab}
-        onChange={(_, v) => setTab(v)}
-        variant="scrollable"
-        scrollButtons="auto"
-        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
-      >
-        {TABS.map((t) => <Tab key={t} label={t} />)}
-      </Tabs>
+      {/* Custom tab bar — uppercase, letter-spaced, green underline on the active tab (mockup). */}
+      <Box sx={{ display: 'flex', gap: 0.5, mb: 3, overflowX: 'auto', borderBottom: `1px solid ${colors.border1}` }}>
+        {TABS.map((t, i) => (
+          <Box
+            component="button"
+            key={t}
+            type="button"
+            onClick={() => setTab(i)}
+            sx={{
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              px: 2,
+              pt: 2,
+              pb: '13px',
+              fontSize: 13,
+              letterSpacing: '.04em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              color: tab === i ? colors.greenBright : colors.fg3,
+              borderBottom: `2px solid ${tab === i ? colors.green : 'transparent'}`,
+              transition: 'color .15s ease, border-color .15s ease',
+              '&:hover': { color: colors.greenBright },
+            }}
+          >
+            {t}
+          </Box>
+        ))}
+      </Box>
 
       {tab === 0 && <SettingsPanel store={store} />}
       {tab === 1 && <ProvidersPanel store={store} />}
@@ -158,6 +178,23 @@ function summariseNumbers(numbers?: string[]): string {
   return 'multiple'
 }
 
+// Diff a trunk edit down to the fields callops should PATCH. A blank auth_password means
+// "unchanged" (callops never returns it, so we can't diff it) and is omitted.
+function diffTrunk(
+  row: OutboundTrunk,
+  values: Omit<OutboundTrunk, 'id'>,
+): Partial<Pick<OutboundTrunk, 'name' | 'address' | 'numbers' | 'auth_username' | 'auth_password'>> {
+  const changed: Partial<Pick<OutboundTrunk, 'name' | 'address' | 'numbers' | 'auth_username' | 'auth_password'>> = {}
+  if (values.name !== row.name) changed.name = values.name
+  if (values.address !== row.address) changed.address = values.address
+  if (values.auth_username !== row.auth_username) changed.auth_username = values.auth_username
+  const next = values.numbers ?? []
+  const prev = row.numbers ?? []
+  if (next.length !== prev.length || next.some((n, i) => n !== prev[i])) changed.numbers = next
+  if (values.auth_password) changed.auth_password = values.auth_password
+  return changed
+}
+
 function TrunksPanel({ store }: { store: Store }) {
   // Surfaces the result of the most recent create/update proxy call.
   const [save, setSave] = useState<{ ok: boolean; message: string } | null>(null)
@@ -190,20 +227,44 @@ function TrunksPanel({ store }: { store: Store }) {
     enabled: Boolean(v.enabled),
   })
 
-  // POST the trunk to the create/update proxy, then mirror it into the local store so the
-  // table reflects the saved row (and the callops-returned trunk_id). callops has no separate
-  // update endpoint, so create and edit both re-POST the same body.
-  async function persist(values: Omit<OutboundTrunk, 'id'>, id?: string) {
+  // Create: POST to callops, then mirror the saved row (incl. the returned trunk_id) locally.
+  async function createTrunk(values: Omit<OutboundTrunk, 'id'>) {
     setSave(null)
     const res = await store.saveTrunk(values)
-    if (!res.ok) {
-      setSave({ ok: false, message: res.message })
+    if (!res.ok) { setSave({ ok: false, message: res.message }); return }
+    store.createTrunk({ ...values, trunk_id: res.trunk_id ?? values.trunk_id })
+    setSave({ ok: true, message: res.message })
+  }
+
+  // Edit: PATCH only the changed fields to callops (keyed on the LiveKit trunk_id). A trunk that
+  // was never provisioned upstream (no trunk_id) can't be PATCHed — guard with a clear message.
+  async function editTrunk(id: string, values: Omit<OutboundTrunk, 'id'>) {
+    setSave(null)
+    const row = store.trunks.find((t) => t.id === id)
+    if (!row) return
+    if (!row.trunk_id) {
+      setSave({ ok: false, message: `"${row.name}" isn't provisioned in LiveKit yet — save it first.` })
       return
     }
-    const stored: Omit<OutboundTrunk, 'id'> = { ...values, trunk_id: res.trunk_id ?? values.trunk_id }
-    if (id) store.updateTrunk(id, stored)
-    else store.createTrunk(stored)
-    setSave({ ok: true, message: res.message })
+    const changed = diffTrunk(row, values)
+    if (Object.keys(changed).length === 0) { setSave({ ok: true, message: 'No changes to save.' }); return }
+    const res = await store.patchTrunk(row.trunk_id, changed)
+    if (!res.ok) { setSave({ ok: false, message: res.message }); return }
+    store.updateTrunk(id, { ...changed, trunk_id: res.trunk_id ?? row.trunk_id })
+    setSave({ ok: true, message: `Trunk "${values.name}" updated.` })
+  }
+
+  // Delete: DELETE on callops, then drop the local row on success. An un-provisioned trunk only
+  // exists client-side, so it's removed locally without an upstream call.
+  async function removeTrunk(id: string) {
+    setSave(null)
+    const row = store.trunks.find((t) => t.id === id)
+    if (!row) return
+    if (!row.trunk_id) { store.deleteTrunk(id); return }
+    const res = await store.deleteTrunkRemote(row.trunk_id)
+    if (!res.ok) { setSave({ ok: false, message: res.message }); return }
+    store.deleteTrunk(id)
+    setSave({ ok: true, message: `Trunk "${row.name}" deleted.` })
   }
 
   async function runTestCall() {
@@ -224,9 +285,9 @@ function TrunksPanel({ store }: { store: Store }) {
           auth_username: r.auth_username, auth_password: '', enabled: r.enabled,
         })}
         emptyForm={{ name: '', address: '', numbers: [], auth_username: '', auth_password: '', enabled: true }}
-        onCreate={(v) => persist(fromForm(v))}
-        onUpdate={(id, v) => persist(fromForm(v), id)}
-        onDelete={store.deleteTrunk}
+        onCreate={(v) => createTrunk(fromForm(v))}
+        onUpdate={(id, v) => editTrunk(id, fromForm(v))}
+        onDelete={(id) => removeTrunk(id)}
         onToggle={store.toggleTrunk}
       />
 

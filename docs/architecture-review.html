@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
+    <title>Architecture review — agent-avm-interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = { darkMode: 'class' };
+    </script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "dark",
+        securityLevel: "loose",
+        themeVariables: {
+          darkMode: true,
+          background: "#0f172a",
+          primaryColor: "#1e293b",
+          primaryTextColor: "#e2e8f0",
+          primaryBorderColor: "#475569",
+          lineColor: "#64748b",
+          secondaryColor: "#1e293b",
+          tertiaryColor: "#0f172a",
+        },
+      });
+    </script>
+    <style>
+      html { color-scheme: dark; }
+      body { background-color: #020617; }
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #f87171; }
+      .deep {
+        background: linear-gradient(135deg, #1e3a5f 0%, #312e81 50%, #1e1b4b 100%);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        box-shadow: 0 0 24px rgba(99, 102, 241, 0.15);
+      }
+      .iface-bar { height: 12px; border-radius: 4px 4px 0 0; }
+      .impl-bar { border-radius: 0 0 4px 4px; }
+      code { background: rgba(255,255,255,0.08); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
+      a { color: #6ee7b7; }
+      a:hover { color: #a7f3d0; }
+    </style>
+  </head>
+  <body class="bg-slate-950 text-slate-100 font-sans antialiased">
+    <main class="max-w-[90rem] mx-auto px-8 lg:px-12 py-12 space-y-12">
+      <header class="border-b border-slate-800 pb-8">
+        <h1 class="font-serif text-3xl text-slate-50">Architecture review</h1>
+        <p class="mt-1 text-slate-500 font-mono text-sm">agent-avm-interface · 23 Jun 2026</p>
+        <dl class="mt-6 flex flex-wrap gap-6 text-xs uppercase tracking-wider text-slate-400">
+          <div class="flex items-center gap-2"><span class="w-4 h-4 border-2 border-slate-500 rounded"></span> module</div>
+          <div class="flex items-center gap-2"><span class="w-8 border-t-2 border-dashed border-slate-500"></span> seam</div>
+          <div class="flex items-center gap-2"><span class="w-6 h-0.5 bg-red-400"></span> leakage</div>
+          <div class="flex items-center gap-2"><span class="w-4 h-4 deep rounded"></span> deep module</div>
+        </dl>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+
+        <!-- Candidate 1 -->
+        <article id="c1" class="rounded-xl border border-slate-800 bg-slate-900/80 p-8 shadow-lg shadow-black/30 space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-xl text-slate-50">Finish the callops control-plane cutover</h2>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800">Strong</span>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">ports &amp; adapters</span>
+          </div>
+          <p class="font-mono text-sm text-slate-400 leading-relaxed">
+            app/api/campaigns/[id]/[action]/route.ts · app/api/trunks/route.ts · app/api/calls/result/route.ts ·
+            app/api/livekit/webhook/route.ts · lib/outbound-call.ts · lib/livekit.ts · lib/voice.ts ·
+            scripts/dial-outbound.ts · docs/livekit-outbound-integration.md
+          </p>
+          <div class="grid lg:grid-cols-2 gap-8">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem] overflow-hidden">
+                <pre class="mermaid text-xs">
+flowchart TB
+  UI[Campaign lifecycle UI] --> Proxy[action route]
+  Proxy --> Callops[evra-callops]
+  CLI[dial-outbound.ts] --> Outbound[lib/outbound-call]
+  Outbound --> LK[LiveKit]
+  Outbound --> DB[(call_records)]
+  WH[webhook route] --> DB
+  WH -.leak.-> Outbound
+  Dead[calls/result no-op] -.leak.-> Docs[stale /dial docs]
+  classDef leak stroke:#f87171,stroke-width:2px;
+  class WH,Dead,Docs leak
+                </pre>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">After</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem] flex flex-col justify-center">
+                <div class="deep text-white rounded-lg p-6 text-center space-y-2">
+                  <p class="text-xs uppercase tracking-wider opacity-70">Outbound dial module</p>
+                  <p class="text-sm font-medium">callops owns dispatch + outcomes</p>
+                  <p class="text-xs opacity-60">this app: authenticated proxy + read APIs</p>
+                  <div class="mt-4 pt-4 border-t border-white/20 text-xs opacity-50 space-y-1">
+                    <p>webhook → recording/duration only</p>
+                    <p>CLI → callops test harness</p>
+                  </div>
+                </div>
+                <p class="text-center text-xs text-slate-500 mt-3">one orchestration story</p>
+              </div>
+            </div>
+          </div>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Problem:</strong> Three overlapping outbound dial stories — UI proxy, webhook assuming in-app dial, CLI still writing call_records — with stale docs describing removed routes.</p>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Solution:</strong> Enforce write ownership at the seam: callops adapter owns dispatch and rich outcomes; this app deepens into proxy + read model only.</p>
+          <ul class="text-sm text-slate-400 space-y-1">
+            <li>· locality: one orchestration module</li>
+            <li>· leverage: N call sites, one interface</li>
+            <li>· deletion test passes: shallow re-exports go</li>
+            <li>· interface shrinks; implementation absorbs dial path</li>
+          </ul>
+        </article>
+
+        <!-- Candidate 2 -->
+        <article id="c2" class="rounded-xl border border-slate-800 bg-slate-900/80 p-8 shadow-lg shadow-black/30 space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-xl text-slate-50">Unify the reporting read model</h2>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800">Strong</span>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">in-process</span>
+          </div>
+          <p class="font-mono text-sm text-slate-400 leading-relaxed">
+            app/api/reports/route.ts · app/api/logs/route.ts · app/api/intents/route.ts ·
+            lib/dashboardInsights.tsx · components/Charts.tsx · components/KpiStrip.tsx · app/page.tsx
+          </p>
+          <div class="grid lg:grid-cols-2 gap-8">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem] space-y-2">
+                <div class="flex gap-2 items-end h-32">
+                  <div class="flex-1 text-center">
+                    <div class="iface-bar bg-amber-500 w-full"></div>
+                    <div class="impl-bar bg-amber-950 border border-amber-800 text-amber-200 h-16 flex items-center justify-center text-xs">call_logs reads</div>
+                  </div>
+                  <div class="flex-1 text-center">
+                    <div class="iface-bar bg-blue-500 w-full"></div>
+                    <div class="impl-bar bg-blue-950 border border-blue-800 text-blue-200 h-20 flex items-center justify-center text-xs">call_records reads</div>
+                  </div>
+                  <div class="flex-1 text-center">
+                    <div class="iface-bar bg-purple-500 w-full"></div>
+                    <div class="impl-bar bg-purple-950 border border-purple-800 text-purple-200 h-12 flex items-center justify-center text-xs">intent_stats</div>
+                  </div>
+                </div>
+                <div class="text-center text-red-400 text-xs">↓ leakage: divergent KPIs ↓</div>
+                <div class="grid grid-cols-3 gap-2 text-xs text-center">
+                  <div class="border border-red-900 bg-red-950/60 text-red-300 p-2 rounded">Charts.tsx sum()</div>
+                  <div class="border border-red-900 bg-red-950/60 text-red-300 p-2 rounded">KpiStrip pct()</div>
+                  <div class="border border-red-900 bg-red-950/60 text-red-300 p-2 rounded">page.tsx REPORT_KEYS</div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">After</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem] flex flex-col justify-center items-center">
+                <div class="w-full max-w-xs">
+                  <div class="iface-bar bg-indigo-400 w-1/3 mx-auto"></div>
+                  <div class="deep text-white rounded-b-lg p-6 text-center">
+                    <p class="text-xs uppercase tracking-wider opacity-70">Call analytics module</p>
+                    <p class="text-sm mt-2">aggregates call_records</p>
+                    <p class="text-xs opacity-60 mt-1">canonical outcome enum</p>
+                  </div>
+                </div>
+                <div class="flex gap-4 mt-4 text-xs text-slate-500">
+                  <span>→ /api/reports</span>
+                  <span>→ /api/logs</span>
+                  <span>→ /api/intents</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Problem:</strong> Dashboard widgets mix call_logs aggregates (seed-only, no writer) with call_records sparklines — KPIs diverge after callops cutover.</p>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Solution:</strong> Deepen a single Call analytics module behind one interface; retire call_logs reads and duplicated sum/pct helpers.</p>
+          <ul class="text-sm text-slate-400 space-y-1">
+            <li>· locality: reporting bugs concentrate</li>
+            <li>· leverage: one interface, all widgets</li>
+            <li>· deletion test passes on call_logs reads</li>
+            <li>· interface is the test surface</li>
+          </ul>
+        </article>
+
+        <!-- Candidate 3 -->
+        <article id="c3" class="rounded-xl border border-slate-800 bg-slate-900/80 p-8 shadow-lg shadow-black/30 space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-xl text-slate-50">Decompose the dashboard shell module</h2>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800">Strong</span>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">in-process</span>
+          </div>
+          <p class="font-mono text-sm text-slate-400 leading-relaxed">
+            app/page.tsx · components/InsightDashboard.tsx · components/Sidebar.tsx · lib/useDashboardLayout.ts
+          </p>
+          <div class="grid lg:grid-cols-2 gap-8">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-3 min-h-[22rem]">
+                <div class="border-2 border-amber-700 rounded p-2 h-full overflow-hidden relative bg-amber-950/20">
+                  <p class="text-xs uppercase tracking-wider text-amber-400 mb-2">app/page.tsx — 881 lines</p>
+                  <div class="grid grid-cols-2 gap-1 text-[10px]">
+                    <div class="bg-amber-950/80 border border-amber-800 text-amber-200 p-1 rounded">auth gate</div>
+                    <div class="bg-amber-950/80 border border-amber-800 text-amber-200 p-1 rounded">inactivity timeout</div>
+                    <div class="bg-amber-950/80 border border-amber-800 text-amber-200 p-1 rounded">15+ useState</div>
+                    <div class="bg-amber-950/80 border border-amber-800 text-amber-200 p-1 rounded">polling loops</div>
+                    <div class="bg-amber-950/80 border border-amber-800 text-amber-200 p-1 rounded">lifecycle orchestration</div>
+                    <div class="bg-amber-950/80 border border-amber-800 text-amber-200 p-1 rounded">CSV export</div>
+                    <div class="bg-amber-950/80 border border-amber-800 text-amber-200 p-1 rounded">Companies table</div>
+                    <div class="bg-amber-950/80 border border-amber-800 text-amber-200 p-1 rounded">Campaigns table</div>
+                    <div class="bg-amber-950/80 border border-amber-800 text-amber-200 p-1 rounded col-span-2">view switching + modals</div>
+                  </div>
+                  <p class="absolute bottom-2 left-2 right-2 text-center text-xs text-red-400">shallow: interface = entire dashboard</p>
+                </div>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">After</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-3 min-h-[22rem] flex flex-col gap-2">
+                <div class="border border-slate-600 rounded p-2 text-center text-xs bg-slate-800 text-slate-300">page.tsx — thin router shell</div>
+                <div class="deep text-white rounded p-3 text-center flex-1">
+                  <p class="text-xs uppercase tracking-wider opacity-70">useDashboardData()</p>
+                  <p class="text-xs mt-2 opacity-80">polls · 401 handling · live status</p>
+                </div>
+                <div class="grid grid-cols-3 gap-1 text-[10px]">
+                  <div class="border border-slate-600 rounded p-2 text-center bg-slate-800 text-slate-300">CompaniesView</div>
+                  <div class="border border-slate-600 rounded p-2 text-center bg-slate-800 text-slate-300">CampaignsView</div>
+                  <div class="border border-slate-600 rounded p-2 text-center bg-slate-800 text-slate-300">ReportsView</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Problem:</strong> One client module holds auth, polling, lifecycle, CRUD, and every view — understanding any Campaign feature requires reading 881 lines.</p>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Solution:</strong> Extract useDashboardData() at the data seam and feature view modules; page.tsx becomes a thin shell with a small interface.</p>
+          <ul class="text-sm text-slate-400 space-y-1">
+            <li>· locality: polling logic concentrates</li>
+            <li>· leverage: views share one data hook</li>
+            <li>· partial deletion test</li>
+            <li>· each view module deepens independently</li>
+          </ul>
+        </article>
+
+        <!-- Candidate 4 -->
+        <article id="c4" class="rounded-xl border border-slate-800 bg-slate-900/80 p-8 shadow-lg shadow-black/30 space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-xl text-slate-50">Collapse telephony mock vs trunk catalog</h2>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-amber-950 text-amber-300 border border-amber-800">Worth exploring</span>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">mock</span>
+          </div>
+          <p class="font-mono text-sm text-slate-400 leading-relaxed">
+            lib/telephony-mock.ts · components/TelephonyView.tsx · types/telephony.ts ·
+            app/api/trunks/route.ts · components/CampaignModal.tsx · components/SettingsView.tsx
+          </p>
+          <div class="grid lg:grid-cols-2 gap-8">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem]">
+                <pre class="mermaid text-xs">
+flowchart LR
+  TV[TelephonyView] --> Mock[telephony-mock localStorage]
+  CM[CampaignModal] --> DB[(sip_trunks)]
+  CM --> API[GET /api/trunks]
+  API --> Callops[callops cross-check]
+  SV[SettingsView] --> Stub[no carrier settings stub]
+  Mock -.leak.-> Prod[production dialing]
+  classDef leak stroke:#f87171,stroke-width:2px;
+  class Mock,Prod leak
+                </pre>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">After</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem] flex flex-col justify-center items-center gap-4">
+                <div class="deep text-white rounded-lg px-8 py-4 text-center">
+                  <p class="text-xs uppercase tracking-wider opacity-70">Telephony admin module</p>
+                  <p class="text-sm mt-1">sip_trunks + callops adapter</p>
+                </div>
+                <p class="text-xs text-slate-500">or hide until Phase 2</p>
+                <p class="text-xs text-emerald-400">two adapters → real seam</p>
+              </div>
+            </div>
+          </div>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Problem:</strong> Telephony admin UI runs on localStorage mock while real dialing uses sip_trunks — operators configure fake trunks that never affect production.</p>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Solution:</strong> Wire TelephonyView to callops admin API or remove the mock; align types with sip_trunks schema.</p>
+          <ul class="text-sm text-slate-400 space-y-1">
+            <li>· deletion test passes on mock</li>
+            <li>· locality: one telephony interface</li>
+            <li>· no illusory configuration depth</li>
+            <li>· Settings + Telephony merge honestly</li>
+          </ul>
+        </article>
+
+        <!-- Candidate 5 -->
+        <article id="c5" class="rounded-xl border border-slate-800 bg-slate-900/80 p-8 shadow-lg shadow-black/30 space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-xl text-slate-50">Canonical call outcome mapping module</h2>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-amber-950 text-amber-300 border border-amber-800">Worth exploring</span>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">in-process</span>
+          </div>
+          <p class="font-mono text-sm text-slate-400 leading-relaxed">
+            supabase/migrations/20260618220000_call_records_callops_outcomes.sql ·
+            app/api/livekit/webhook/route.ts · app/api/intents/route.ts ·
+            components/ui/StatusChip.tsx · lib/dashboardInsights.tsx
+          </p>
+          <div class="grid lg:grid-cols-2 gap-8">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem] space-y-3 text-xs">
+                <div class="border-l-4 border-red-500 pl-3 py-1 bg-red-950/50 text-red-200">webhook writes <code>connected</code></div>
+                <div class="border-l-4 border-red-500 pl-3 py-1 bg-red-950/50 text-red-200">callops writes <code>answered</code></div>
+                <div class="border-l-4 border-red-500 pl-3 py-1 bg-red-950/50 text-red-200">intents counts <code>connected|qualified</code></div>
+                <div class="border-l-4 border-red-500 pl-3 py-1 bg-red-950/50 text-red-200">KPI uses <code>outcome === 'connected'</code></div>
+                <div class="border-l-4 border-red-500 pl-3 py-1 bg-red-950/50 text-red-200">answered() uses <code>talk_seconds &gt; 0</code></div>
+                <p class="text-red-400 text-center pt-2">"Connected" means 5 different things</p>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">After</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem] flex flex-col justify-center">
+                <div class="deep text-white rounded-lg p-5 text-center">
+                  <p class="text-xs uppercase tracking-wider opacity-70">lib/outcomes.ts</p>
+                  <p class="text-xs mt-3 opacity-80">raw → category → label → bucket</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mt-4 text-[10px] text-center text-slate-300">
+                  <div class="border border-slate-600 bg-slate-800 rounded p-1">StatusChip</div>
+                  <div class="border border-slate-600 bg-slate-800 rounded p-1">intents route</div>
+                  <div class="border border-slate-600 bg-slate-800 rounded p-1">dashboardInsights</div>
+                  <div class="border border-slate-600 bg-slate-800 rounded p-1">webhook route</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Problem:</strong> Call outcome semantics leak across seams — connected, answered, and talk_seconds each mean different things in different widgets.</p>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Solution:</strong> Deepen lib/outcomes.ts: one interface normalizes raw DB values to display labels and chart buckets everywhere.</p>
+          <ul class="text-sm text-slate-400 space-y-1">
+            <li>· locality: semantics concentrate</li>
+            <li>· leverage: one module, N widgets</li>
+            <li>· deletion test on ad-hoc checks</li>
+            <li>· pairs naturally with candidate 2</li>
+          </ul>
+        </article>
+
+        <!-- Candidate 6 -->
+        <article id="c6" class="rounded-xl border border-slate-800 bg-slate-900/80 p-8 shadow-lg shadow-black/30 space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-xl text-slate-50">Test integration seams, not pure extraction</h2>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-amber-950 text-amber-300 border border-amber-800">Worth exploring</span>
+            <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">local-substitutable</span>
+          </div>
+          <p class="font-mono text-sm text-slate-400 leading-relaxed">
+            lib/parseCsv.ts · lib/phone.ts · app/api/campaigns/[id]/[action]/route.ts ·
+            app/api/livekit/webhook/route.ts · scripts/callops-test.ts
+          </p>
+          <div class="grid lg:grid-cols-2 gap-8">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem]">
+                <pre class="mermaid text-xs">
+sequenceDiagram
+  participant CSV as parseCsv pure fn
+  participant Modal as CampaignModal
+  participant API as campaigns route
+  participant Proxy as action route
+  Note over CSV,Proxy: zero automated tests
+  Modal->>CSV: parse at call site
+  Modal->>API: upload contacts
+  API->>API: normalizePhone later
+  Note over Modal,API: bugs surface in prod flow
+                </pre>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">After</p>
+              <div class="rounded-lg border border-slate-700 bg-slate-950 p-4 min-h-[22rem] space-y-3">
+                <div class="deep text-white rounded p-3 text-xs text-center">
+                  <p class="uppercase tracking-wider opacity-70">Contact import module</p>
+                  <p class="mt-1">parseCsv + normalizePhone pipeline</p>
+                  <p class="opacity-60">interface is the test surface</p>
+                </div>
+                <div class="border border-dashed border-slate-600 text-slate-400 rounded p-3 text-xs text-center">
+                  Vitest: pipeline boundary tests
+                </div>
+                <div class="border border-dashed border-slate-600 text-slate-400 rounded p-3 text-xs text-center">
+                  mocked fetch + Supabase: lifecycle proxy + webhook
+                </div>
+                <div class="border border-dashed border-slate-600 text-slate-400 rounded p-3 text-xs text-center">
+                  callops-test.ts → CI smoke
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Problem:</strong> Zero automated tests despite complex CSV import, dual-mode lifecycle proxy, and webhook state machine — pure helpers look testable but bugs hide at call sites.</p>
+          <p class="text-base text-slate-300 leading-relaxed"><strong class="text-slate-100">Solution:</strong> Add Vitest at module interfaces: contact import pipeline, lifecycle proxy with mocked callops adapter, webhook transitions.</p>
+          <ul class="text-sm text-slate-400 space-y-1">
+            <li>· interface is the test surface</li>
+            <li>· two adapters justify callops seam</li>
+            <li>· prevents shallow test theatre</li>
+            <li>· locks cutover before refactor</li>
+          </ul>
+        </article>
+
+      </section>
+
+      <section id="top-recommendation" class="rounded-xl border border-emerald-800 bg-emerald-950/40 p-8 shadow-lg shadow-black/20">
+        <h2 class="font-serif text-2xl text-emerald-300">Top recommendation</h2>
+        <p class="mt-4 text-lg text-emerald-100">
+          <a href="#c1" class="underline font-medium text-emerald-300 hover:text-emerald-200">Finish the callops control-plane cutover</a>
+          — the repo is mid-migration with three competing outbound dial stories; clarifying write ownership at the seam unlocks every other candidate.
+        </p>
+        <p class="mt-3 text-sm text-emerald-400/80">
+          Sequence: (1) cutover → (2) unify reporting + (5) outcome mapping → (3) decompose dashboard shell → (4) telephony honesty → (6) tests to lock it in.
+        </p>
+        <p class="mt-4 text-xs text-emerald-600">No CONTEXT.md or ADRs found — domain terms inferred from schema and README.</p>
+      </section>
+    </main>
+  </body>
+</html>

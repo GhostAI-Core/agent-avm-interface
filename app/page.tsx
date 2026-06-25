@@ -16,7 +16,6 @@ import SecurityView from '@/components/SecurityView'
 import SettingsView from '@/components/SettingsView'
 import TelephonyView from '@/components/TelephonyView'
 import { OutcomeDonut, CampaignBar, SpendChart, FunnelChart } from '@/components/Charts'
-import STSDashboard from '@/components/STSDashboard'
 import ProfileView from '@/components/ProfileView'
 import CampaignDetail from '@/components/CampaignDetail'
 import CallQuality from '@/components/CallQuality'
@@ -46,19 +45,14 @@ import MenuItem from '@mui/material/MenuItem'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import TextField from '@mui/material/TextField'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
-import GlassCard from '@/components/ui/GlassCard'
+import DataTable, { type DataTableColumn } from '@/components/ui/DataTable'
+import { AgentChip as TableAgentChip, StatusChip as TableStatusChip, ActionButton, ActionGroup } from '@/components/ui/tableCells'
 import BusinessIcon from '@mui/icons-material/Business'
 import CloseIcon from '@mui/icons-material/Close'
 import { colors, semantic, radius } from '@/lib/tokens'
@@ -70,12 +64,20 @@ const VIEW_TITLES: Record<string, string> = {
   reports:   'Campaign Report',
   quality:   'Call Quality',
   security:  'Security Audit Log',
-  sts:       'STS Dashboard',
   settings:  'System Settings',
   profile:   'Profile & Appearance',
 }
 
-const REPORT_KEYS: (keyof CampaignReport)[] = ['dialed','connected','qualified','voicemail','no_speech','hangup','ni','dnq','callback','no_answer','busy_line','failed']
+const REPORT_KEYS = ['dialed','connected','qualified','voicemail','no_speech','hangup','ni','dnq','callback','no_answer','busy_line','failed'] as const satisfies (keyof CampaignReport)[]
+
+// Row shape for the Companies DataTable
+type CompanyRow = {
+  name: string
+  contact: string | null
+  active: number
+  total: number
+  cpl: number
+}
 const INACTIVITY_LIMIT = 15 * 60 * 1000 // 15 minutes
 
 // Cards|Table switcher shared by the Companies and Campaigns list views.
@@ -125,8 +127,8 @@ export default function Page() {
   const [campaignAction,   setCampaignAction]   = useState<{ mode: 'edit' | 'reuse'; campaign: Campaign } | null>(null)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [tourStep,         setTourStep]         = useState<number | null>(null)
-  const [companiesView,    setCompaniesView]    = useState<'cards' | 'table'>('cards')
-  const [campaignsView,    setCampaignsView]    = useState<'cards' | 'table'>('cards')
+  const [companiesView,    setCompaniesView]    = useState<'cards' | 'table'>('table')
+  const [campaignsView,    setCampaignsView]    = useState<'cards' | 'table'>('table')
   const dash = useDashboardLayout()
 
   useEffect(() => { setMounted(true) }, [])
@@ -453,7 +455,7 @@ export default function Page() {
   const contactByName = new Map(companiesList.map(c => [c.name, c]))
 
   // Per-company stats for the Companies view
-  const companyStats = companies.map(name => {
+  const companyStats: CompanyRow[] = companies.map(name => {
     const camps = campaigns.filter(c => c.company === name)
     const ids = new Set(camps.map(c => c.id))
     const reps = reports.filter(r => ids.has(r.campaign_id))
@@ -491,6 +493,84 @@ export default function Page() {
   const dashReports = scoped ? reports.filter(r => dashCampaignIds.has(r.campaign_id)) : reports
   const dashCalls = scoped ? allCalls.filter(c => dashCampaignIds.has(c.campaign_id)) : allCalls
   const dashIntents = scoped ? allIntents.filter(i => dashCampaignIds.has(i.campaign_id)) : allIntents
+
+  // ── DataTable column definitions (bespoke CSS-grid table) ──
+  // `width` is a grid-template fragment; `mono` styling applied inline per cell.
+  const MONO = "ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace"
+
+  // Companies: Company / Contact / Active / Total Camps / Total CPL. Row click → Control Room.
+  // TODO(mockup): expandable company rows — fast follow.
+  const companyColumns: DataTableColumn<CompanyRow>[] = [
+    { key: 'name', label: 'Company', width: '1.6fr',
+      render: r => <span style={{ fontWeight: 600 }}>{r.name}</span> },
+    { key: 'contact', label: 'Contact', width: '1.4fr',
+      render: r => <span style={{ color: colors.fg3 }}>{r.contact || '—'}</span> },
+    { key: 'active', label: 'Active', align: 'right', width: '0.8fr',
+      render: r => <span style={{ fontFamily: MONO, color: colors.green }}>{r.active}</span> },
+    { key: 'total', label: 'Total Camps', align: 'right', width: '1fr',
+      render: r => <span style={{ fontFamily: MONO }}>{r.total}</span> },
+    { key: 'cpl', label: 'Total CPL', align: 'right', width: '1fr',
+      render: r => <span style={{ fontFamily: MONO }}>R{r.cpl.toFixed(2)}</span> },
+  ]
+
+  // Campaigns: Campaign / Agent / Company / Status / Window+Speed / Actions. Row click → Control Room.
+  // Action clicks stop propagation so they don't fire the row click.
+  const campaignColumns: DataTableColumn<Campaign>[] = [
+    { key: 'name', label: 'Campaign', width: '1.5fr',
+      render: c => <span style={{ fontWeight: 600 }}>{c.name}</span> },
+    { key: 'agent', label: 'Agent', width: '0.9fr',
+      render: c => <TableAgentChip agent={c.agent} /> },
+    { key: 'company', label: 'Company', width: '1fr',
+      render: c => <span style={{ color: colors.fg3 }}>{c.company || '—'}</span> },
+    { key: 'status', label: 'Status', width: '0.9fr',
+      render: c => <TableStatusChip status={c.status} autoPaused={c.auto_paused} /> },
+    { key: 'window', label: 'Window / Speed', width: '1.4fr',
+      render: c => (
+        <span style={{ color: colors.fg3 }}>{c.time_window_start}–{c.time_window_end} · {c.dialing_speed}/s</span>
+      ) },
+    { key: 'actions', label: 'Actions', align: 'right', width: '270px', sticky: true,
+      render: c => (
+        <ActionGroup>
+          <ActionButton icon={c.status === 'running' ? '⏸' : '▶'} title={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`}
+            variant={c.status === 'running' ? 'amber' : 'green'}
+            onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')} />
+          <ActionButton icon="■" title={`Stop ${c.name}`} variant="red"
+            onClick={() => updateStatus(c.id, 'stopped')} />
+          <ActionButton icon="✎" title={`Edit ${c.name}`}
+            onClick={() => setCampaignAction({ mode: 'edit', campaign: c })} />
+          <ActionButton icon="⧉" title={`Reuse ${c.name}`}
+            onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })} />
+          <ActionButton icon="🗀" title={`Archive ${c.name}`} variant="amber"
+            onClick={() => updateStatus(c.id, 'archived')} />
+        </ActionGroup>
+      ) },
+  ]
+
+  // Campaign Report: Campaign (AgentChip + name) then numeric REPORT_KEYS + Duration / CPL / Spent.
+  const REPORT_HEADERS: Record<(typeof REPORT_KEYS)[number], string> = {
+    dialed: 'Dialed', connected: 'Connected', qualified: 'Qualified', voicemail: 'Voicemail',
+    no_speech: 'No Speech', hangup: 'Hangup', ni: 'NI', dnq: 'DNQ', callback: 'Callback',
+    no_answer: 'NA', busy_line: 'Busy', failed: 'Failed',
+  }
+  const reportColumns: DataTableColumn<CampaignReport>[] = [
+    { key: 'campaign', label: 'Campaign', width: '200px',
+      render: r => (
+        <div>
+          <TableAgentChip agent={r.campaign?.agent ?? ''} />
+          <div style={{ fontSize: 12, color: colors.fg2, marginTop: 4 }}>{r.campaign?.name}</div>
+        </div>
+      ) },
+    ...REPORT_KEYS.map<DataTableColumn<CampaignReport>>(k => ({
+      key: k, label: REPORT_HEADERS[k], align: 'right' as const, width: '84px',
+      render: r => <span style={{ fontFamily: MONO }}>{Number(r[k]).toLocaleString()}</span>,
+    })),
+    { key: 'duration', label: 'Duration', align: 'right', width: '80px',
+      render: r => <span style={{ fontFamily: MONO }}>{r.duration}</span> },
+    { key: 'cpl', label: 'CPL', align: 'right', width: '80px',
+      render: r => <span style={{ fontFamily: MONO }}>R{Number(r.cpl).toFixed(2)}</span> },
+    { key: 'total_spent', label: 'Spent', align: 'right', width: '90px',
+      render: r => <span style={{ fontFamily: MONO, color: colors.greenBright, fontWeight: 600 }}>R{Number(r.total_spent).toLocaleString()}</span> },
+  ]
 
 
   return (
@@ -589,33 +669,14 @@ export default function Page() {
                   )}
                 </Grid>
               ) : (
-                <GlassCard sx={{ p: 0, overflow: 'auto' }}>
-                  <TableContainer>
-                    <Table size="small" sx={{ minWidth: 640 }}>
-                      <TableHead>
-                        <TableRow>
-                          {['Company', 'Contact', 'Active', 'Total Camps', 'Total CPL'].map((h, i) => (
-                            <TableCell key={h} align={i < 2 ? 'left' : 'right'} sx={{ whiteSpace: 'nowrap' }}>{h}</TableCell>
-                          ))}
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {companyStats.map(co => (
-                          <TableRow key={co.name} hover sx={{ cursor: 'pointer' }} onClick={() => openInControlRoom(co.name)}>
-                            <TableCell sx={{ fontWeight: 600 }}>{co.name}</TableCell>
-                            <TableCell sx={{ color: 'text.secondary' }}>{co.contact || '—'}</TableCell>
-                            <TableCell align="right" className="mono" sx={{ color: 'success.main' }}>{co.active}</TableCell>
-                            <TableCell align="right" className="mono">{co.total}</TableCell>
-                            <TableCell align="right" className="mono">R{co.cpl.toFixed(2)}</TableCell>
-                          </TableRow>
-                        ))}
-                        {!companyStats.length && (
-                          <TableRow><TableCell colSpan={5} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No companies yet — add one to get started.</TableCell></TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </GlassCard>
+                <DataTable<CompanyRow>
+                  rows={companyStats}
+                  columns={companyColumns}
+                  getRowId={(row) => row.name}
+                  onRowClick={(row) => openInControlRoom(row.name)}
+                  checkbox
+                  minWidth="860px"
+                />
               )}
             </>
           )}
@@ -635,42 +696,14 @@ export default function Page() {
               </Stack>
 
               {campaignsView === 'table' ? (
-                <GlassCard sx={{ p: 0, overflow: 'auto' }}>
-                  <TableContainer>
-                    <Table size="small" sx={{ minWidth: 820 }}>
-                      <TableHead>
-                        <TableRow>
-                          {['Campaign', 'Agent', 'Company', 'Status', 'Window / Speed', 'Actions'].map((h, i) => (
-                            <TableCell key={h} align={i === 5 ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap' }}>{h}</TableCell>
-                          ))}
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {campaigns.map(c => (
-                          <TableRow key={c.id} hover sx={{ cursor: 'pointer' }} onClick={() => openInControlRoom(c.company || '', String(c.id))}>
-                            <TableCell sx={{ fontWeight: 600 }}>{c.name}</TableCell>
-                            <TableCell><AgentChip agent={c.agent} /></TableCell>
-                            <TableCell sx={{ color: 'text.secondary' }}>{c.company || '—'}</TableCell>
-                            <TableCell><StatusChip status={c.status} autoPaused={c.auto_paused} /></TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontSize: '0.8rem' }}>{c.time_window_start}–{c.time_window_end} · {c.dialing_speed}/s</TableCell>
-                            <TableCell align="right" onClick={e => e.stopPropagation()}>
-                              <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
-                                <Tooltip title={c.status === 'running' ? 'Pause' : 'Play'}><MuiIconButton size="small" color={c.status === 'running' ? 'warning' : 'success'} aria-label={c.status === 'running' ? `Pause ${c.name}` : `Play ${c.name}`} onClick={() => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running')}>{c.status === 'running' ? <PauseIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}</MuiIconButton></Tooltip>
-                                <Tooltip title="Stop"><MuiIconButton size="small" aria-label={`Stop ${c.name}`} onClick={() => updateStatus(c.id, 'stopped')}><StopIcon sx={{ fontSize: 17 }} /></MuiIconButton></Tooltip>
-                                <Tooltip title="Edit (change MP4)"><MuiIconButton size="small" aria-label={`Edit ${c.name}`} onClick={() => setCampaignAction({ mode: 'edit', campaign: c })}><EditIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
-                                <Tooltip title="Reuse as template"><MuiIconButton size="small" aria-label={`Reuse ${c.name}`} onClick={() => setCampaignAction({ mode: 'reuse', campaign: c })}><ContentCopyIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
-                                <Tooltip title="Archive"><MuiIconButton size="small" aria-label={`Archive ${c.name}`} onClick={() => updateStatus(c.id, 'archived')} sx={{ color: 'warning.main' }}><ArchiveIcon sx={{ fontSize: 16 }} /></MuiIconButton></Tooltip>
-                              </Stack>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {!campaigns.length && (
-                          <TableRow><TableCell colSpan={6} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No campaigns yet.</TableCell></TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </GlassCard>
+                <DataTable<Campaign>
+                  rows={campaigns}
+                  columns={campaignColumns}
+                  getRowId={(row) => row.id}
+                  onRowClick={(row) => openInControlRoom(row.company || '', String(row.id))}
+                  checkbox
+                  minWidth="1080px"
+                />
               ) : (
               <Grid container spacing={2}>
                 {campaigns.map(c => (
@@ -772,33 +805,13 @@ export default function Page() {
                 </Stack>
               </Stack>
 
-              <GlassCard sx={{ p: 0, overflow: 'auto' }}>
-                <TableContainer>
-                  <Table size="small" sx={{ minWidth: 1100 }}>
-                    <TableHead>
-                      <TableRow>
-                        {['Campaign','Dialed','Connected','Qualified','Voicemail','No Speech','Hangup','NI','DNQ','Callback','NA','Busy','Failed','Duration','CPL','Spent'].map(h => (
-                          <TableCell key={h} sx={{ whiteSpace: 'nowrap' }}>{h}</TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {reports.map(r => (
-                        <TableRow key={r.id} hover onClick={() => viewDetailedLogs(r)} sx={{ cursor: 'pointer' }}>
-                          <TableCell>
-                            <AgentChip agent={r.campaign?.agent ?? ''} />
-                            <Typography variant="caption" sx={{ display: 'block' }}>{r.campaign?.name}</Typography>
-                          </TableCell>
-                          {REPORT_KEYS.map(k => <TableCell key={k} className="mono" sx={{ fontSize: '0.82rem' }}>{Number(r[k]).toLocaleString()}</TableCell>)}
-                          <TableCell className="mono" sx={{ fontSize: '0.82rem' }}>{r.duration}</TableCell>
-                          <TableCell className="mono" sx={{ fontSize: '0.82rem' }}>R{Number(r.cpl).toFixed(2)}</TableCell>
-                          <TableCell className="mono" sx={{ fontSize: '0.82rem', color: 'success.main', fontWeight: 600 }}>R{Number(r.total_spent).toLocaleString()}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </GlassCard>
+              <DataTable<CampaignReport>
+                rows={reports}
+                columns={reportColumns}
+                getRowId={(row) => row.id}
+                onRowClick={(row) => viewDetailedLogs(row)}
+                minWidth="1458px"
+              />
             </>
           )}
 
@@ -807,9 +820,6 @@ export default function Page() {
 
           {/* ── SECURITY ── */}
           {view === 'security' && <SecurityView securityLogs={securityLogs} />}
-
-          {/* ── STS DASHBOARD ── */}
-          {view === 'sts' && <STSDashboard />}
 
           {/* ── SETTINGS ── */}
           {view === 'telephony' && <TelephonyView />}
@@ -870,7 +880,14 @@ export default function Page() {
         )
       })()}
 
-      {showModal && <CampaignModal onClose={() => setShowModal(false)} onCreated={fetchData} />}
+      {showModal && (
+        <CampaignModal
+          onClose={() => setShowModal(false)}
+          onCreated={fetchData}
+          companies={companiesList}
+          onNeedCompany={() => { setShowModal(false); setShowCompanyModal(true) }}
+        />
+      )}
       <Dialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth
         slotProps={{ paper: { sx: { overflow: 'hidden', borderRadius: `${radius.lg}px` } } }}
       >

@@ -22,7 +22,7 @@ export async function GET() {
     }
 
     // Flatten the joined company to a plain name for the client
-    const campaigns = (data ?? []).map((c: any) => ({ ...c, company: c.company?.name ?? null }))
+    const campaigns = (data ?? []).map((c) => ({ ...c, company: c.company?.name ?? null }))
     return NextResponse.json({ campaigns })
   } catch (err) {
     console.error('API Route Error:', err)
@@ -36,10 +36,15 @@ export async function POST(req: Request) {
     if (!user) return unauthorized()
 
     const body = await req.json()
-    const { name, agent, dialing_speed, window_start, window_end, voice_recording_url, voice_path, contacts,
-      max_concurrent, max_retries, retry_cooldown_seconds, sip_trunk_id } = body
+    const {
+      name, agent, company_id, sip_trunk_id, audio_path,
+      dialing_speed, window_start, window_end, start_date, end_date, contacts,
+      max_concurrent, max_retries, retry_cooldown_seconds,
+    } = body
 
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
+    // A campaign must belong to a company (enforced in the create wizard too).
+    if (!company_id) return NextResponse.json({ error: 'company required' }, { status: 400 })
 
     // Form fields arrive as strings (FormData). Coerce to int, keeping callops' column
     // defaults when blank/invalid. 0 is valid for retries, so don't use `|| fallback`.
@@ -53,37 +58,73 @@ export async function POST(req: Request) {
     // so always set it — otherwise callops falls back to `agent` and dispatches to a
     // worker that isn't registered, and no agent joins the call.
     const { data: campaign, error: cErr } = await supabase.from('campaigns').insert({
-      name, agent: agent || null, agent_name: 'outbound-recorder', status: 'draft',
+      name, agent: agent || null, agent_name: 'outbound-recorder', company_id, status: 'draft',
+      sip_trunk_id: sip_trunk_id != null && sip_trunk_id !== '' ? Number(sip_trunk_id) : null,
+      audio_path: audio_path || null,
       dialing_speed: dialing_speed ?? 1,
       time_window_start: window_start ?? '08:00',
       time_window_end: window_end ?? '20:00',
+      start_date: start_date || null,
+      end_date: end_date || null,
       max_concurrent: toInt(max_concurrent, 5),
       max_retries: toInt(max_retries, 2),
       retry_cooldown_seconds: toInt(retry_cooldown_seconds, 3600),
-      // FK to sip_trunks.id; callops resolves it to the LiveKit trunk for dialing.
-      sip_trunk_id: sip_trunk_id != null && sip_trunk_id !== '' ? Number(sip_trunk_id) : null,
-      voice_recording_url: voice_recording_url ?? '',
-      voice_path: voice_path ?? null,
       transfer_key: body.transfer_key ?? '',
       transfer_target: body.transfer_target ?? '',
     }).select().single()
 
     if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 })
 
-    // 2. Insert Contacts if any — normalise to E.164 (callops/LiveKit SIP require it)
-    // and drop rows whose phone can't be coerced into a dialable number.
+    // 2. Contacts are M:N (unique per campaign): one canonical contact per phone, linked to the
+    //    campaign via campaign_contacts. Reuse an existing contact for a phone, create the rest,
+    //    then upsert the join rows (the unique (campaign_id, contact_id) makes re-links no-ops).
     if (contacts && Array.isArray(contacts) && contacts.length > 0) {
-      const contactsWithCampaign = contacts
-        .map((c: any) => ({
-          campaign_id: campaign.id,
-          phone: normalizePhone(c.phone),
-          first_name: c.first_name,
-          last_name: c.last_name,
-        }))
-        .filter((c: { phone: string }) => c.phone)
+      // Normalize + dedup the incoming list by phone (a CSV may repeat a number).
+      const incoming = new Map<string, { phone: string; first_name?: string; last_name?: string }>()
+      for (const c of contacts) {
+        const phone = normalizePhone(c.phone)
+        if (phone && !incoming.has(phone)) incoming.set(phone, { phone, first_name: c.first_name, last_name: c.last_name })
+      }
+      const phones = [...incoming.keys()]
 
-      const { error: cntErr } = await supabase.from('contacts').insert(contactsWithCampaign)
-      if (cntErr) console.error('Error inserting contacts:', cntErr)
+      // Map phone → canonical contact id (existing rows first).
+      const byPhone = new Map<string, number>()
+      const { data: existing } = await supabase.from('contacts').select('id, phone').in('phone', phones)
+      for (const r of existing ?? []) byPhone.set(r.phone, r.id)
+
+      // Create the contacts we don't have yet.
+      const toCreate = phones.filter(p => !byPhone.has(p)).map(p => incoming.get(p)!)
+      if (toCreate.length) {
+        const { data: inserted, error: insErr } = await supabase
+          .from('contacts')
+          .insert(toCreate.map(c => ({ phone: c.phone, first_name: c.first_name ?? null, last_name: c.last_name ?? null })))
+          .select('id, phone')
+        if (insErr) console.error('Error inserting contacts:', insErr)
+        for (const r of inserted ?? []) byPhone.set(r.phone, r.id)
+      }
+
+      // Link every contact to this campaign (unique per campaign).
+      const contactIds = [...byPhone.values()]
+      const links = contactIds.map(contact_id => ({ campaign_id: campaign.id, contact_id }))
+      if (links.length) {
+        const { error: linkErr } = await supabase
+          .from('campaign_contacts')
+          .upsert(links, { onConflict: 'campaign_id,contact_id', ignoreDuplicates: true })
+        if (linkErr) console.error('Error linking contacts:', linkErr)
+      }
+
+      // callops enumerates contacts by contacts.campaign_id (NOT the campaign_contacts M:N join), so
+      // a wizard campaign whose contacts have campaign_id=null is invisible to the dialer and dials
+      // nobody (verified 2026-06-24: setting campaign_id flipped callops pending 0→3). Point every
+      // linked contact at this campaign so callops can see + queue them.
+      // CAVEAT: this is single-campaign ownership — a contact reused across campaigns ends up owned by
+      // the last one. The proper long-term fix is callops reading campaign_contacts; see ROADMAP.
+      if (contactIds.length) {
+        const { error: cidErr } = await supabase
+          .from('contacts').update({ campaign_id: campaign.id }).in('id', contactIds)
+        if (cidErr) console.error('Error setting contacts.campaign_id:', cidErr)
+      }
+      console.log(`[campaign ${campaign.id}] contacts: ${contactIds.length} linked + campaign_id set (callops-visible)`)
     }
 
     return NextResponse.json({ campaign }, { status: 201 })

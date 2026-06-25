@@ -2,7 +2,7 @@
 
 Outbound IVR campaign management portal for the South African market. Operators create companies and campaigns, upload contact lists and voice recordings, start outbound dialing, and monitor call outcomes, intent funnels, and spend in real time.
 
-The app is a **Next.js 16** single-page dashboard backed by **Supabase** (PostgreSQL, Auth, Storage) with **LiveKit** as the telephony gateway for real outbound calls. When LiveKit is not configured, a built-in simulator keeps the dashboard usable for demos and development.
+The app is a **Next.js 16** single-page dashboard backed by **Supabase** (PostgreSQL, Auth, Storage). Production outbound dialing is orchestrated by **evra-callops**, which owns campaign lifecycle, pacing, retries, LiveKit SIP dispatch, and agent outcome ingestion. The dashboard proxies lifecycle commands server-side so shared callops credentials never reach the browser.
 
 ---
 
@@ -11,7 +11,7 @@ The app is a **Next.js 16** single-page dashboard backed by **Supabase** (Postgr
 At a high level, Agent AVM connects four concerns:
 
 1. **Campaign operations** — Create and manage companies, campaigns, contact lists, voice prompts, and dialing settings (time windows, speed, transfer targets).
-2. **Outbound dialing** — When an operator presses Play on a running campaign, the app dispatches calls through LiveKit: an AI agent worker joins a room, a SIP participant dials the callee via a LiveKit outbound trunk (Twilio/Telnyx sit behind LiveKit, not in this repo).
+2. **Outbound dialing** — When an operator presses Play/Pause/Stop, the app proxies lifecycle commands to evra-callops. callops dispatches contacts through LiveKit SIP trunks, enforces pacing/retry rules, and writes progress back to Supabase.
 3. **Call reporting** — Per-call detail (`call_records`), aggregate campaign counters (`call_logs`), and conversation intent waterfalls (`intent_stats`) feed charts and tables across the dashboard.
 4. **Access control & audit** — Invite-only Supabase Auth (password + optional WebAuthn passkeys), role-based UI (`admin` vs `engineer`), and immutable security event logging.
 
@@ -24,10 +24,10 @@ flowchart TB
   end
 
   subgraph API["Next.js API Routes"]
-    Dial["POST /api/campaigns/:id/dial"]
+    Life["POST /api/campaigns/:id/start|pause|stop"]
+    Stat["GET /api/campaigns/:id/status"]
     WH["POST /api/livekit/webhook"]
-    AR["POST /api/calls/result"]
-    Sim["POST /api/simulate"]
+    Trunks["GET /api/trunks"]
     Read["GET /api/logs, /reports, /intents, …"]
   end
 
@@ -37,6 +37,12 @@ flowchart TB
     AuthN[Auth + profiles]
   end
 
+  subgraph CO["evra-callops"]
+    Orchestrator[Campaign lifecycle + dispatcher]
+    Outcome["POST /calls/outcome"]
+    LKAdmin["LiveKit admin API"]
+  end
+
   subgraph LK["LiveKit Cloud"]
     Agent[Agent worker]
     SIP[SIP outbound trunk → PSTN]
@@ -44,12 +50,15 @@ flowchart TB
 
   UI -->|authenticated fetch| API
   API -->|user session client| DB
-  API -->|service role| DB
-  Dial --> LK
+  Life -->|X-Webhook-Secret| Orchestrator
+  Stat -->|X-Webhook-Secret| Orchestrator
+  Trunks -->|optional cross-check| LKAdmin
+  Orchestrator -->|service role| DB
+  Orchestrator --> LK
   LK -->|webhooks| WH
-  Agent -->|x-agent-secret| AR
-  Dial -.->|unconfigured| Sim
-  Store -->|signed URL at dial time| Agent
+  Agent -->|outcomes| Outcome
+  Outcome --> DB
+  Store -->|voice URL used by callops/agent| Agent
 ```
 
 ---
@@ -77,7 +86,7 @@ The UI is a **client-rendered single page** (`app/page.tsx`) wrapped in MUI them
 | `reports` | `Charts`, `CampaignDetail` | Aggregate campaign report — outcome donut, funnel, spend |
 | `quality` | `CallQuality` | Per-call quality and recording review |
 | `security` | `SecurityView` | Security audit log |
-| `settings` | `SettingsView` | VoIP providers, system settings |
+| `settings` | `SettingsView` | Read-only telephony configuration note; carrier settings live in LiveKit/callops |
 | `profile` | `ProfileView` | User profile and appearance |
 
 ### Data loading pattern
@@ -85,12 +94,13 @@ The UI is a **client-rendered single page** (`app/page.tsx`) wrapped in MUI them
 After auth, the page polls backend APIs on an interval (`NEXT_PUBLIC_POLL_INTERVAL_MS`, default **15s**):
 
 - `GET /api/campaigns` — campaign list
+- `GET /api/campaigns/:id/status` — live callops stats for running/paused campaigns
 - `GET /api/reports` — aggregate counters per campaign
 - `GET /api/logs` — per-call `call_records`
 - `GET /api/intents` — intent waterfall for the selected date
-- `GET /api/companies`, `/api/providers`, `/api/security` — supporting data
+- `GET /api/companies`, `/api/trunks`, `/api/security` — supporting data
 
-Starting a campaign (`updateStatus(id, 'running')`) triggers `POST /api/campaigns/:id/dial`. If the response is `{ mode: 'unconfigured' }` (LiveKit env vars missing), the UI falls back to `POST /api/simulate` so charts still update.
+Starting, pausing, or stopping a campaign (`updateStatus`) triggers `POST /api/campaigns/:id/start|pause|stop`. When `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset, those POSTs fall back to a local campaign status update for development; `GET /status` reports `{ mode: 'unconfigured' }`.
 
 ### Dashboard layout
 
@@ -108,7 +118,7 @@ The app uses three Supabase clients, each for a different trust boundary:
 |--------|------|---------|
 | **Browser** | `utils/supabase/client.ts` | `app/page.tsx`, `AuthView` — `createBrowserClient` with an in-memory auth lock to avoid Web Locks API noise |
 | **Server (cookie)** | `utils/supabase/server.ts` | API routes — `createServerClient` reads/writes session cookies |
-| **Admin (service role)** | `utils/supabase/admin.ts` | LiveKit webhook, agent result endpoint, voice URL signing — bypasses RLS; never imported in the browser (`server-only`) |
+| **Admin (service role)** | `utils/supabase/admin.ts` | LiveKit webhook and voice URL signing — bypasses RLS; never imported in the browser (`server-only`) |
 
 Session refresh runs in `proxy.ts` → `utils/supabase/middleware.ts` on every matched request (`supabase.auth.getSession()`).
 
@@ -130,22 +140,22 @@ Migrations live in `supabase/migrations/` (apply via Supabase CLI or SQL editor)
 | Table | Purpose |
 |-------|---------|
 | `companies` | Client organizations (`name`, optional `contact_name/email/phone`) |
-| `campaigns` | Dialing campaigns — agent persona, status, time window, voice prompt, transfer settings, company link, LiveKit overrides (`sip_trunk_id`, `agent_name`), pacing (`max_retries`, `max_concurrent`, …) |
+| `campaigns` | Dialing campaigns — agent persona, status, time window, voice prompt, transfer settings, company link, callops/LiveKit overrides (`sip_trunk_id`, `agent_name`), pacing (`max_retries`, `max_concurrent`, …) |
 | `contacts` | Per-campaign dial list — phone, name, status lifecycle (`pending` → `in_progress` → `dialed` / `failed` / `retry`) |
 | `profiles` | App user profile linked to `auth.users` — role, passkey credential |
-| `voip_providers` | Stored gateway credentials (Twilio, Vonage, Sangoma) for settings UI |
-| `sip_trunks` | Catalog mapping friendly names → LiveKit trunk IDs (`ST_…`) |
+| `voip_providers` | Legacy/provider config table; current Settings UI does not expose carrier CRUD |
+| `sip_trunks` | Catalog mapping friendly names → LiveKit trunk IDs (`ST_…`); campaigns store the integer FK in `campaigns.sip_trunk_id` |
 | `system_settings` | Global config — IP whitelist, environment label |
 
 #### Call data (two layers)
 
 | Table | Granularity | Consumed by |
 |-------|-------------|-------------|
-| `call_records` | One row per placed call — `outcome`, `talk_seconds`, `cost`, `recording_url`, `room`, `contact_id`, `egress_id` | `GET /api/logs`, Call Quality view, intent denominators |
+| `call_records` | One row per placed call — `outcome`, `talk_seconds`, `cost`, `recording_url`, `room`, `contact_id`, `egress_id` | Written by callops and LiveKit webhook, read by `GET /api/logs`, Call Quality view, intent denominators |
 | `call_logs` | One aggregate row per campaign — rolled-up counters (`dialed`, `connected`, `qualified`, …), CPL, total spend | `GET /api/reports`, campaign report charts |
 | `intent_stats` | Daily per-campaign intent reach counts (`intent_name`, `step`, `reached`) | `GET /api/intents`, intent waterfall charts |
 
-The `bump_intent()` SQL function atomically increments intent counters when the LiveKit agent posts results.
+The `bump_intent()` SQL function atomically increments intent counters for outcome ingestion.
 
 #### Security & templates
 
@@ -156,46 +166,37 @@ The `bump_intent()` SQL function atomically increments intent counters when the 
 
 #### Row-Level Security
 
-All application tables enable RLS with **authenticated-only** policies (broad `USING (true)` for logged-in users). Server-to-server writers (webhook, agent) use the **service role** to bypass RLS. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
+All application tables enable RLS with **authenticated-only** policies (broad `USING (true)` for logged-in users). Server-to-server writers such as the LiveKit webhook and evra-callops use service-role credentials to bypass RLS. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
 
 ### Storage
 
-Migration `20260612130000_voice_recordings_storage.sql` creates a private `voice-recordings` bucket. Campaigns reference uploaded files via `campaigns.voice_path`. At dial time, `lib/voice.ts` mints a short-lived signed URL (service role) and passes it to the LiveKit agent in dispatch metadata.
+Migration `20260612130000_voice_recordings_storage.sql` creates a private `voice-recordings` bucket. Campaigns reference uploaded files via `campaigns.voice_path`. `lib/voice.ts` can mint a short-lived signed URL for the agent when the direct LiveKit CLI path is used; production dispatch is owned by callops.
 
 ---
 
-## LiveKit integration
+## Callops and LiveKit integration
 
-The app does **not** call Twilio or Telnyx directly. Those providers are configured as a **SIP outbound trunk** inside LiveKit Cloud. This repo uses the **LiveKit Server SDK** (`livekit-server-sdk`) from Next.js API routes and CLI scripts.
+The app does **not** call Twilio or Telnyx directly. Those providers are configured as **SIP outbound trunks** inside LiveKit Cloud. In production, evra-callops drives LiveKit; this repo keeps LiveKit SDK helpers and `npm run dial` for diagnostics and pre-cutover testing.
 
-### Outbound call flow
+### Production lifecycle flow
 
-1. **Operator starts campaign** — UI sets status to `running` and calls `POST /api/campaigns/:id/dial`.
-2. **Dial route** (`app/api/campaigns/[id]/dial/route.ts`):
-   - Loads up to **25** `pending` contacts.
-   - Resolves SIP trunk via `resolveTrunkId()` — campaign `sip_trunk_id` / `sip_trunks` / `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`.
-   - Signs voice recording URL via `resolveVoiceUrl()`.
-   - For each contact, calls `placeOutboundCall()` (`lib/outbound-call.ts`):
-     - Creates room name `avm_<campaignId>_<contactId>_<random>`.
-     - `AgentDispatchClient.createDispatch(room, agentName, { metadata })` — starts the AI agent worker.
-     - `SipClient.createSipParticipant(trunkId, phone, room)` — dials the callee into the room.
-   - Optionally starts room audio egress to S3 (`startRoomRecording()`).
-   - Inserts `call_records` rows with `outcome: 'pending'` keyed by `room`.
-   - Updates `contacts` status and writes a `security_logs` entry.
-3. **LiveKit webhooks** (`POST /api/livekit/webhook`) — signature-validated updates to `call_records`:
-   - `participant_joined` (SIP callee) → `connected`
-   - `egress_ended` → `recording_url`
-   - `room_finished` → `talk_seconds`, `no_answer` for never-connected calls
-4. **Agent callback** (`POST /api/calls/result`) — the LiveKit agent POSTs rich outcomes, cost, transfer flag, and intent list. Guarded by `x-agent-secret: AGENT_RESULT_SECRET`. Calls `bump_intent()` for the waterfall.
+1. **Operator starts/pauses/stops campaign** — UI calls `POST /api/campaigns/:id/start|pause|stop`.
+2. **Lifecycle proxy** (`app/api/campaigns/[id]/[action]/route.ts`) authenticates the user and forwards to `CALLOPS_URL` with `X-Webhook-Secret`.
+3. **evra-callops** owns queueing, pacing, retries, LiveKit dispatch, agent outcome ingestion (`POST /calls/outcome`), and writes Supabase state.
+4. **Dashboard polling** reads stored state from this app (`/api/campaigns`, `/api/logs`, `/api/reports`, `/api/intents`) and live stats from `GET /api/campaigns/:id/status`.
+5. **LiveKit webhooks** (`POST /api/livekit/webhook`) remain enabled as a signed safety net for room lifecycle updates such as connected, `recording_url`, talk time, and no-answer fallback.
 
-### Simulator fallback
+### Local fallback
 
-When `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, and a trunk ID are not all set, `/dial` returns `{ mode: 'unconfigured' }` and the UI calls `/api/simulate`, which fabricates call outcomes in Supabase without placing real calls (`lib/simulator.ts` logic in the simulate route).
+When `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset, lifecycle POSTs update `campaigns.status` directly and return `{ mode: 'local' }`. This keeps campaign controls usable in local development but does not dispatch calls or fabricate call records.
 
 ### CLI testing
 
 ```bash
-npm run dial   # scripts/dial-outbound.ts — dial one contact or a small batch without the UI
+npm run callops -- status <campaignId>       # query live callops stats
+npm run callops -- start <campaignId>        # lifecycle command through callops
+npm run callops -- watch <campaignId>        # compare callops + Supabase progress
+npm run dial -- --campaign-id <id> --contact-id <id>  # direct LiveKit diagnostic path
 ```
 
 ### Required environment variables
@@ -205,17 +206,17 @@ Copy `.env.local.example` (local) or `.env.example` (production). Key groups:
 | Variable | Purpose |
 |----------|---------|
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client and server Supabase access |
-| `SUPABASE_SERVICE_ROLE_KEY` | Webhook, agent result, voice signing (server only) |
-| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | LiveKit Server SDK |
-| `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` | Default outbound SIP trunk (`ST_…`) |
-| `LIVEKIT_AGENT_NAME` | Agent worker dispatch name (e.g. `outbound-agent`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | LiveKit webhook writes, diagnostic scripts, voice signing (server only) |
+| `CALLOPS_URL`, `CALLOPS_WEBHOOK_SECRET` | Production lifecycle proxy, live status, callops trunk cross-check |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | LiveKit webhook validation and direct diagnostic CLI |
+| `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` | Default outbound SIP trunk for direct diagnostic CLI (`ST_…`) |
+| `LIVEKIT_AGENT_NAME` | Agent worker dispatch name for direct diagnostic CLI |
 | `LIVEKIT_RECORD_*` | Optional S3-compatible egress for call recordings |
-| `AGENT_RESULT_SECRET` | Shared secret for `/api/calls/result` |
 | `INWORLD_API_KEY` | Inworld TTS Basic auth credential (base64, server only) for `/api/tts/generate` |
 | `AVM_SCRIPT_AUDIO_STORAGE_*` | Supabase S3 credentials + public URL for generated campaign audio (`script-{campaign-slug}-{DD-MM-YYYY}.mp3` via PutObject) |
 | `NEXT_PUBLIC_POLL_INTERVAL_MS` | Dashboard refresh interval (default 15000) |
 
-Per-campaign overrides: `campaigns.sip_trunk_id` and `campaigns.agent_name` override the env defaults when set.
+Per-campaign overrides: `campaigns.sip_trunk_id` stores the integer `sip_trunks.id` selected in the campaign wizard. callops resolves that to `sip_trunks.livekit_trunk_id`.
 
 For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-integration.md](./docs/livekit-outbound-integration.md).
 
@@ -226,20 +227,22 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 | Route | Method | Auth | Description |
 |-------|--------|------|-------------|
 | `/api/campaigns` | GET, POST | User | List / create campaigns |
-| `/api/campaigns/:id` | GET, PUT, DELETE | User | Campaign CRUD, status changes |
-| `/api/campaigns/:id/dial` | POST | User | Dispatch outbound calls via LiveKit |
+| `/api/campaigns/:id` | PUT, DELETE | User | Campaign updates / soft delete |
+| `/api/campaigns/:id/start` | POST | User | Proxy campaign start to callops; local status fallback when unconfigured |
+| `/api/campaigns/:id/pause` | POST | User | Proxy campaign pause to callops; local status fallback when unconfigured |
+| `/api/campaigns/:id/stop` | POST | User | Proxy campaign stop to callops; local status fallback when unconfigured |
+| `/api/campaigns/:id/status` | GET | User | Proxy live queue/call stats from callops |
 | `/api/tts/generate` | POST | User | Generate campaign voice audio via Inworld TTS |
 | `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts` (campaign-labeled) |
 | `/api/companies` | GET, POST | User | Company management |
+| `/api/trunks` | GET | User | SIP trunk catalog for the campaign wizard |
 | `/api/logs` | GET | User | Per-call `call_records` |
 | `/api/reports` | GET | User | Aggregate `call_logs` |
 | `/api/intents` | GET | User | Intent waterfall data |
-| `/api/providers` | GET, PUT | User | VoIP provider credentials |
-| `/api/security` | GET, POST | User | Security logs and IP whitelist |
+| `/api/security` | GET | User | Security logs |
 | `/api/dashboard-templates` | GET, POST, DELETE | User | Saved dashboard layouts |
-| `/api/simulate` | POST | User | Demo dialing when LiveKit is off |
 | `/api/livekit/webhook` | POST | LiveKit signature | Room lifecycle updates |
-| `/api/calls/result` | POST | `x-agent-secret` | Agent outcome + intents |
+| `/api/calls/result` | POST | None | Deprecated no-op; agents should use callops `/calls/outcome` |
 | `/api/health` | GET | None | Health check for deploy |
 
 ---
@@ -253,7 +256,7 @@ app/
   globals.css           # EVRA design tokens and global styles
   api/                  # Next.js Route Handlers (see table above)
 components/             # UI modules (AuthView, Sidebar, charts, campaign modals, …)
-lib/                    # Business logic (outbound-call, livekit, voice, roles, simulator, …)
+lib/                    # Business logic (outbound-call diagnostics, livekit, voice, roles, …)
 types/                  # Shared TypeScript interfaces
 utils/supabase/         # Browser, server, admin clients; auth helpers; middleware
 supabase/migrations/    # Ordered SQL migrations (source of truth for schema)
@@ -283,7 +286,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
-Add LiveKit and service-role keys when ready for real dialing (see [LiveKit env table](#required-environment-variables) above).
+Add callops, LiveKit, and service-role keys when ready for real dialing (see [env table](#required-environment-variables) above). Without callops vars, lifecycle buttons only update local campaign status.
 
 ### 3. Database
 
@@ -325,5 +328,7 @@ Docker Compose + GitHub Actions workflow (`.github/workflows/deploy-agent-avm.ym
 
 | Document | Contents |
 |----------|----------|
-| [docs/livekit-outbound-integration.md](./docs/livekit-outbound-integration.md) | File map, call flow diagrams, env vars, agent callbacks, testing |
+| [docs/app-api-reference.md](./docs/app-api-reference.md) | Route inventory, auth model, callops/OpenAPI alignment |
+| [docs/livekit-outbound-integration.md](./docs/livekit-outbound-integration.md) | Callops + LiveKit operational flow, env vars, testing |
+| [docs/voicelist.md](./docs/voicelist.md) | Inworld voice IDs used by the campaign voice generator |
 | [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) | Production deployment on Docker + Cloudflare |

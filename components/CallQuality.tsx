@@ -8,14 +8,14 @@ import Button from '@mui/material/Button'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
+import DataTable, { type DataTableColumn } from '@/components/ui/DataTable'
 import GlassCard from '@/components/ui/GlassCard'
+import { colors } from '@/lib/tokens'
 import type { Campaign, IntentStat } from '@/types'
+
+const MONO = "ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace"
+
+type IntentRow = IntentStat & { connectedPct: number; droppedPct: number | null }
 
 const pct = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0)
 const fmtPct = (n: number) => `${n.toFixed(2)}%`
@@ -25,7 +25,6 @@ export default function CallQuality({ campaigns }: { campaigns: Campaign[] }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [intents, setIntents] = useState<IntentStat[]>([])
   const [connectedTotal, setConnectedTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
 
   // Default to the first campaign once the list loads
   useEffect(() => {
@@ -35,19 +34,17 @@ export default function CallQuality({ campaigns }: { campaigns: Campaign[] }) {
   useEffect(() => {
     if (campaignId === '') return
     let active = true
-    setLoading(true)
     const p = new URLSearchParams({ campaignId: String(campaignId), date })
     fetch(`/api/intents?${p}`)
       .then(r => r.json())
       .then(j => { if (active) { setIntents(j.intents ?? []); setConnectedTotal(j.connectedTotal ?? 0) } })
-      .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [campaignId, date])
 
   const campaign = campaigns.find(c => c.id === campaignId)
 
   // Match Cale's sheet: intents alphabetical; "% dropped from previous" = change vs the row above.
-  const rows = useMemo(() => {
+  const rows = useMemo<IntentRow[]>(() => {
     const sorted = [...intents].sort((a, b) => a.intent_name.localeCompare(b.intent_name))
     return sorted.map((it, i) => {
       const prev = sorted[i - 1]
@@ -55,6 +52,24 @@ export default function CallQuality({ campaigns }: { campaigns: Campaign[] }) {
       return { ...it, connectedPct: pct(it.reached, connectedTotal), droppedPct: dropped }
     })
   }, [intents, connectedTotal])
+
+  const columns: DataTableColumn<IntentRow>[] = [
+    { key: 'intent_name', label: 'Intent Name', width: '2.2fr',
+      render: r => <span style={{ fontWeight: 500 }}>{r.intent_name}</span> },
+    { key: 'reached', label: 'Count', align: 'right', width: '1fr',
+      render: r => <span style={{ fontFamily: MONO }}>{r.reached.toLocaleString()}</span> },
+    { key: 'connectedPct', label: '% of Connected', align: 'right', width: '1.3fr',
+      render: r => <span style={{ fontFamily: MONO }}>{fmtPct(r.connectedPct)}</span> },
+    { key: 'droppedPct', label: '% dropped from previous', align: 'right', width: '1.6fr',
+      render: r => {
+        const v = r.droppedPct
+        return (
+          <span style={{ fontFamily: MONO, fontWeight: 600, color: v === null ? colors.fg4 : v >= 0 ? colors.negative : colors.green }}>
+            {v === null ? '–' : fmtPct(v)}
+          </span>
+        )
+      } },
+  ]
 
   const exportCsv = () => {
     const head = ['Intent Name', 'Count', '% of Connected', '% dropped from previous']
@@ -102,34 +117,11 @@ export default function CallQuality({ campaigns }: { campaigns: Campaign[] }) {
         </GlassCard>
       </Stack>
 
-      <GlassCard sx={{ p: 0, overflow: 'auto' }}>
-        <TableContainer>
-          <Table size="small" sx={{ minWidth: 640 }}>
-            <TableHead>
-              <TableRow>
-                {['Intent Name', 'Count', '% of Connected', '% dropped from previous'].map((h, i) => (
-                  <TableCell key={h} align={i === 0 ? 'left' : 'right'} sx={{ fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', color: 'text.secondary', bgcolor: 'rgba(0,0,0,0.2)', whiteSpace: 'nowrap' }}>{h}</TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map(r => (
-                <TableRow key={r.intent_name} hover>
-                  <TableCell sx={{ fontSize: '0.82rem', fontWeight: 500 }}>{r.intent_name}</TableCell>
-                  <TableCell align="right" sx={{ fontSize: '0.82rem' }}>{r.reached.toLocaleString()}</TableCell>
-                  <TableCell align="right" sx={{ fontSize: '0.82rem' }}>{fmtPct(r.connectedPct)}</TableCell>
-                  <TableCell align="right" sx={{ fontSize: '0.82rem', color: r.droppedPct === null ? 'text.disabled' : r.droppedPct >= 0 ? 'error.main' : 'success.main', fontWeight: 600 }}>
-                    {r.droppedPct === null ? '–' : fmtPct(r.droppedPct)}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && !rows.length && (
-                <TableRow><TableCell colSpan={4} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No intent data for this campaign and date.</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </GlassCard>
+      <DataTable<IntentRow>
+        rows={rows}
+        columns={columns}
+        getRowId={(row) => row.intent_name}
+      />
     </>
   )
 }

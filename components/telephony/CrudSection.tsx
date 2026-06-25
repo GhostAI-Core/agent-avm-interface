@@ -3,21 +3,16 @@
 import { useState, type ReactNode } from 'react'
 import Box from '@mui/material/Box'
 import Stack from '@mui/material/Stack'
-import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
-import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Switch from '@mui/material/Switch'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
-import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/EditOutlined'
 import DeleteIcon from '@mui/icons-material/DeleteOutlined'
-import EntityFormDialog, { type FieldDef, type FormValues } from '@/components/telephony/EntityFormDialog'
+import DataTable, { type DataTableColumn } from '@/components/ui/DataTable'
+import EntityFormDrawer, { type FieldDef, type FormValues } from '@/components/telephony/EntityFormDrawer'
+import { colors } from '@/lib/tokens'
+
+type RowModel = Record<string, unknown>
 
 export type Column<T> = {
   key: string
@@ -25,7 +20,7 @@ export type Column<T> = {
   render?: (row: T) => ReactNode
 }
 
-export type CrudSectionProps<T> = {
+export type CrudSectionProps<T extends RowModel> = {
   title: string
   description?: string
   entityLabel: string // singular, e.g. "Provider" — used in Add/Edit titles
@@ -41,7 +36,7 @@ export type CrudSectionProps<T> = {
   onToggle: (key: string) => void
 }
 
-export default function CrudSection<T>({
+export default function CrudSection<T extends RowModel>({
   title,
   description,
   entityLabel,
@@ -84,69 +79,98 @@ export default function CrudSection<T>({
     onDelete(rowKey(row))
   }
 
+  // Map the per-panel column config to DataTableColumn, then append the Enabled
+  // toggle and a sticky Actions column. Both interactive cells stopPropagation so
+  // they never bubble to a row click.
+  const gridColumns: DataTableColumn<T>[] = [
+    ...columns.map<DataTableColumn<T>>((c) => ({
+      key: c.key,
+      label: c.label,
+      width: '1fr',
+      render: (row) =>
+        c.render ? (
+          <Box sx={{ fontSize: '0.82rem' }}>{c.render(row)}</Box>
+        ) : (
+          <Box sx={{ fontSize: '0.82rem' }}>
+            {String((row as Record<string, unknown>)[c.key] ?? '—')}
+          </Box>
+        ),
+    })),
+    {
+      key: '__enabled',
+      label: 'Enabled',
+      align: 'center',
+      width: '110px',
+      render: (row) => (
+        <Box onClick={(e) => e.stopPropagation()}>
+          <Switch
+            size="small"
+            checked={Boolean((row as Record<string, unknown>).enabled)}
+            onChange={() => onToggle(rowKey(row))}
+            slotProps={{ input: { 'aria-label': `Toggle ${entityLabel}` } }}
+          />
+        </Box>
+      ),
+    },
+    {
+      key: '__actions',
+      label: 'Actions',
+      align: 'right',
+      width: '120px',
+      sticky: true,
+      render: (row) => (
+        <Stack direction="row" sx={{ justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
+          <IconButton size="small" aria-label={`Edit ${entityLabel}`} onClick={() => openEdit(row)}>
+            <EditIcon fontSize="small" />
+          </IconButton>
+          <IconButton size="small" aria-label={`Delete ${entityLabel}`} onClick={() => handleDelete(row)}>
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+      ),
+    },
+  ]
+
   return (
-    <Paper sx={{ p: 3 }}>
+    <Box>
       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{title}</Typography>
+          <Typography sx={{ fontSize: 17, fontWeight: 700 }}>{title}</Typography>
           {description && (
             <Typography variant="body2" color="text.secondary">{description}</Typography>
           )}
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-          Add {entityLabel.toLowerCase()}
-        </Button>
+        {/* Mockup-styled "+ Add" pill — green fill, ink text, deep-green border. */}
+        <Box
+          component="button"
+          type="button"
+          onClick={openCreate}
+          sx={{
+            background: colors.green,
+            color: colors.greenInk,
+            border: `1px solid ${colors.greenDeep}`,
+            borderRadius: '4px',
+            px: 1.75,
+            py: 1,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'filter .15s ease',
+            '&:hover': { filter: 'brightness(1.08)' },
+          }}
+        >
+          + Add {entityLabel.toLowerCase()}
+        </Box>
       </Stack>
 
-      <TableContainer>
-        <Table size="small" sx={{ minWidth: 640 }}>
-          <TableHead>
-            <TableRow>
-              {columns.map((c) => <TableCell key={c.key}>{c.label}</TableCell>)}
-              <TableCell align="center">Enabled</TableCell>
-              <TableCell align="right">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {items.map((row) => {
-              const key = rowKey(row)
-              const record = row as Record<string, unknown>
-              const enabled = Boolean(record.enabled)
-              return (
-                <TableRow key={key} hover>
-                  {columns.map((c) => (
-                    <TableCell key={c.key} sx={{ fontSize: '0.82rem' }}>
-                      {c.render ? c.render(row) : String(record[c.key] ?? '—')}
-                    </TableCell>
-                  ))}
-                  <TableCell align="center">
-                    <Switch size="small" checked={enabled} onChange={() => onToggle(key)} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <IconButton size="small" aria-label={`Edit ${entityLabel}`} onClick={() => openEdit(row)}>
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" aria-label={`Delete ${entityLabel}`} onClick={() => handleDelete(row)}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-            {items.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={columns.length + 2}>
-                  <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                    No {entityLabel.toLowerCase()}s yet. Use “Add {entityLabel.toLowerCase()}” to create one.
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      <DataTable<T>
+        rows={items}
+        columns={gridColumns}
+        getRowId={(row) => rowKey(row)}
+        checkbox
+      />
 
-      <EntityFormDialog
+      <EntityFormDrawer
         key={seq}
         open={open}
         title={editingKey ? `Edit ${entityLabel.toLowerCase()}` : `Add ${entityLabel.toLowerCase()}`}
@@ -155,6 +179,6 @@ export default function CrudSection<T>({
         onClose={() => setOpen(false)}
         onSubmit={handleSubmit}
       />
-    </Paper>
+    </Box>
   )
 }

@@ -18,12 +18,18 @@ export type SipProvider = {
   enabled: boolean
 }
 
+// Outbound SIP trunk — fields mirror the callops /livekit/trunks schema exactly
+// (name, address, numbers[], auth_username, auth_password). `id` is a local store
+// key; `trunk_id` is the LiveKit trunk id callops returns on create. `auth_password`
+// is write-only — callops never returns it, so it is re-supplied on every save.
 export type OutboundTrunk = {
   id: string
   name: string
-  provider_id: string
+  address: string
+  numbers: string[]
+  auth_username: string
+  auth_password?: string
   trunk_id?: string
-  caller_id?: string
   enabled: boolean
 }
 

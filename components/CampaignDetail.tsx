@@ -22,10 +22,27 @@ import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
 import GlassCard from '@/components/ui/GlassCard'
 import { maskPhone } from '@/lib/security'
+import { networkProvider } from '@/lib/networks'
 import { semantic } from '@/lib/tokens'
 import type { CallRecord, CampaignReport } from '@/types'
 
 const fmtTime = (s: number) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`
+
+// Brand-ish colours for the network label derived from the dialled number's prefix.
+const PROVIDER_COLORS: Record<string, { bg: string; fg: string }> = {
+  Vodacom: { bg: 'rgba(230,0,0,0.16)', fg: '#ff7a7a' },
+  MTN: { bg: 'rgba(255,204,0,0.16)', fg: '#ffd24d' },
+  'Cell C': { bg: 'rgba(0,122,255,0.16)', fg: '#5aa9ff' },
+}
+
+function NetworkLabel({ phone }: { phone: string }) {
+  const p = networkProvider(phone)
+  if (!p) return <Box component="span" sx={{ color: 'text.disabled' }}>–</Box>
+  const c = PROVIDER_COLORS[p]
+  return (
+    <Box component="span" sx={{ px: 0.75, py: 0.25, borderRadius: 1, fontSize: '0.7rem', fontWeight: 700, bgcolor: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{p}</Box>
+  )
+}
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
@@ -72,10 +89,10 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
   }, [calls, outcome, search, sort])
 
   const exportCsv = () => {
-    const head = ['Phone', 'Outcome', 'Talk (s)', 'Cost', 'Transferred', 'Recording', 'Called At']
+    const head = ['Phone', 'Network', 'Outcome', 'Talk (s)', 'Cost', 'Transferred', 'Recording', 'Called At']
     const lines = [
       head.join(','),
-      ...rows.map(c => [`"${maskPhone(c.phone)}"`, c.outcome, c.talk_seconds, c.cost, c.transferred ? 'yes' : 'no', c.recording_url ?? '', c.called_at].join(',')),
+      ...rows.map(c => [`"${maskPhone(c.phone)}"`, networkProvider(c.phone) ?? '', c.outcome, c.talk_seconds, c.cost, c.transferred ? 'yes' : 'no', c.recording_url ?? '', c.called_at].join(',')),
     ]
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
     const url = window.URL.createObjectURL(blob)
@@ -125,7 +142,7 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
           <Table size="small" sx={{ minWidth: 760 }}>
             <TableHead>
               <TableRow>
-                {['Phone', 'Outcome', 'Talk', 'Cost', 'Transfer', 'Rec', 'Timestamp'].map(h => (
+                {['Phone', 'Network', 'Outcome', 'Talk', 'Cost', 'Transfer', 'Rec', 'Timestamp'].map(h => (
                   <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', color: 'text.secondary', bgcolor: 'rgba(0,0,0,0.2)', whiteSpace: 'nowrap' }}>{h}</TableCell>
                 ))}
               </TableRow>
@@ -134,6 +151,7 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
               {rows.map(c => (
                 <TableRow key={c.id} hover>
                   <TableCell sx={{ fontSize: '0.82rem' }}>{maskPhone(c.phone)}</TableCell>
+                  <TableCell><NetworkLabel phone={c.phone} /></TableCell>
                   <TableCell><StatusChip status={c.outcome} /></TableCell>
                   <TableCell sx={{ fontSize: '0.82rem' }}>{fmtTime(c.talk_seconds)}</TableCell>
                   <TableCell sx={{ fontSize: '0.82rem' }}>R{Number(c.cost).toFixed(2)}</TableCell>
@@ -151,7 +169,7 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
                 </TableRow>
               ))}
               {!rows.length && (
-                <TableRow><TableCell colSpan={7} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No calls match your filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No calls match your filters.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

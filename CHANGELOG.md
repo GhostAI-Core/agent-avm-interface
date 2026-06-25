@@ -9,6 +9,39 @@ This file tracks **what shipped**, **how it works**, and **what operators need t
 
 ---
 
+## [Unreleased]
+
+### Summary
+
+Documentation now reflects the callops cutover: the dashboard proxies campaign lifecycle to **evra-callops** and no longer exposes the production `/api/campaigns/:id/dial` or `/api/simulate` routes.
+
+### User-facing behavior
+
+- Campaign Play/Pause/Stop goes through `POST /api/campaigns/:id/start|pause|stop`.
+- Running/paused campaign cards can show live callops counters from `GET /api/campaigns/:id/status`.
+- The campaign wizard loads SIP trunk choices from `GET /api/trunks`.
+- `POST /api/calls/result` is deprecated and is a no-op; agents should post outcomes to callops `/calls/outcome`.
+
+### Technical details
+
+- `app/api/campaigns/[id]/[action]/route.ts` keeps `CALLOPS_WEBHOOK_SECRET` server-side and falls back to local status updates when callops env is missing.
+- `app/api/trunks/route.ts` reads `sip_trunks` and optionally cross-checks callops `/livekit/trunks`.
+- `scripts/callops-test.ts` is the main smoke harness for status, lifecycle, test calls, outcome simulation, snapshots, and watch mode.
+- `npm run dial` remains a direct LiveKit diagnostic path, not the production dashboard path.
+
+### Env / deploy
+
+- Required for production lifecycle: `CALLOPS_URL`, `CALLOPS_WEBHOOK_SECRET`.
+- Keep `LIVEKIT_*` and `SUPABASE_SERVICE_ROLE_KEY` for LiveKit webhook validation and diagnostics.
+- Production `.env` also documents `INWORLD_API_KEY` and `AVM_SCRIPT_AUDIO_STORAGE_*` for campaign voice generation.
+
+### Known issues / ops notes
+
+- `app/api/livekit/webhook/route.ts` still expects `call_records.room` rows to exist; under the callops model, callops is responsible for creating or maintaining those rows.
+- Settings/Telephony admin UI does not write carrier configuration; authoritative trunk/provider config lives in LiveKit/callops and `sip_trunks`.
+
+---
+
 ## 2026-06-17 — Inworld TTS & campaign voice generation
 
 ### Summary
@@ -79,9 +112,9 @@ Public playback URL pattern:
 {AVM_SCRIPT_AUDIO_STORAGE_ENDPOINT}/script-{slug}-{DD-MM-YYYY}.mp3
 ```
 
-On campaign create, the public URL is stored in `campaigns.voice_recording_url`. At dial time, `lib/voice.ts` → `resolveVoiceUrl()` returns that URL directly (no signing needed for public objects).
+On campaign create, the public URL is stored in `campaigns.voice_recording_url`. At dispatch time, callops or the direct diagnostic CLI can use that URL directly (no signing needed for public objects).
 
-**Upload mode** is unchanged: file → private `voice-recordings` bucket → `campaigns.voice_path` → signed URL at dial time.
+**Upload mode** is unchanged: file → private `voice-recordings` bucket → `campaigns.voice_path` → signed URL when a server-side dispatch path needs to hand audio to an agent.
 
 ---
 
@@ -97,7 +130,7 @@ On campaign create, the public URL is stored in `campaigns.voice_recording_url`.
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
-                    POST /api/campaigns/:id/dial
+                    callops lifecycle / direct diagnostic CLI
                               │
                               ▼
                     resolveVoiceUrl(campaign) → LiveKit agent
@@ -129,7 +162,7 @@ Client only sends `text` and `voiceId`. Max script length: **2000 characters**.
 
 | Bucket | Access | Used for |
 |--------|--------|----------|
-| `voice-recordings` | Private (RLS + signed URL at dial) | Uploaded audio files |
+| `voice-recordings` | Private (RLS + signed URL for server-side dispatch) | Uploaded audio files |
 | `avm-scripts` | Public | TTS-generated campaign scripts (S3 upload) |
 
 S3 uploads use `@aws-sdk/client-s3` + `PutObjectCommand` against Supabase’s S3-compatible endpoint:
@@ -204,7 +237,7 @@ docker compose up -d --build
 | `components/VoiceGenerator.tsx` | Voice cascade, generate, preview, save UI |
 | `lib/inworld-voices.ts` | Voice catalog + cascade helpers (`genders`, `ethnicities`, `voices`) |
 | `lib/avm-script-storage.ts` | S3 upload, slugify, filename + public URL builders |
-| `lib/voice.ts` | Resolves playable URL at dial time (`voice_path` or `voice_recording_url`) |
+| `lib/voice.ts` | Resolves playable URL for server-side dispatch (`voice_path` or `voice_recording_url`) |
 | `app/api/tts/generate/route.ts` | Inworld TTS proxy |
 | `app/api/tts/save/route.ts` | Campaign-labelled S3 save |
 | `docs/voicelist.md` | Human-editable voice ID list |
@@ -260,6 +293,3 @@ Requires `INWORLD_API_KEY` in local `.env`.
 
 ---
 
-## [Unreleased]
-
-_Add upcoming work here before the next dated release._

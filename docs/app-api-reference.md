@@ -1,614 +1,385 @@
 # Agent AVM Interface — API Reference & Alignment Guide
 
-This document describes every route under `app/api/` in this repository, how it differs from `docs/openapi.json` (which documents **evra-callops**, a separate orchestration service), and how both relate to the Supabase schema in `supabase/migrations/`.
+This document describes the Next.js Route Handlers under `app/api/`, how they relate to **evra-callops**, and which Supabase tables they read or write.
 
 ---
 
-## Executive summary
+## Executive Summary
 
 | Layer | What it is | Role |
 |-------|------------|------|
-| **`app/api/`** (this repo) | Next.js Route Handlers | Dashboard CRUD, batch dial gateway, LiveKit webhook, agent callbacks, TTS |
-| **`docs/openapi.json`** | OpenAPI 3.1 for **evra-callops** | Campaign dispatcher, queue stats, call outcome/telemetry ingestion, LiveKit admin API |
-| **Supabase** | PostgreSQL + Auth + Storage | Source of truth for campaigns, contacts, call records, intents, audit logs |
+| `app/api/` (this repo) | Next.js Route Handlers | Dashboard CRUD, auth-gated read model, lifecycle proxy to callops, TTS, LiveKit webhook |
+| `docs/openapi.json` | OpenAPI 3.1 for **evra-callops** | Campaign dispatcher, queue stats, call outcome/telemetry ingestion, LiveKit admin API |
+| Supabase | PostgreSQL + Auth + Storage | Source of truth for campaigns, contacts, call records, intents, audit logs |
 
-These three are **not the same API**. Only `/health` and the LiveKit webhook concept overlap in spirit. The OpenAPI spec was generated from a FastAPI/Python backend (`HTTPValidationError`, `operationId` naming) and does not describe this Next.js app.
+This app is no longer the production dialer. `app/api/campaigns/[id]/[action]/route.ts` proxies lifecycle actions to evra-callops, and callops owns dispatch, pacing, retries, LiveKit SIP calls, and agent outcome ingestion.
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         REQUEST FLOW (this app)                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-
-  Browser (authenticated)                Agent worker (secret)    LiveKit (JWT)
-         │                                        │                      │
-         ▼                                        ▼                      ▼
-  ┌─────────────┐   POST /api/calls/result   ┌─────────────┐   POST /api/livekit/webhook
-  │  app/api/*  │◄───────────────────────────│ LiveKit     │──────────────────►
-  │  (14 routes)│                            │ agent       │
-  └──────┬──────┘                            └─────────────┘
-         │
-         │  user session (RLS)          service role (bypass RLS)
-         ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │ Supabase: campaigns, contacts, call_records, intent_stats │
-  │           companies, security_logs, dashboard_templates │
-  └─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-  ┌─────────────┐
-  │ LiveKit SDK │  placeOutboundCall → AgentDispatch + SipParticipant
-  └─────────────┘
-
-  docs/openapi.json describes a DIFFERENT box (evra-callops) that would sit
-  between agent and DB with its own dispatcher, queue, and LiveKit CRUD API.
+```text
+Browser
+  │ authenticated fetch
+  ▼
+app/api/*
+  ├─ Supabase session routes: campaigns, companies, logs, reports, intents, templates, trunks
+  ├─ POST /api/campaigns/{id}/start|pause|stop ──X-Webhook-Secret──► evra-callops
+  ├─ GET  /api/campaigns/{id}/status            ──X-Webhook-Secret──► evra-callops
+  ├─ POST /api/livekit/webhook ◄──────────── signed LiveKit room events
+  └─ POST /api/calls/result ── deprecated no-op; use callops /calls/outcome
 ```
 
 ---
 
-## Authentication model
+## Authentication Model
 
 | Auth type | Header / mechanism | Routes |
-|-----------|-------------------|--------|
-| **Supabase session** | Cookie from `createServerClient`; validated via `getAuthUser()` | All dashboard routes |
-| **`x-agent-secret`** | Must match `AGENT_RESULT_SECRET` | `POST /api/calls/result` |
-| **LiveKit webhook JWT** | `Authorization` header; validated by `WebhookReceiver` | `POST /api/livekit/webhook` |
-| **None** | Public | `GET /api/health` |
+|-----------|--------------------|--------|
+| Supabase session | Cookie from `createServerClient`; validated via `getAuthUser()` | Dashboard CRUD/read routes, lifecycle proxy, trunk catalog |
+| `X-Webhook-Secret` | Sent server-side from this app to `CALLOPS_URL` | callops lifecycle/status/trunk cross-checks |
+| LiveKit webhook JWT | `Authorization` header; validated by `WebhookReceiver` | `POST /api/livekit/webhook` |
+| None | Public | `GET /api/health`, deprecated `POST /api/calls/result` no-op |
 
-OpenAPI (callops) uses **`X-Webhook-Secret`** for agent-facing endpoints. This app uses a different header name and only on `/api/calls/result`.
-
-**Supabase clients used:**
-
-| ClientRect | Client | Why |
-|-----------|--------|-----|
-| Dashboard CRUD | Server client (user session) | Respects RLS; user must be logged in |
-| Webhook, agent result | Admin client (service role) | LiveKit/agent have no user session; must write past RLS |
+The browser never receives `CALLOPS_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, LiveKit API secrets, or Inworld credentials.
 
 ---
 
-## Route inventory
+## Route Inventory
 
-All paths are prefixed with `/api` by Next.js App Router convention. OpenAPI paths omit this prefix and describe a different host (callops).
+All paths are prefixed with `/api` by Next.js App Router convention.
 
 ### `GET /api/health`
 
 | | |
 |---|---|
-| **Auth** | None |
-| **Purpose** | Deploy/load-balancer probe |
-| **Response** | `{ "status": "ok" }` |
-| **Supabase** | None |
-| **OpenAPI equivalent** | `GET /health` — **only exact behavioral match** |
-
----
+| Auth | None |
+| Purpose | Deploy/load-balancer probe |
+| Response | `{ "status": "ok" }` |
+| Supabase | None |
 
 ### `GET /api/campaigns`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Purpose** | List active campaigns for the dashboard |
-| **Query** | None |
-| **Response** | `{ campaigns: Campaign[] }` — joins `companies.name` as flattened `company` string |
-| **Filters** | Excludes `status IN ('deleted', 'archived')` |
-| **Supabase tables** | `campaigns`, `companies` (join) |
-
-**Not in OpenAPI.** Callops exposes lifecycle actions (`/start`, `/pause`, `/stop`, `/status`) but not a list/create CRUD API for the UI.
-
----
+| Auth | Supabase user |
+| Purpose | List active campaigns for the dashboard |
+| Response | `{ campaigns: Campaign[] }`; joins `companies.name` as flattened `company` |
+| Filters | Excludes `deleted` and `archived` |
+| Supabase tables | `campaigns`, `companies` |
 
 ### `POST /api/campaigns`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Purpose** | Create campaign + optional contact list in one request |
-| **Body** | `{ name, agent?, dialing_speed?, window_start?, window_end?, voice_recording_url?, voice_path?, transfer_key?, transfer_target?, contacts?[] }` |
-| **Response** | `{ campaign }` — **201** |
-| **Validation** | `name` required; `agent` optional (NULL allowed) |
-| **Supabase tables** | `campaigns` (insert), `contacts` (bulk insert if provided) |
+| Auth | Supabase user |
+| Purpose | Create a campaign and optional contacts |
+| Body | `{ name, agent?, dialing_speed?, window_start?, window_end?, voice_recording_url?, voice_path?, transfer_key?, transfer_target?, max_concurrent?, max_retries?, retry_cooldown_seconds?, sip_trunk_id?, contacts?[] }` |
+| Response | `{ campaign }` with status **201** |
+| Validation | `name` required; contacts with invalid phone numbers are dropped after `normalizePhone()` |
+| Supabase tables | `campaigns`, `contacts` |
 
-**Field mapping to DB:**
+Create-time details:
 
-| Request field | DB column |
-|---------------|-----------|
-| `window_start` | `time_window_start` |
-| `window_end` | `time_window_end` |
-| `voice_path` | `voice_path` (Storage object key) |
-
-**Not in OpenAPI.**
-
----
+| Field | Behavior |
+|-------|----------|
+| `agent_name` | Always stored as `outbound-recorder`, the deployed LiveKit worker callops dispatches |
+| `sip_trunk_id` | Integer FK to `sip_trunks.id`; callops resolves it to `sip_trunks.livekit_trunk_id` |
+| `max_concurrent`, `max_retries`, `retry_cooldown_seconds` | Coerced to integers with defaults `5`, `2`, `3600` |
+| `window_start`, `window_end` | Stored as `time_window_start`, `time_window_end` |
 
 ### `PUT /api/campaigns/[id]`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Purpose** | Partial campaign update (status changes, dialing settings) |
-| **Allowed fields** | `status`, `dialing_speed`, `time_window_start`, `time_window_end`, `voice_recording_url` |
-| **Response** | `{ campaign }` |
-| **Supabase tables** | `campaigns` |
+| Auth | Supabase user |
+| Purpose | Partial campaign update for non-lifecycle fields |
+| Allowed fields | `status`, `dialing_speed`, `time_window_start`, `time_window_end`, `voice_recording_url`, `max_concurrent`, `max_retries`, `retry_cooldown_seconds` |
+| Response | `{ campaign }` |
+| Supabase tables | `campaigns` |
 
-**Differs from OpenAPI:**
-
-| This app | OpenAPI (callops) |
-|----------|-------------------|
-| Generic `PUT { status: 'paused' }` | Dedicated `POST /campaigns/{id}/pause` with 409 conflict rules |
-| No state-machine validation in API | Explicit transitions; 409 if wrong state |
-| No `stopped` status in Supabase CHECK | OpenAPI uses `stopped` as terminal state |
-
-Supabase `campaigns.status` allows: `draft`, `running`, `paused`, `completed`, `deleted`, `archived`. There is **no `stopped`** — the app uses `completed` or soft `deleted` instead.
-
----
+Lifecycle controls should use `/start`, `/pause`, and `/stop` so callops can own dispatch state. Direct `PUT { status }` remains available for other UI flows.
 
 ### `DELETE /api/campaigns/[id]`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Purpose** | Soft delete |
-| **Behavior** | Sets `status = 'deleted'` (does not remove row) |
-| **Response** | `{ success: true }` |
-| **Supabase tables** | `campaigns` |
+| Auth | Supabase user |
+| Purpose | Soft delete |
+| Behavior | Sets `status = 'deleted'` |
+| Response | `{ success: true }` |
+| Supabase tables | `campaigns` |
 
-**Not in OpenAPI** (callops has `POST /stop` for halting dispatch, not UI delete).
-
----
-
-### `POST /api/campaigns/[id]/dial`
+### `POST /api/campaigns/[id]/start|pause|stop`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Purpose** | Dispatch up to **25** pending contacts via LiveKit |
-| **Body** | None (campaign id from path) |
-| **Response (configured)** | `{ mode: 'live', dispatched, attempted, errors[] }` |
-| **Response (unconfigured)** | `{ mode: 'unconfigured' }` — UI may fall back to simulator |
-| **Response (no contacts)** | `{ mode: 'live', dispatched: 0, status: 'completed' }` |
+| Auth | Supabase user |
+| Purpose | Proxy campaign lifecycle commands to evra-callops |
+| Body | None |
+| Configured response | `{ mode: 'callops', ...callopsResponse }` |
+| Local fallback | `{ mode: 'local', campaign_id, status }` when `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset |
+| Upstream | `POST $CALLOPS_URL/campaigns/{id}/{action}` with `X-Webhook-Secret` |
+| Supabase tables | Fallback only: updates `campaigns.status`; `start` also clears `auto_paused` |
 
-**Execution steps:**
+Allowed actions and fallback status:
 
-1. Load campaign from `campaigns`.
-2. Resolve SIP trunk: `campaigns.sip_trunk_id` → `sip_trunks.livekit_trunk_id` → `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`.
-3. Select `contacts` where `status = 'pending'`, limit 25.
-4. Sign voice URL from `voice_path` / `voice_recording_url`.
-5. For each contact: `placeOutboundCall()` — creates room `avm_<campaignId>_<contactId>_<rand>`, dispatches agent, creates SIP participant.
-6. Update contacts: `in_progress` → then `dialed` or `failed`.
-7. Insert `call_records` rows (`outcome: 'pending'`, keyed by `room`).
-8. Optionally start egress recording.
-9. Insert `security_logs` audit row.
+| Action | Local status |
+|--------|--------------|
+| `start` | `running` |
+| `pause` | `paused` |
+| `stop` | `stopped` |
 
-**Supabase tables:** `campaigns`, `contacts`, `call_records`, `security_logs`, `sip_trunks` (lookup)
+If callops returns a non-2xx response or is unreachable, this app returns **502** with a normalized error message.
 
-**Differs from OpenAPI:**
+### `GET /api/campaigns/[id]/status`
 
-| This app | OpenAPI (callops) |
-|----------|-------------------|
-| `POST /api/campaigns/[id]/dial` — synchronous batch | `POST /campaigns/{id}/start` — starts dispatcher worker |
-| No queue metrics endpoint | `GET /campaigns/{id}/status` — live queue stats |
-| Batch size hardcoded (25) | Dispatcher pulls at `dialing_speed` / concurrency |
-| Does not use `max_concurrent`, `max_retries`, `retry_cooldown_seconds` columns | Implied full pacing/retry engine |
-| Does not set `auto_paused` | OpenAPI stats expose `auto_paused` from scheduling enforcer |
+| | |
+|---|---|
+| Auth | Supabase user |
+| Purpose | Fetch live queue/call stats from callops |
+| Response | callops `CampaignLiveStatus` shape, or `{ mode: 'unconfigured' }` when callops env is missing |
+| Upstream | `GET $CALLOPS_URL/campaigns/{id}/status` with `X-Webhook-Secret` |
+| Supabase tables | None in this app |
 
-DB columns `max_retries`, `retry_cooldown_seconds`, `max_concurrent`, `auto_paused` exist (migration `20260612140000`) but **the dial route does not read or update them yet**.
+The UI polls this route for running/paused campaigns and expects counters such as `active_calls`, `queued`, `pending`, `in_progress`, `dialed`, `failed`, `retry`, `completed_today`, and optional `auto_paused`.
 
----
+### `GET /api/trunks`
+
+| | |
+|---|---|
+| Auth | Supabase user |
+| Purpose | SIP trunk catalog for the campaign wizard |
+| Response | `{ trunks: [{ id, name, from_number, live }] }` |
+| Supabase tables | `sip_trunks` |
+| Upstream | Optional `GET $CALLOPS_URL/livekit/trunks` cross-check |
+
+If callops is configured and reachable, only Supabase rows backed by a live LiveKit trunk are returned. If callops is unconfigured or unreachable, the full Supabase catalog is returned so campaign creation is not blocked.
 
 ### `POST /api/calls/result`
 
 | | |
 |---|---|
-| **Auth** | `x-agent-secret: AGENT_RESULT_SECRET` |
-| **Purpose** | Agent reports rich call outcome + intent waterfall |
-| **Body** | `{ room, outcome?, talkSeconds?, transferred?, cost?, intents?[] }` |
-| **Response** | `{ ok: true }` |
-| **Supabase tables** | `call_records` (update by `room`), `intent_stats` (via `bump_intent` RPC) |
+| Auth | None |
+| Purpose | Deprecated transition endpoint |
+| Behavior | Logs a warning, performs no writes, returns `{ ok: true, deprecated: true }` |
+| Replacement | LiveKit agents should POST outcomes to `POST $CALLOPS_URL/calls/outcome` |
 
-**Valid outcomes:** `pending`, `connected`, `qualified`, `voicemail`, `no_speech`, `hangup`, `ni`, `dnq`, `callback`, `no_answer`, `busy`, `failed`
-
-**Intent payload:** `{ name: string, step?: number }[]` — increments `intent_stats.reached` for campaign/day parsed from room name.
-
-**OpenAPI equivalent:** `POST /calls/outcome` — **related domain, different contract**
-
-| Field | This app | OpenAPI `CallOutcomeRequest` |
-|-------|----------|------------------------------|
-| Auth header | `x-agent-secret` | `X-Webhook-Secret` |
-| Room identifier | `room` | `room_name` |
-| Contact | Implicit via room name parse | `contact_id` (required) |
-| Campaign | Implicit via room name parse | `campaign_id` (required) |
-| Outcome values | IVR-specific set above | `answered`, `no_answer`, `busy`, `failed`, `transferred`, `voicemail` |
-| SIP metadata | Not accepted | `sip_attributes`, `sip_call_status_history`, `sip_participant_sid`, etc. |
-| AMD / DTMF | Not accepted | `amd_category`, `dtmf_digits` |
-| Retry logic | Not in this endpoint | Callops applies retry + releases concurrency slot |
-| Response | `{ ok: true }` | `{ status: "ok" }` |
-
-**OpenAPI also has** `POST /calls/telemetry` for SDK metric batches (`CallTelemetryRequest`). **Not implemented** in this app — no telemetry table in Supabase.
-
----
+This route is intentionally a no-op so not-yet-updated agents stop cleanly during the cutover. Do not build new integrations against it.
 
 ### `POST /api/livekit/webhook`
 
 | | |
 |---|---|
-| **Auth** | LiveKit JWT in `Authorization` |
-| **Purpose** | Update `call_records` from room lifecycle events |
-| **Response** | `{ ok: true }` or `{ ok: true, persisted: false }` if no service role key |
+| Auth | LiveKit webhook JWT in `Authorization` |
+| Purpose | Persist LiveKit room lifecycle fallback updates |
+| Response | `{ ok: true }`, or `{ ok: true, persisted: false }` if service-role key is missing |
+| Supabase tables | `call_records` |
 
-**Handled events:**
+Handled events:
 
 | Event | DB update |
 |-------|-----------|
-| `participant_joined` | If participant identity starts with `caller_` → `call_records.outcome = 'connected'` where `outcome = 'pending'` |
-| `egress_ended` | Set `recording_url` from file location |
-| `room_finished` | Set `talk_seconds` for connected calls; set `outcome = 'no_answer'` for still-pending |
+| `participant_joined` | If participant identity starts with `caller_`, set pending row outcome to `connected` |
+| `egress_ended` | Set `recording_url` from first file result location |
+| `room_finished` | Backfill `talk_seconds` for connected calls; set still-pending rows to `no_answer` |
 
-**OpenAPI equivalent:** `POST /livekit/webhook` — partial overlap
-
-| | This app | OpenAPI |
-|---|----------|---------|
-| Events handled | 3 event types | Many: `room_started`, `room_finished`, participant join/leave, tracks, ingress |
-| Side effect | Updates `call_records` | Updates "call session" fields (`room_id`, `started_at`, `ended_at`, SIP leg state) |
-| Session concept | Row per room in `call_records` | Separate call session abstraction (not a Supabase table here) |
-
----
+The webhook updates rows by `call_records.room`. Under the callops model, callops is expected to create or maintain those rows.
 
 ### `GET /api/logs`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Query** | `campaignId?` — omit for last 2000 calls across all campaigns |
-| **Response** | `{ logs: CallRecord[] }` |
-| **Columns returned** | `id, campaign_id, phone, outcome, talk_seconds, cost, transferred, recording_url, called_at` |
-| **Supabase tables** | `call_records` |
-
-**Not in OpenAPI.**
-
----
+| Auth | Supabase user |
+| Query | `campaignId?`; omit for last 2000 calls across all campaigns |
+| Response | `{ logs: CallRecord[] }` |
+| Supabase tables | `call_records` |
 
 ### `GET /api/reports`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Query** | `agent?`, `date?` |
-| **Response** | `{ reports: CallLog[] }` with joined `campaign(name, agent)` |
-| **Supabase tables** | `call_logs` (legacy aggregate table) |
-
-**Not in OpenAPI.** This reads pre-aggregated counters, not live dispatcher stats.
-
----
+| Auth | Supabase user |
+| Query | `agent?`, `date?` |
+| Response | `{ reports: CallLog[] }` with joined `campaign(name, agent)` |
+| Supabase tables | `call_logs`, `campaigns` |
 
 ### `GET /api/intents`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Query** | `campaignId?`, `date?` (default today) |
-| **Response** | `{ day, connectedTotal?, intents[] }` |
-| **Supabase tables** | `intent_stats`, `call_records` (count connected for denominator) |
-
-**Not in OpenAPI.**
-
----
+| Auth | Supabase user |
+| Query | `campaignId?`, `date?` (default today) |
+| Response | `{ day, connectedTotal?, intents[] }` |
+| Supabase tables | `intent_stats`, `call_records` for denominator when `campaignId` is present |
 
 ### `GET /api/companies`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Response** | `{ companies: { id, name, contact_name, contact_email, contact_phone }[] }` |
-| **Supabase tables** | `companies` |
-
----
+| Auth | Supabase user |
+| Response | `{ companies: { id, name, contact_name, contact_email, contact_phone }[] }` |
+| Supabase tables | `companies` |
 
 ### `POST /api/companies`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Body** | `{ name, contact_name?, contact_email?, contact_phone? }` |
-| **Response** | `{ company }` — **201** |
-| **Supabase tables** | `companies` |
-
-**Not in OpenAPI.**
-
----
+| Auth | Supabase user |
+| Body | `{ name, contact_name?, contact_email?, contact_phone? }` |
+| Response | `{ company }` with status **201** |
+| Supabase tables | `companies` |
 
 ### `GET /api/security`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Response** | `{ logs: SecurityLog[] }` — last 100 rows |
-| **Supabase tables** | `security_logs` |
+| Auth | Supabase user |
+| Response | `{ logs: SecurityLog[] }`; last 100 rows |
+| Supabase tables | `security_logs` |
 
-README mentions `POST` for IP whitelist; **no POST handler exists** in the current codebase.
+There is no `POST /api/security` handler in the current codebase.
 
----
+### `/api/dashboard-templates`
 
-### `GET /api/dashboard-templates`
+| Route | Auth | Purpose | Supabase tables |
+|-------|------|---------|-----------------|
+| `GET /api/dashboard-templates` | User | List saved dashboard layouts | `dashboard_templates` |
+| `POST /api/dashboard-templates` | User | Save `{ name, layout }`; layout is JSONB `{ order, pinned, hidden }` | `dashboard_templates` |
+| `DELETE /api/dashboard-templates?id=...` | User | Delete one template | `dashboard_templates` |
 
-| | |
-|---|---|
-| **Auth** | Supabase user |
-| **Response** | `{ templates: { id, name, layout, created_at }[] }` |
-| **Supabase tables** | `dashboard_templates` |
-| **Degradation** | Returns `{ templates: [] }` if table missing |
-
----
-
-### `POST /api/dashboard-templates`
-
-| | |
-|---|---|
-| **Auth** | Supabase user |
-| **Body** | `{ name, layout }` — `layout` is JSONB `{ order, pinned, hidden }` |
-| **Response** | `{ template }` — **201** |
-| **Supabase tables** | `dashboard_templates` |
-
----
-
-### `DELETE /api/dashboard-templates`
-
-| | |
-|---|---|
-| **Auth** | Supabase user |
-| **Query** | `id` (required) |
-| **Response** | `{ ok: true }` |
-| **Supabase tables** | `dashboard_templates` |
-
----
+The GET route degrades to `{ templates: [] }` if the table is missing.
 
 ### `POST /api/tts/generate`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Purpose** | Proxy to Inworld TTS for campaign script preview |
-| **Body** | `{ text, voiceId }` — max 2000 chars |
-| **Response** | `{ audioBase64, contentType: 'audio/mpeg' }` |
-| **Supabase** | None |
-| **Env** | `INWORLD_API_KEY` |
-
-**Not in OpenAPI.**
-
----
+| Auth | Supabase user |
+| Purpose | Proxy to Inworld TTS for campaign script preview |
+| Body | `{ text, voiceId }`; max 2000 chars |
+| Response | `{ audioBase64, contentType: 'audio/mpeg' }` |
+| Env | `INWORLD_API_KEY` |
 
 ### `POST /api/tts/save`
 
 | | |
 |---|---|
-| **Auth** | Supabase user |
-| **Purpose** | Upload generated MP3 to external script storage |
-| **Body** | `{ campaignName, audioBase64, voiceId? }` |
-| **Response** | `{ storageKey, publicUrl, campaignName }` |
-| **Supabase** | None (uses `AVM_SCRIPT_AUDIO_STORAGE_*` S3-compatible storage) |
-
-**Not in OpenAPI.**
+| Auth | Supabase user |
+| Purpose | Upload generated MP3 to external script storage |
+| Body | `{ campaignName, audioBase64, voiceId? }` |
+| Response | `{ storageKey, publicUrl, campaignName }` |
+| Env | `AVM_SCRIPT_AUDIO_STORAGE_*` |
 
 ---
 
-## Routes documented in README but missing from `app/api/`
+## Routes Documented Elsewhere But Not Implemented Here
 
-| Route | README status | Actual |
-|-------|---------------|--------|
-| `GET /api/campaigns/:id` | Listed | **Not implemented** |
-| `/api/providers` | Listed | **Not implemented** |
-| `POST /api/security` | Listed | **Not implemented** |
-| `POST /api/simulate` | Listed | **Not implemented** |
+| Route | Status |
+|-------|--------|
+| `GET /api/campaigns/:id` | Not implemented; only `PUT` and `DELETE` exist for this path |
+| `/api/providers` | Not implemented; Settings is informational and telephony admin UI uses local mock data |
+| `POST /api/security` | Not implemented |
+| `POST /api/campaigns/:id/dial` | Removed from production UI path; use callops lifecycle proxy |
+| `POST /api/simulate` | Not implemented |
+
+The direct LiveKit CLI (`npm run dial`) still exists for diagnostics through `scripts/dial-outbound.ts`; it is not exposed as an API route.
 
 ---
 
-## Supabase schema reference
+## Supabase Schema Reference
 
 Tables touched by `app/api/`:
 
-```
+```text
 companies ──────────< campaigns ──────────< contacts
-                         │                      │
-                         │                      └── contact_id (nullable FK)
                          │
-                         ├──< call_records (room UNIQUE when set)
-                         ├──< call_logs (legacy aggregates)
+                         ├──< call_records
+                         ├──< call_logs
                          └──< intent_stats
 
-dashboard_templates     security_logs     sip_trunks (lookup only)
-profiles, voip_providers, system_settings — not used by current API routes
-storage.buckets: voice-recordings — used at dial time via lib/voice, not direct API
+sip_trunks              dashboard_templates     security_logs
+profiles               storage.buckets: voice-recordings, avm-scripts
 ```
 
 ### `campaigns` (relevant columns)
 
-| Column | Used by API |
-|--------|-------------|
-| `id`, `name`, `agent`, `status` | CRUD, dial |
-| `dialing_speed`, `time_window_start`, `time_window_end` | CRUD |
-| `voice_recording_url`, `voice_path` | Create, dial |
-| `transfer_key`, `transfer_target` | Create, dial metadata |
-| `sip_trunk_id`, `agent_name` | Dial (LiveKit overrides) |
-| `company_id` | List join |
-| `max_retries`, `retry_cooldown_seconds`, `max_concurrent`, `auto_paused` | **In DB, not used by dial route** |
+| Column | Used by |
+|--------|---------|
+| `id`, `name`, `agent`, `status` | Campaign list/create/update, callops lifecycle status |
+| `dialing_speed`, `time_window_start`, `time_window_end` | Create/update; scheduling inputs for callops |
+| `max_retries`, `retry_cooldown_seconds`, `max_concurrent`, `auto_paused` | Create/update/read; callops owns runtime behavior |
+| `sip_trunk_id` | Integer FK to `sip_trunks.id`; selected by the campaign wizard |
+| `agent_name` | Set to `outbound-recorder` on create |
+| `voice_recording_url`, `voice_path` | Campaign voice prompt references |
+| `transfer_key`, `transfer_target` | Campaign create metadata |
+| `company_id` | List join and dashboard filters |
+
+`CampaignStatus` values in TypeScript are `draft`, `running`, `paused`, `stopped`, `completed`, `archived`, `deleted`.
 
 ### `contacts` (relevant columns)
 
-| Column | Used by API |
-|--------|-------------|
-| `campaign_id`, `phone`, `first_name`, `last_name` | Create, dial |
-| `status` | `pending` → `in_progress` → `dialed`/`failed`/`retry` |
-| `retry_count`, `last_attempted_at` | Set on dial; retry logic not implemented in API |
+| Column | Used by |
+|--------|---------|
+| `campaign_id`, `phone`, `first_name`, `last_name` | Campaign create and callops dispatch |
+| `status` | Queue lifecycle: `pending`, `in_progress`, `dialed`, `failed`, `retry` |
+| `retry_count`, `last_attempted_at` | Runtime retry state owned by callops |
 
 ### `call_records` (relevant columns)
 
-| Column | Set by |
-|--------|--------|
-| `campaign_id`, `contact_id`, `phone`, `room` | Dial route (insert) |
-| `outcome` | Dial (`pending`), webhook, agent result |
-| `talk_seconds`, `transferred`, `cost` | Agent result, webhook |
-| `recording_url`, `egress_id` | Dial + webhook |
-| `called_at` | Dial route |
+| Column | Set/read by |
+|--------|-------------|
+| `campaign_id`, `contact_id`, `phone`, `room` | callops and diagnostic dial path |
+| `outcome` | callops outcome ingestion; LiveKit webhook fallback for `connected`/`no_answer` |
+| `talk_seconds`, `transferred`, `cost` | callops outcome ingestion; webhook fallback for talk time |
+| `recording_url`, `egress_id` | LiveKit/callops recording flow |
+| `called_at` | Dashboard sorting/filtering |
+
+Known outcome values include legacy IVR values (`connected`, `qualified`, `voicemail`, `no_speech`, `hangup`, `ni`, `dnq`, `callback`, `no_answer`, `busy`, `failed`) and callops values added by migration (`answered`, `transferred`).
 
 ---
 
-## OpenAPI (`docs/openapi.json`) vs Supabase alignment
+## OpenAPI (`docs/openapi.json`) Alignment
 
-The OpenAPI spec describes **evra-callops** data concepts. Below is how those concepts map (or don't) to this project's Supabase schema.
+`docs/openapi.json` describes evra-callops, not this Next.js app. The current integration points are:
 
-### Alignment scorecard
+| callops concept | This app integration |
+|-----------------|----------------------|
+| `POST /campaigns/{id}/start` | `POST /api/campaigns/[id]/start` proxy |
+| `POST /campaigns/{id}/pause` | `POST /api/campaigns/[id]/pause` proxy |
+| `POST /campaigns/{id}/stop` | `POST /api/campaigns/[id]/stop` proxy |
+| `GET /campaigns/{id}/status` | `GET /api/campaigns/[id]/status` proxy and UI live stats |
+| `POST /calls/outcome` | Agent replacement for deprecated `/api/calls/result` |
+| `GET /livekit/trunks` | Optional cross-check in `GET /api/trunks` |
+| `POST /livekit/test-call` | Exercised by `npm run callops -- test-call ...`, not proxied to the browser |
 
-| OpenAPI concept | Supabase equivalent | Alignment |
-|-----------------|---------------------|-----------|
-| Campaign lifecycle (`draft/running/paused/stopped/completed/archived/deleted`) | `campaigns.status` | **Partial** — no `stopped`; `auto_paused` column exists but not driven by API |
-| Campaign live stats (`queued`, `pending`, `in_progress`, `dialed`, `failed`, `retry`, `active_calls`, `completed_today`) | Computable from `contacts` + `call_records` | **Possible but no API** — stats endpoint not implemented |
-| Contact dial state | `contacts.status` + `retry_count` | **Good schema match** — values align after `20260612140000` migration |
-| Call outcome ingestion | `call_records` | **Partial** — different field names and outcome enums |
-| Call telemetry (`CallTelemetryRequest`, `TelemetryEvent[]`) | No table | **None** — would need new table or external observability store |
-| Call session (`room_id`, `started_at`, `ended_at`, SIP leg tracking) | `call_records.room`, `called_at`, partial webhook updates | **Partial** — no dedicated sessions table |
-| Dispatch job (`DispatchJobRequest`) | Implicit in dial route batch | **Behavioral only** — no job queue table |
-| SIP trunk CRUD (`/livekit/trunks`) | `sip_trunks` catalog + `campaigns.sip_trunk_id` | **Partial** — DB catalog exists; no REST CRUD in this app; LiveKit is source of truth for `ST_*` ids |
-| LiveKit room CRUD | Ephemeral rooms created by dial | **None in app** — rooms not persisted in Supabase |
-| Retry / concurrency / scheduling | `max_retries`, `max_concurrent`, `retry_cooldown_seconds`, `auto_paused`, time windows | **Schema ready, logic not wired** in `app/api/` |
-
-### Field-level: `CallOutcomeRequest` → Supabase
-
-| OpenAPI field | Supabase target | Notes |
-|---------------|-----------------|-------|
-| `contact_id` | `call_records.contact_id` | Set at dial time; not required on agent POST in this app |
-| `campaign_id` | `call_records.campaign_id` | Same |
-| `room_name` | `call_records.room` | This app uses `room` in JSON |
-| `outcome` | `call_records.outcome` | **Different enum values** (see table above) |
-| `phone` | `call_records.phone` | Already set at dial |
-| `talk_seconds` | `call_records.talk_seconds` | ✓ |
-| `transferred` | `call_records.transferred` | ✓ |
-| `retry_count` | `contacts.retry_count` | OpenAPI updates contact; this app doesn't via `/calls/result` |
-| `attempt` | No column | Not stored |
-| `job_id`, `room_sid` | No columns | Not stored |
-| `sip_*`, `amd_category`, `dtmf_digits` | No columns | Not stored |
-| `started_at`, `ended_at` | No columns on `call_records` | Only `called_at`; duration via `talk_seconds` |
-
-### Field-level: `CampaignLiveStats` → Supabase (computable)
-
-| OpenAPI stat | SQL source (conceptual) |
-|--------------|-------------------------|
-| `queued` | `COUNT(contacts WHERE status IN ('pending','retry'))` |
-| `pending` | `COUNT(contacts WHERE status = 'pending')` |
-| `in_progress` | `COUNT(contacts WHERE status = 'in_progress')` |
-| `dialed` | `COUNT(contacts WHERE status = 'dialed')` OR `call_records` with terminal outcomes |
-| `failed` | `COUNT(contacts WHERE status = 'failed')` |
-| `retry` | `COUNT(contacts WHERE status = 'retry')` |
-| `active_calls` | `COUNT(call_records WHERE outcome IN ('pending','connected'))` |
-| `completed_today` | `COUNT(call_records WHERE called_at >= today)` |
-| `auto_paused` | `campaigns.auto_paused` |
-
-The **schema can support** callops-style stats, but neither `app/api/` nor the OpenAPI host writes to this database directly today.
-
-### Tables in Supabase with no OpenAPI equivalent
-
-| Table | Purpose |
-|-------|---------|
-| `companies` | Client/org dimension |
-| `call_logs` | Legacy aggregate report rows |
-| `dashboard_templates` | Saved UI layouts |
-| `security_logs` | Audit trail |
-| `voip_providers` | Settings UI (no API route yet) |
-| `profiles` | Auth roles |
-| `system_settings` | IP whitelist etc. (no API route yet) |
-
-### OpenAPI endpoints with no Supabase backing in this project
-
-| Endpoint | Gap |
-|----------|-----|
-| `POST /calls/telemetry` | No `telemetry_events` or similar table |
-| `POST /dispatch/job` | No job/outbox table |
-| `GET/POST/DELETE /livekit/rooms` | Rooms not persisted |
-| `GET/POST/PATCH/DELETE /livekit/trunks` | LiveKit API is external; `sip_trunks` is optional catalog only |
-| `POST /livekit/test-call` | No test call log table |
+OpenAPI endpoints for telemetry, dispatch jobs, rooms, and trunk CRUD are not surfaced directly by this app today.
 
 ---
 
-## Side-by-side: path coverage
-
-### Documented in OpenAPI, absent from `app/api/`
-
-| Path | Method |
-|------|--------|
-| `/campaigns/{id}/start` | POST |
-| `/campaigns/{id}/pause` | POST |
-| `/campaigns/{id}/stop` | POST |
-| `/campaigns/{id}/status` | GET |
-| `/calls/outcome` | POST |
-| `/calls/telemetry` | POST |
-| `/dispatch/job` | POST |
-| `/livekit/health` | GET |
-| `/livekit/rooms` | GET, POST |
-| `/livekit/rooms/{name}` | DELETE |
-| `/livekit/trunks` | GET, POST |
-| `/livekit/trunks/{id}` | PATCH, DELETE |
-| `/livekit/test-call` | POST |
-
-### Present in `app/api/`, absent from OpenAPI
-
-| Path | Methods |
-|------|---------|
-| `/api/campaigns` | GET, POST |
-| `/api/campaigns/[id]` | PUT, DELETE |
-| `/api/campaigns/[id]/dial` | POST |
-| `/api/calls/result` | POST |
-| `/api/companies` | GET, POST |
-| `/api/dashboard-templates` | GET, POST, DELETE |
-| `/api/intents` | GET |
-| `/api/logs` | GET |
-| `/api/reports` | GET |
-| `/api/security` | GET |
-| `/api/tts/generate` | POST |
-| `/api/tts/save` | POST |
-
-### Shared concept (different path/shape)
-
-| Concept | This app | OpenAPI |
-|---------|----------|---------|
-| Health | `GET /api/health` | `GET /health` |
-| LiveKit webhook | `POST /api/livekit/webhook` | `POST /livekit/webhook` |
-| Agent call report | `POST /api/calls/result` | `POST /calls/outcome` |
-
----
-
-## Architectural interpretation
-
-Three plausible relationships between these artifacts:
-
-1. **Sibling services (most likely today)** — callops is the future orchestration layer; this app is the operator dashboard + thin dial gateway. The OpenAPI spec belongs to callops, not this repo.
-
-2. **Convergence path** — This app's dial/outcome/webhook logic could shrink to proxies toward callops, with Supabase remaining the UI's read model.
-
-3. **Schema foreshadowing** — Migrations added `auto_paused`, `max_concurrent`, contact `retry` states, and `sip_trunks` in anticipation of callops-like behavior; `app/api/` has not caught up.
-
----
-
-## Environment variables by route
+## Environment Variables By Route
 
 | Variable | Routes affected |
 |----------|-----------------|
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | All authenticated routes |
-| `SUPABASE_SERVICE_ROLE_KEY` | `/api/livekit/webhook`, `/api/calls/result` |
-| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | `/api/campaigns/[id]/dial`, webhook |
-| `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`, `LIVEKIT_AGENT_NAME` | Dial |
-| `LIVEKIT_RECORD_*` | Dial (optional egress) |
-| `AGENT_RESULT_SECRET` | `/api/calls/result` |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | All authenticated Supabase routes |
+| `SUPABASE_SERVICE_ROLE_KEY` | `/api/livekit/webhook`, diagnostic scripts, voice signing |
+| `CALLOPS_URL`, `CALLOPS_WEBHOOK_SECRET` | `/api/campaigns/[id]/start|pause|stop|status`, `/api/trunks` cross-check |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | `/api/livekit/webhook`, direct diagnostic CLI |
+| `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`, `LIVEKIT_AGENT_NAME` | Direct diagnostic CLI |
+| `LIVEKIT_RECORD_*` | Direct diagnostic CLI egress path |
 | `INWORLD_API_KEY` | `/api/tts/generate` |
 | `AVM_SCRIPT_AUDIO_STORAGE_*` | `/api/tts/save` |
 
 ---
 
-## Related files
+## Related Files
 
 | Path | Role |
 |------|------|
-| `lib/outbound-call.ts` | LiveKit dial, trunk resolution, webhook receiver |
-| `lib/voice.ts` | Signed voice URL at dial time |
-| `lib/avm-script-storage.ts` | TTS save upload |
-| `utils/supabase/auth.ts` | Session auth helper |
-| `utils/supabase/admin.ts` | Service role client |
-| `supabase/migrations/*.sql` | Schema source of truth |
-| `docs/openapi.json` | evra-callops API (external to this app's routes) |
-| `docs/livekit-outbound-integration.md` | Dial/webhook/agent flow deep dive |
+| `app/api/campaigns/[id]/[action]/route.ts` | callops lifecycle/status proxy |
+| `app/api/trunks/route.ts` | SIP trunk catalog for campaign wizard |
+| `app/api/calls/result/route.ts` | deprecated no-op result endpoint |
+| `app/api/livekit/webhook/route.ts` | signed LiveKit webhook fallback updates |
+| `scripts/callops-test.ts` | callops smoke/integration test harness |
+| `scripts/dial-outbound.ts` | direct LiveKit diagnostic dial script |
+| `lib/outbound-call.ts` | direct LiveKit SDK helpers |
+| `lib/voice.ts` | voice URL resolution/signing helpers |
+| `utils/supabase/auth.ts` | session auth helper |
+| `utils/supabase/admin.ts` | service-role client |
+| `supabase/migrations/*.sql` | schema source of truth |
+| `docs/openapi.json` | evra-callops API contract |

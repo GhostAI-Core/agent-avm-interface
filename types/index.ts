@@ -95,11 +95,15 @@ export interface CallRecord {
   id: number
   campaign_id: number
   phone: string
+  /** Telephony outcome (callops /lookups/call-outcomes): connected, voicemail, no_answer, busy, failed, callback. */
   outcome: string
+  /** Business result (callops /lookups/business-dispositions): subscribe, opt_out, callback, interested. Authoritative — supersedes the deprecated agent_outcome. May be null. */
+  business_disposition?: string | null
   talk_seconds: number
   cost: number
   transferred: boolean
   recording_url?: string | null
+  room?: string | null
   called_at: string
 }
 

@@ -89,10 +89,10 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
   }, [calls, outcome, search, sort])
 
   const exportCsv = () => {
-    const head = ['Phone', 'Network', 'Outcome', 'Talk (s)', 'Cost', 'Transferred', 'Recording', 'Called At']
+    const head = ['Phone', 'Network', 'Outcome', 'Disposition', 'Talk (s)', 'Cost', 'Transferred', 'Recording', 'Called At']
     const lines = [
       head.join(','),
-      ...rows.map(c => [`"${maskPhone(c.phone)}"`, networkProvider(c.phone) ?? '', c.outcome, c.talk_seconds, c.cost, c.transferred ? 'yes' : 'no', c.recording_url ?? '', c.called_at].join(',')),
+      ...rows.map(c => [`"${maskPhone(c.phone)}"`, networkProvider(c.phone) ?? '', c.outcome, c.business_disposition ?? '', c.talk_seconds, c.cost, c.transferred ? 'yes' : 'no', c.recording_url ?? '', c.called_at].join(',')),
     ]
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
     const url = window.URL.createObjectURL(blob)
@@ -142,7 +142,7 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
           <Table size="small" sx={{ minWidth: 760 }}>
             <TableHead>
               <TableRow>
-                {['Phone', 'Network', 'Outcome', 'Talk', 'Cost', 'Transfer', 'Rec', 'Timestamp'].map(h => (
+                {['Phone', 'Network', 'Outcome', 'Disposition', 'Talk', 'Cost', 'Transfer', 'Rec', 'Timestamp'].map(h => (
                   <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', color: 'text.secondary', bgcolor: 'rgba(0,0,0,0.2)', whiteSpace: 'nowrap' }}>{h}</TableCell>
                 ))}
               </TableRow>
@@ -153,6 +153,7 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
                   <TableCell sx={{ fontSize: '0.82rem' }}>{maskPhone(c.phone)}</TableCell>
                   <TableCell><NetworkLabel phone={c.phone} /></TableCell>
                   <TableCell><StatusChip status={c.outcome} /></TableCell>
+                  <TableCell>{c.business_disposition ? <StatusChip status={c.business_disposition} /> : <Box component="span" sx={{ color: 'text.disabled' }}>—</Box>}</TableCell>
                   <TableCell sx={{ fontSize: '0.82rem' }}>{fmtTime(c.talk_seconds)}</TableCell>
                   <TableCell sx={{ fontSize: '0.82rem' }}>R{Number(c.cost).toFixed(2)}</TableCell>
                   <TableCell sx={{ fontSize: '0.95rem', color: c.transferred ? 'success.main' : 'text.disabled', fontWeight: 700 }}>{c.transferred ? '✓' : '–'}</TableCell>

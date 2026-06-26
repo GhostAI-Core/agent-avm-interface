@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const { supabase, user } = await getAuthUser()
   if (!user) return unauthorized()
 
-  const COLS = 'id, campaign_id, phone, outcome, talk_seconds, cost, transferred, recording_url, called_at'
+  const COLS = 'id, campaign_id, phone, outcome, business_disposition, talk_seconds, cost, transferred, recording_url, room, called_at'
 
   // No campaignId → all recent calls across campaigns (dashboard insights)
   if (!campaignId) {

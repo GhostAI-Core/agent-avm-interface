@@ -1,11 +1,12 @@
 ## 1. Confirm auth (DB already cleared)
 
 - [x] 1.1 DB confirmed: single shared Supabase; only gap was `campaigns.voice_id`, now applied + verified (service-role read returns the column). Q1 resolved — no separate dashboard DB.
-- [ ] 1.2 Verify the dashboard's callops proxy/auth reaches the new reads: `GET /calls/{id}/call-report`, `GET /calls/{id}/telemetry`, `GET /lookups/*`, `GET /campaigns/{id}` (bearer/secret held server-side) — note any gap before building
+- [x] 1.2 Auth probed (2026-06-26). **`/campaigns/{id}` accepts `X-Webhook-Secret` (200).** BUT `/lookups/*`, `/calls/{id}/call-report`, `/calls/{id}/telemetry`, `/companies/{id}/dashboard/*` return **401 "Missing bearer token"** with the webhook secret, and **500 "JWT secret not configured"** with a Supabase service-role/anon JWT — callops' deployment can't verify any token yet. ⇒ **Groups 3, 5, 6 are BLOCKED on callops JWT config (Q5, Cale).** Groups 4 (per-call display from Supabase `call_records` — has `business_disposition`/`agent_outcome`/`outcome`/`room`), 7 (`/campaigns/{id}` summary), 8 (voice_id) are unblocked and built first.
+- [ ] 1.3 (Cale, Q5) Resolve callops JWT auth for server-side proxy reads: confirm the JWT-verification secret/JWKS is configured + deployed, and what token the dashboard presents (forward the user's Supabase ES256 session token, or a service credential). Un-gates groups 3/5/6.
 
 ## 2. Types & foundation
 
-- [ ] 2.1 `types/index.ts`: `CallRecord` gains `business_disposition?`, `started_at?`, `ended_at?`, `room?`; remove reliance on `agent_outcome` for display
+- [x] 2.1 `types/index.ts`: `CallRecord` gains `business_disposition?`, `started_at?`, `ended_at?`, `room?`; remove reliance on `agent_outcome` for display
 - [ ] 2.2 Add `CallReport` + `Telemetry` types (telephony narrative + model-usage events) for the detail reads
 - [ ] 2.3 Add `CampaignSummary` type (`contacts_total,pending,in_progress,dialed,failed,retry,calls_total,connected,opt_out`); add `voice_id?` to the campaign type
 - [ ] 2.4 Deprecate the stale `Agent='seeker'|'grace'|'sangoma'` union (do not use for callops agent selectors)
@@ -20,9 +21,9 @@
 
 ## 4. 2-tier result display — per-call table (call-result-display)
 
-- [ ] 4.1 `components/CampaignDetail.tsx`: render `outcome` and `business_disposition` as two distinct columns/fields; missing disposition shows "—"; support `subscribe/opt_out/callback/interested`
+- [x] 4.1 `components/CampaignDetail.tsx`: render `outcome` and `business_disposition` as two distinct columns/fields; missing disposition shows "—"; support `subscribe/opt_out/callback/interested`
 - [ ] 4.2 Migrate per-call `agent_outcome` reads (table + outcome filter) to `business_disposition` (analytics/KPI roll-up is handled by group 5, not here)
-- [ ] 4.3 Add `business_disposition` to the call-table CSV export
+- [x] 4.3 Add `business_disposition` to the call-table CSV export
 - [ ] 4.4 `lib/tokens.ts` `statusChipTone()`: key colours off lookup `value`s with a neutral default (no positional/legacy-key binding)
 
 ## 5. Consume callops analytics — delete local roll-up (consume-callops-analytics)
@@ -56,5 +57,5 @@
 - [ ] 9.2 Manual: a connected+opted-out call shows `outcome=connected`/`business_disposition=opt_out` in their own columns; an `interested` call shows distinctly; legacy call shows "—"; a campaign with an opt-out shows the opt_out count
 - [ ] 9.3 Manual: open a real call's detail → call-report telephony narrative + telemetry render; script-only call shows no model-usage without error
 - [ ] 9.4 Manual: reports/OutcomeDonut/KPI/Call Quality match callops analytics (opt-out excluded from connected); kill the lookups proxy → dropdowns render empty, no crash; data columns unaffected
-- [ ] 9.5 Send Cale the remaining open questions (Q2 `/script-audio` vs local tts; Q3 duplicate app-side STS/consent logic vs FE-zero-control; Q4 network-provider filter in dashboard?) — do not build Q2–Q4 here. (Q1 DB-sync resolved.)
+- [ ] 9.5 Send Cale the open questions: **Q5 (BLOCKING groups 3/5/6) — callops JWT auth not configured on the deployment ("JWT secret not configured"); what token should the dashboard present?**; Q2 `/script-audio` vs local tts; Q3 duplicate app-side STS/consent logic vs FE-zero-control; Q4 network-provider filter in dashboard? (Q1 DB-sync resolved.)
 - [ ] 9.6 Re-validate (`openspec validate --strict`) and archive when approved

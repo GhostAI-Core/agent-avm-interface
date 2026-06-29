@@ -32,6 +32,8 @@ interface Props {
   campaignName: string
   voiceRecordingUrl: string | null
   onVoiceRecordingUrlChange: (url: string | null) => void
+  /** Surfaces the chosen Inworld voice id so the campaign can persist `voice_id` (callops confirm-audio match). */
+  onVoiceIdChange?: (voiceId: string | null) => void
   disabled?: boolean
 }
 
@@ -55,6 +57,7 @@ export default function VoiceGenerator({
   campaignName,
   voiceRecordingUrl,
   onVoiceRecordingUrlChange,
+  onVoiceIdChange,
   disabled,
 }: Props) {
   const defaultGender = genders()[0] ?? 'female'
@@ -106,7 +109,9 @@ export default function VoiceGenerator({
     })
     setSavedMessage('')
     onVoiceRecordingUrlChange(null)
-  }, [onVoiceRecordingUrlChange])
+    // The voice id only travels with a saved recording — drop it when the recording is cleared.
+    onVoiceIdChange?.(null)
+  }, [onVoiceRecordingUrlChange, onVoiceIdChange])
 
   useEffect(() => {
     return () => {
@@ -211,6 +216,7 @@ export default function VoiceGenerator({
         return
       }
       onVoiceRecordingUrlChange(json.publicUrl)
+      onVoiceIdChange?.(voiceId) // persist the voice the saved recording was generated with
       setSavedMessage(`Recording saved as ${json.storageKey ?? 'script'} for "${campaignName.trim()}".`)
       refreshSavedScripts() // surface the just-saved script as a reuse bubble
     } catch {

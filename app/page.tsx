@@ -56,7 +56,7 @@ import { AgentChip as TableAgentChip, StatusChip as TableStatusChip, ActionButto
 import BusinessIcon from '@mui/icons-material/Business'
 import CloseIcon from '@mui/icons-material/Close'
 import { colors, semantic, radius } from '@/lib/tokens'
-import type { Campaign, CampaignReport, Company, CampaignLiveStatus } from '@/types'
+import type { Campaign, CampaignReport, Company, CampaignLiveStatus, CampaignSummary } from '@/types'
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Control Room',
   companies: 'Companies',
@@ -110,6 +110,7 @@ export default function Page() {
   const [allIntents,  setAllIntents]  = useState<any[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignReport | null>(null)
   const [detailedLogs,     setDetailedLogs]     = useState<any[]>([])
+  const [campaignSummary,  setCampaignSummary]  = useState<CampaignSummary | null>(null)
   const [activeCalls,      setActiveCalls]      = useState<any[]>([])
   const [securityLogs,    setSecurityLogs]     = useState<any[]>([])
   const [filterAgent,      setFilterAgent]      = useState('')
@@ -383,12 +384,21 @@ export default function Page() {
 
   const viewDetailedLogs = async (report: CampaignReport) => {
     setSelectedCampaign(report)
+    setCampaignSummary(null)
     try {
       const json = await getJson(`/api/logs?campaignId=${report.campaign_id || ''}`)
       if (json) setDetailedLogs(json.logs || [])
     } catch (err) {
       console.error('Failed to load call logs:', err)
       setDetailedLogs([])
+    }
+    // callops summary aggregates (connected / opt_out / calls_total) — read-through, never re-summed here.
+    try {
+      const s = await getJson(`/api/campaigns/${report.campaign_id || ''}`)
+      setCampaignSummary(s?.summary ?? null)
+    } catch (err) {
+      console.error('Failed to load campaign summary:', err)
+      setCampaignSummary(null)
     }
   }
 
@@ -784,7 +794,7 @@ export default function Page() {
 
           {/* ── REPORTS ── */}
           {view === 'reports' && selectedCampaign && (
-            <CampaignDetail report={selectedCampaign} calls={detailedLogs} onBack={() => setSelectedCampaign(null)} />
+            <CampaignDetail report={selectedCampaign} calls={detailedLogs} summary={campaignSummary} onBack={() => setSelectedCampaign(null)} />
           )}
 
           {view === 'reports' && !selectedCampaign && (

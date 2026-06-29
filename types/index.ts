@@ -1,3 +1,10 @@
+/**
+ * DEPRECATED as a callops agent selector. callops dispatches a single deployed worker
+ * (`outbound-recorder`); do NOT use this union to populate any callops-facing agent/worker
+ * selector. It survives ONLY as the type of the existing `campaigns.agent` product label.
+ * (Plain doc note, not an `@deprecated` JSDoc tag, so the legitimate product-label uses
+ * don't raise deprecation warnings across the build.)
+ */
 export type Agent = 'seeker' | 'grace' | 'sangoma'
 export type CampaignStatus = 'draft' | 'running' | 'paused' | 'stopped' | 'completed' | 'archived' | 'deleted'
 
@@ -37,6 +44,8 @@ export interface Campaign {
   sip_trunk_id?: number | null
   voice_recording_url?: string
   audio_path?: string | null
+  /** Full Inworld voice id chosen at script generation; callops uses it to pick the voice-matched two-step-consent confirm audio. */
+  voice_id?: string | null
   start_date?: string | null
   end_date?: string | null
   transfer_key?: string | null
@@ -65,6 +74,53 @@ export interface CampaignLiveStatus {
   failed: number
   retry: number
   completed_today: number
+}
+
+/**
+ * Aggregates from the `summary` block of callops `GET /campaigns/{id}` (via the proxy).
+ * Authoritative campaign roll-up — `opt_out` is only available here, never re-summed client-side.
+ */
+export interface CampaignSummary {
+  contacts_total: number
+  pending: number
+  in_progress: number
+  dialed: number
+  failed: number
+  retry: number
+  calls_total: number
+  connected: number
+  opt_out: number
+}
+
+/**
+ * Telephony narrative from callops `GET /calls/{id}/call-report` (via the proxy).
+ * The outcome record is intentionally thin; this carries the telephony detail.
+ * Field shape is consumed-not-owned — keep optional and tolerate absence.
+ */
+export interface CallReport {
+  call_id?: number | string
+  amd_category?: string | null
+  sip?: Record<string, unknown> | null
+  dtmf_digits?: string | null
+  matched_key?: string | null
+  playback?: Record<string, unknown> | null
+  disconnect_reason?: string | null
+  transfer_target?: string | null
+  talk_seconds?: number | null
+}
+
+/** One model-usage / SDK metric event from callops `GET /calls/{id}/telemetry`. */
+export interface TelemetryEvent {
+  source: string
+  event_type: string
+  payload: Record<string, unknown>
+  occurred_at?: string
+}
+
+/** callops `GET /calls/{id}/telemetry` response: `{ call_id, telemetry: [...] }`. */
+export interface Telemetry {
+  call_id: number | string
+  telemetry: TelemetryEvent[]
 }
 
 export interface CampaignReport {

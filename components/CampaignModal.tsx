@@ -157,6 +157,7 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('upload')
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
   const [voiceRecordingUrl, setVoiceRecordingUrl] = useState<string | null>(null)
+  const [voiceId, setVoiceId] = useState<string | null>(null) // Inworld voice id → campaigns.voice_id (generate mode only)
   const [scriptSeconds, setScriptSeconds] = useState<number | null>(null)
 
   // Step 4 — contacts
@@ -207,7 +208,7 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
     if (!next) return
     setVoiceMode(next)
     setError('')
-    if (next === 'upload') setVoiceRecordingUrl(null)
+    if (next === 'upload') { setVoiceRecordingUrl(null); setVoiceId(null) }
     else setVoiceFile(null)
   }
 
@@ -274,6 +275,8 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
       // Unified audio_path (issue #31): AI-generated → public URL; upload → private storage key.
       if (voiceMode === 'generate' && voiceRecordingUrl) {
         payload.audio_path = voiceRecordingUrl
+        // callops matches this voice to its two-step-consent confirm audio. Uploads have no Inworld id.
+        if (voiceId) payload.voice_id = voiceId
       } else if (voiceMode === 'upload' && voiceFile) {
         if (voiceFile.size > MAX_VOICE_BYTES) {
           setError(`Voice recording is too large (max ${MAX_VOICE_BYTES / 1024 / 1024}MB).`)
@@ -406,7 +409,8 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
                 file={voiceFile} onFileChange={setVoiceFile} />
             ) : (
               <VoiceGenerator key="voice-generator" campaignName={name}
-                voiceRecordingUrl={voiceRecordingUrl} onVoiceRecordingUrlChange={setVoiceRecordingUrl} disabled={loading} />
+                voiceRecordingUrl={voiceRecordingUrl} onVoiceRecordingUrlChange={setVoiceRecordingUrl}
+                onVoiceIdChange={setVoiceId} disabled={loading} />
             )}
 
             {scriptSeconds !== null && (

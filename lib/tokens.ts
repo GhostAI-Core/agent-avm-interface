@@ -85,26 +85,34 @@ export const toneColors = {
   neu: colors.fg3,
 } as const
 
-/** Status chip tones derived from EVRA semantic palette */
+/**
+ * Status chip tones derived from EVRA semantic palette.
+ *
+ * Keyed off callops' lookup *values* (campaign-statuses, call-outcomes, business-dispositions),
+ * normalised to spaces, with a neutral default for anything unmapped — no positional/legacy-key
+ * binding. The retired non-callops vocab (`no_speech`/`hangup`/`ni`/`dnq`/`busy_line`/`qualified`)
+ * is intentionally gone; an unknown value just renders neutral rather than mislabelled.
+ */
 export function statusChipTone(status: string): { bg: string; text: string; border: string } {
   const key = (status || '').trim().toLowerCase().replace(/[_-]+/g, ' ')
   const map: Record<string, { bg: string; text: string; border: string }> = {
+    // campaign statuses
     running:   { bg: 'rgba(55,166,96,0.18)', text: '#60BC84', border: 'rgba(55,166,96,0.38)' },
     paused:    { bg: 'rgba(201,154,45,0.18)', text: '#E0C078', border: 'rgba(201,154,45,0.38)' },
     'auto paused': { bg: 'rgba(109,194,255,0.18)', text: '#9DD4FF', border: 'rgba(109,194,255,0.38)' },
     stopped:   { bg: 'rgba(144,144,144,0.18)', text: '#C8C8C8', border: 'rgba(144,144,144,0.38)' },
     completed: { bg: 'rgba(144,144,144,0.18)', text: '#C8C8C8', border: 'rgba(144,144,144,0.38)' },
+    // call outcomes (telephony): connected, voicemail, no_answer, busy, failed, callback
     connected: { bg: 'rgba(55,166,96,0.18)', text: '#60BC84', border: 'rgba(55,166,96,0.38)' },
-    qualified: { bg: 'rgba(55,166,96,0.22)', text: '#5BE8BE', border: 'rgba(91,232,190,0.38)' },
     voicemail: { bg: 'rgba(109,194,255,0.18)', text: '#9DD4FF', border: 'rgba(109,194,255,0.38)' },
-    'no speech': { bg: 'rgba(144,144,144,0.18)', text: '#C8C8C8', border: 'rgba(144,144,144,0.38)' },
-    hangup:    { bg: 'rgba(224,82,79,0.18)', text: '#F08A88', border: 'rgba(224,82,79,0.38)' },
-    ni:        { bg: 'rgba(96,188,132,0.14)', text: '#60BC84', border: 'rgba(96,188,132,0.35)' },
-    dnq:       { bg: 'rgba(201,154,45,0.18)', text: '#E0C078', border: 'rgba(201,154,45,0.38)' },
-    callback:  { bg: 'rgba(109,194,255,0.18)', text: '#9DD4FF', border: 'rgba(109,194,255,0.38)' },
     'no answer': { bg: 'rgba(56,56,56,0.5)', text: '#C8C8C8', border: 'rgba(74,74,74,0.6)' },
-    'busy line': { bg: 'rgba(201,154,45,0.14)', text: '#C99A2D', border: 'rgba(201,154,45,0.35)' },
+    busy:      { bg: 'rgba(201,154,45,0.14)', text: '#C99A2D', border: 'rgba(201,154,45,0.35)' },
+    callback:  { bg: 'rgba(109,194,255,0.18)', text: '#9DD4FF', border: 'rgba(109,194,255,0.38)' },
     failed:    { bg: 'rgba(224,82,79,0.18)', text: '#F08A88', border: 'rgba(224,82,79,0.38)' },
+    // business dispositions: subscribe, opt_out, callback, interested
+    subscribe: { bg: 'rgba(55,166,96,0.22)', text: '#5BE8BE', border: 'rgba(91,232,190,0.38)' },
+    interested:{ bg: 'rgba(201,154,45,0.18)', text: '#E0C078', border: 'rgba(201,154,45,0.38)' },
+    'opt out': { bg: 'rgba(224,82,79,0.18)', text: '#F08A88', border: 'rgba(224,82,79,0.38)' },
   }
   return map[key] ?? { bg: 'rgba(144,144,144,0.18)', text: '#C8C8C8', border: 'rgba(144,144,144,0.38)' }
 }

@@ -7,9 +7,9 @@
 ## 2. Types & foundation
 
 - [x] 2.1 `types/index.ts`: `CallRecord` gains `business_disposition?`, `started_at?`, `ended_at?`, `room?`; remove reliance on `agent_outcome` for display
-- [ ] 2.2 Add `CallReport` + `Telemetry` types (telephony narrative + model-usage events) for the detail reads
-- [ ] 2.3 Add `CampaignSummary` type (`contacts_total,pending,in_progress,dialed,failed,retry,calls_total,connected,opt_out`); add `voice_id?` to the campaign type
-- [ ] 2.4 Deprecate the stale `Agent='seeker'|'grace'|'sangoma'` union (do not use for callops agent selectors)
+- [x] 2.2 Add `CallReport` + `Telemetry` types (telephony narrative + model-usage events) for the detail reads — `CallReport`, `TelemetryEvent`, `Telemetry` in `types/index.ts` (consumers gated on group 6 / JWT)
+- [x] 2.3 Add `CampaignSummary` type (`contacts_total,pending,in_progress,dialed,failed,retry,calls_total,connected,opt_out`); add `voice_id?` to the campaign type
+- [x] 2.4 Deprecate the stale `Agent='seeker'|'grace'|'sangoma'` union — plain doc note (NOT `@deprecated` JSDoc, which would warn on the legit `campaigns.agent` product-label uses); guidance: never feed a callops agent selector
 
 ## 3. Lookups proxy + hook (callops-lookups)
 
@@ -22,9 +22,9 @@
 ## 4. 2-tier result display — per-call table (call-result-display)
 
 - [x] 4.1 `components/CampaignDetail.tsx`: render `outcome` and `business_disposition` as two distinct columns/fields; missing disposition shows "—"; support `subscribe/opt_out/callback/interested`
-- [ ] 4.2 Migrate per-call `agent_outcome` reads (table + outcome filter) to `business_disposition` (analytics/KPI roll-up is handled by group 5, not here)
+- [x] 4.2 Migrate per-call `agent_outcome` reads (table + outcome filter) to `business_disposition` — no per-call display read of `agent_outcome` remains (table + filter use `outcome`/`business_disposition`); the only surviving `agent_outcome` ref is the write path `app/api/calls/result/route.ts`, which is the STS/consent logic flagged out-of-scope (Q3) — not a display read
 - [x] 4.3 Add `business_disposition` to the call-table CSV export
-- [ ] 4.4 `lib/tokens.ts` `statusChipTone()`: key colours off lookup `value`s with a neutral default (no positional/legacy-key binding)
+- [x] 4.4 `lib/tokens.ts` `statusChipTone()`: keyed off callops lookup `value`s (campaign-statuses + call-outcomes + business-dispositions) with a neutral default; retired the legacy `no_speech/hangup/ni/dnq/busy_line/qualified` keys; added `subscribe/interested/opt_out/busy`
 
 ## 5. Consume callops analytics — delete local roll-up (consume-callops-analytics)
 
@@ -42,20 +42,22 @@
 
 ## 7. Campaign summary aggregates (campaign-outcome-summary)
 
-- [ ] 7.1 Read the `summary` block from `GET /campaigns/{id}` (via proxy) in the campaign view
-- [ ] 7.2 Surface `connected`, `opt_out`, `calls_total`; ensure `opt_out > 0` is never omitted
-- [ ] 7.3 Source these from the callops summary, not client-side roll-up
+- [x] 7.1 Read the `summary` block from `GET /campaigns/{id}` (via proxy) in the campaign view — new `GET` handler in `app/api/campaigns/[id]/route.ts` (X-Webhook-Secret, server-side), fetched in `page.tsx#viewDetailedLogs`
+- [x] 7.2 Surface `connected`, `opt_out`, `calls_total` — `CampaignDetail` renders a callops-summary stat row; `opt_out` always shown when `summary` present (0 renders as "0", never dropped)
+- [x] 7.3 Source these from the callops summary, not client-side roll-up — values come straight from the proxied `summary` block; no per-call re-summation
+
+> **⚠️ 7.x BLOCKED (found 2026-06-26 in live smoke).** The dashboard side (proxy forwards `json.summary`; view renders only when non-null) is correct and merge-safe, but the **data source does not exist on callops 0.2.0**: `GET /campaigns/{id}` (X-Webhook-Secret, 200) returns **no `summary` key**; `GET /campaigns/{id}/intent-stats` is **401 bearer-only** (same JWT wall as 3/5/6); `/campaigns/{id}/summary` and `/stats` are **404**. ⇒ Group 7 cannot show data until callops either (a) embeds `summary` in the webhook-secret-reachable `GET /campaigns/{id}`, or (b) we re-point to the bearer-only analytics endpoints once Q5 (JWT) is resolved. **Reclassify 7 from "unblocked/done" → built-but-blocked on Q5/Cale.** Added to 9.5.
 
 ## 8. Campaign voice_id (campaign-voice-id) — un-gated, column present
 
-- [ ] 8.1 Add `voice_id` to the campaign PUT allowed-fields whitelist (`app/api/campaigns/[id]/route.ts`), keeping lifecycle `status` out per [[callops-control-parity]]
-- [ ] 8.2 Persist the chosen Inworld `voice_id` on campaign script generation/edit (`components/CampaignModal.tsx`/`VoiceGenerator` save path); a save that omits it leaves the value unchanged
+- [x] 8.1 Add `voice_id` to the campaign PUT allowed-fields whitelist (`app/api/campaigns/[id]/route.ts`), keeping lifecycle `status` out per [[callops-control-parity]]
+- [x] 8.2 Persist the chosen Inworld `voice_id` on campaign script generation — `VoiceGenerator` surfaces the voice id via new `onVoiceIdChange`; `CampaignModal` threads it into the create payload (generate mode only); POST route inserts `voice_id`. Upload mode / omitted save → no `voice_id` written (PUT leaves existing value unchanged)
 
 ## 9. Validation & open questions
 
-- [ ] 9.1 `npx tsc --noEmit` clean; lint no new errors
-- [ ] 9.2 Manual: a connected+opted-out call shows `outcome=connected`/`business_disposition=opt_out` in their own columns; an `interested` call shows distinctly; legacy call shows "—"; a campaign with an opt-out shows the opt_out count
+- [x] 9.1 `npx tsc --noEmit` clean (exit 0, no errors). Lint: 20 errors/5 warnings repo-wide but **none new** from this change — all pre-existing (`page.tsx` `any[]`/setState-in-effect lines untouched by the branch; diff only added the `CampaignSummary` import + `summary` prop). Bar "lint no new errors" met. (2026-06-26)
+- [~] 9.2 Manual (2026-06-26, live against campaign 49 with 4 seeded `qa-2tier-*` rows): **PASS** — connected+opt_out shows `outcome=connected`/`business_disposition=opt_out` in distinct columns; `interested`/`subscribe` render distinctly; legacy & failed rows show "—"; CSV carries both columns. **Also fixed under smoke:** (a) `Qualify %`/`CPL` KPIs read the retired `outcome==='qualified'` (permanently 0) — re-pointed to `business_disposition ∈ {subscribe,interested}` per Garth (now 28.57% / R3.77 live); (b) empty-state `colSpan` 8→9 after the Disposition column was added. **NOT verified — the opt_out-count clause:** the callops-summary stat row never renders because the live API has no summary for it (see 7.x finding).
 - [ ] 9.3 Manual: open a real call's detail → call-report telephony narrative + telemetry render; script-only call shows no model-usage without error
 - [ ] 9.4 Manual: reports/OutcomeDonut/KPI/Call Quality match callops analytics (opt-out excluded from connected); kill the lookups proxy → dropdowns render empty, no crash; data columns unaffected
-- [ ] 9.5 Send Cale the open questions: **Q5 (BLOCKING groups 3/5/6) — callops JWT auth not configured on the deployment ("JWT secret not configured"); what token should the dashboard present?**; Q2 `/script-audio` vs local tts; Q3 duplicate app-side STS/consent logic vs FE-zero-control; Q4 network-provider filter in dashboard? (Q1 DB-sync resolved.)
+- [ ] 9.5 Send Cale the open questions: **Q5 (BLOCKING groups 3/5/6) — callops JWT auth not configured on the deployment ("JWT secret not configured"); what token should the dashboard present?**; **Q6 (BLOCKS group 7, found 2026-06-26) — live `GET /campaigns/{id}` returns no `summary` block (no connected/opt_out/calls_total); `intent-stats` is 401 bearer-only, `/summary` & `/stats` are 404. Where do per-campaign outcome aggregates live in 0.2.0 — will you embed `summary` in `GET /campaigns/{id}` (webhook-secret reachable), or must we source them from a bearer-only analytics endpoint?**; Q2 `/script-audio` vs local tts; Q3 duplicate app-side STS/consent logic vs FE-zero-control; Q4 network-provider filter in dashboard? (Q1 DB-sync resolved.)
 - [ ] 9.6 Re-validate (`openspec validate --strict`) and archive when approved

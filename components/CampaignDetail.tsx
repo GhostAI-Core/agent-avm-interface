@@ -24,7 +24,7 @@ import GlassCard from '@/components/ui/GlassCard'
 import { maskPhone } from '@/lib/security'
 import { networkProvider } from '@/lib/networks'
 import { semantic } from '@/lib/tokens'
-import type { CallRecord, CampaignReport } from '@/types'
+import type { CallRecord, CampaignReport, CampaignSummary } from '@/types'
 
 const fmtTime = (s: number) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`
 
@@ -53,7 +53,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   )
 }
 
-export default function CampaignDetail({ report, calls, onBack }: { report: CampaignReport; calls: CallRecord[]; onBack: () => void }) {
+export default function CampaignDetail({ report, calls, summary, onBack }: { report: CampaignReport; calls: CallRecord[]; summary?: CampaignSummary | null; onBack: () => void }) {
   const [outcome, setOutcome] = useState('')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('recent')
@@ -63,7 +63,9 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
   const kpis = useMemo(() => {
     const total = calls.length || 1
     const answered = calls.filter(c => (c.talk_seconds || 0) > 0)
-    const qualified = calls.filter(c => c.outcome === 'qualified')
+    // callops 2-tier contract: 'qualified' is no longer an outcome — positive intent lives in
+    // business_disposition (subscribe = consented opt-in, interested = soft-yes). [[callops-outcome-vocab]]
+    const qualified = calls.filter(c => c.business_disposition === 'subscribe' || c.business_disposition === 'interested')
     const transfers = calls.filter(c => c.transferred)
     const spend = calls.reduce((s, c) => s + Number(c.cost || 0), 0)
     const avgTalk = answered.length ? answered.reduce((s, c) => s + (c.talk_seconds || 0), 0) / answered.length : 0
@@ -121,6 +123,15 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
         <Stat label="Transfer %" value={`${kpis.transferPct}%`} />
       </Stack>
 
+      {/* callops summary aggregates (GET /campaigns/{id}) — opt_out lives only here, never re-summed client-side. */}
+      {summary && (
+        <Stack direction="row" sx={{ gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
+          <Stat label="Calls Total" value={(summary.calls_total ?? 0).toLocaleString()} />
+          <Stat label="Connected" value={(summary.connected ?? 0).toLocaleString()} accent={semantic.accent} />
+          <Stat label="Opted Out" value={(summary.opt_out ?? 0).toLocaleString()} accent={semantic.warning} />
+        </Stack>
+      )}
+
       <Stack direction="row" sx={{ gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <Select size="small" value={outcome} onChange={e => setOutcome(e.target.value)} displayEmpty sx={{ minWidth: 150 }}>
           <MenuItem value="">All Outcomes</MenuItem>
@@ -170,7 +181,7 @@ export default function CampaignDetail({ report, calls, onBack }: { report: Camp
                 </TableRow>
               ))}
               {!rows.length && (
-                <TableRow><TableCell colSpan={8} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No calls match your filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No calls match your filters.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

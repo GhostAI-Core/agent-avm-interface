@@ -63,14 +63,16 @@ just dispositions — those drive writebacks to the compliance tables.
 this and we do NOT pull STS's lists into our DB. Our only job: when an AI agent call captures a keypress,
 **tell STS** so it manages contact on its side.
 
-- **`POST /api/sts/mark`** `{ agent, msisdn, action }` — the relay:
-  - press 1 → `subscribe` → STS `POST /avm/{agentGUID}/{msisdn}`
-  - press 9 → `opt_out`  → STS `POST /cancel/{agentGUID}/{msisdn}`
-- **GUID is per agent** (per product): `STS_GUID_SEEKER`, `STS_GUID_GRACE`, … resolved by
-  `guidForAgent()`. A campaign dialing as seeker relays under the seeker GUID.
-- Optional `STS_RELAY_SECRET` (x-relay-secret header) so only the agent/callops can call it.
+- **`POST /api/sts/mark`** `{ product, msisdn, action, durationSeconds? }` — the relay:
+  - press 1 or `action: "subscribe"` → STS `POST /avm/{productGUID}/{msisdn}`
+  - press 9, `optout`, or `action: "opt_out"` → STS `POST /cancel/{productGUID}/{msisdn}`
+- Backwards-compatible aliases accepted by the route: `agent` for `product`, `number` for
+  `msisdn`, and `CallDuration` for `durationSeconds`.
+- **GUID is per product**: `STS_GUID_SEEKER`, `STS_GUID_GRACE`, ... resolved by
+  `guidForProduct()`. A campaign dialing as seeker relays under the seeker GUID.
+- Optional `STS_RELAY_SECRET` (`x-relay-secret` header) so only the agent/callops can call it.
 - The AVM result vocabulary table above still applies to `call_records`/reporting (callops-side); the
   relay is separate and outbound only.
 
 **Caller:** the LiveKit agent worker captures the DTMF and posts the result to callops; whoever owns
-that handoff calls `/api/sts/mark` (or STS directly). Needs the real per-agent GUID values to go live.
+that handoff calls `/api/sts/mark` (or STS directly). Needs the real per-product GUID values to go live.

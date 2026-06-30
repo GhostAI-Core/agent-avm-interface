@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
-import { callopsGet, callopsErrorResponse } from '@/utils/callops'
+import { callopsGet, callopsItems, callopsErrorResponse } from '@/utils/callops'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Dashboard-wide: all campaigns' intents tagged with campaign_id (drop-off insights).
-    const { companies } = await callopsGet<{ companies: { id: number }[] }>('/companies', token)
+    const companies = await callopsItems<{ id: number }>('/companies', token)
     const all: Intent[] = []
     for (const co of companies ?? []) {
       const res = await callopsGet(`/companies/${co.id}/intent-stats?from_date=${date}&to_date=${date}`, token)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
-import { callopsGet, callopsErrorResponse } from '@/utils/callops'
+import { callopsGet, callopsItems, callopsErrorResponse } from '@/utils/callops'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       const res = await callopsGet(`/campaigns/${campaignId}/calls`, token)
       return NextResponse.json({ logs: rows(res) })
     }
-    const { companies } = await callopsGet<{ companies: { id: number }[] }>('/companies', token)
+    const companies = await callopsItems<{ id: number }>('/companies', token)
     const all: Row[] = []
     for (const co of companies ?? []) {
       all.push(...rows(await callopsGet(`/companies/${co.id}/calls`, token)))

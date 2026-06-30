@@ -29,6 +29,15 @@ async function call<T>(method: string, path: string, token: string, body?: unkno
 }
 
 export const callopsGet = <T>(path: string, token: string) => call<T>('GET', path, token)
+
+// List endpoints return the paginated `{items: [...]}` envelope. Tolerate the older
+// `{companies}`/`{campaigns}` shapes and a bare array too, so a key mismatch can never
+// silently empty the dashboard again.
+export async function callopsItems<T = unknown>(path: string, token: string): Promise<T[]> {
+  const d = await callopsGet<{ items?: T[]; companies?: T[]; campaigns?: T[] } | T[]>(path, token)
+  if (Array.isArray(d)) return d
+  return d.items ?? d.companies ?? d.campaigns ?? []
+}
 export const callopsPost = <T>(path: string, token: string, body?: unknown) =>
   call<T>('POST', path, token, body)
 export const callopsPatch = <T>(path: string, token: string, body?: unknown) =>

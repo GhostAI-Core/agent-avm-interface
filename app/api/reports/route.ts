@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
-import { callopsGet, callopsErrorResponse } from '@/utils/callops'
+import { callopsGet, callopsItems, callopsErrorResponse } from '@/utils/callops'
 import type { Agent, CampaignReport } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
   if (!token) return unauthorized()
 
   try {
-    const { companies } = await callopsGet<{ companies: { id: number }[] }>('/companies', token)
+    const companies = await callopsItems<{ id: number }>('/companies', token)
     const rows: CampaignReport[] = []
     for (const co of companies ?? []) {
       const [perf, camps] = await Promise.all([

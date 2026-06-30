@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
-import { callopsGet, callopsPost, callopsErrorResponse } from '@/utils/callops'
+import { callopsItems, callopsPost, callopsErrorResponse } from '@/utils/callops'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,8 +10,8 @@ export async function GET() {
   const { token } = await getAccessToken()
   if (!token) return unauthorized()
   try {
-    const data = await callopsGet<{ companies: unknown[] }>('/companies', token)
-    return NextResponse.json({ companies: data.companies ?? [] })
+    const companies = await callopsItems('/companies', token)
+    return NextResponse.json({ companies })
   } catch (e) {
     return callopsErrorResponse(e)
   }

@@ -6,12 +6,11 @@ networks:
 
 services:
   agent-avm-web-web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
-        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
+    # Prebuilt image from CI (.github/workflows/build-push.yml) → GHCR. Arcane git-sync
+    # deploys by pulling this image (it can't build `build:` services). The NEXT_PUBLIC_*
+    # client values are baked at CI build time; runtime secrets come from .env below.
+    image: ghcr.io/ghostai-core/agent-avm-interface:latest
+    pull_policy: always
     expose:
       - "${WEB_PORT:-3000}"
     env_file:

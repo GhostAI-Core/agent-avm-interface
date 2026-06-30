@@ -163,6 +163,34 @@ export interface CallRecord {
   called_at: string
 }
 
+/** A campaign contact as returned by CallOps GET /campaigns/{id}/contacts. CallOps owns
+ *  identity (one canonical contact per phone), E.164 normalisation, and per-campaign status. */
+export interface Contact {
+  id: number
+  campaign_id: number
+  phone: string
+  first_name?: string | null
+  last_name?: string | null
+  /** callops /lookups/contact-statuses: pending, in_progress, dialed, failed, retry, archived, do_not_call. */
+  status: string
+  network?: string | null
+  retry_count?: number | null
+  last_attempted_at?: string | null
+  created_at?: string
+}
+
+/** A SIP trunk as returned by CallOps GET /companies/{id}/sip-trunks. CallOps owns the table
+ *  and credentials — auth_username/auth_password are never present in responses. */
+export interface SipTrunk {
+  id: number
+  company_id?: number
+  name: string
+  from_number?: string | null
+  livekit_trunk_id?: string | null
+  live?: boolean
+  status?: string
+}
+
 /** Raw row the LiveKit agent dumps into `call_events`; a DB trigger ETLs it into call_records. */
 export interface CallEvent {
   id: number

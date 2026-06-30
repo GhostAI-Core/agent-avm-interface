@@ -23,32 +23,33 @@
 
 ## 4. Contacts management view (M2-4)
 
-- [ ] 4.1 Create `components/ContactsView.tsx`: table (phone, name, status chip, network, retry count, last attempted) from `GET /campaigns/{id}/contacts?page&search&status`
-- [ ] 4.2 Status filter from `useLookup('contact-statuses')`; search + pagination wired
-- [ ] 4.3 CSV import: parse via `lib/parseCsv.ts`, `POST /campaigns/{id}/contacts/import`; show created/updated/rejected + `errors`
-- [ ] 4.4 Row actions Archive / Retry / DNC via `/contacts/{id}/{archive,retry,do-not-call}`
-- [ ] 4.5 Add "Contacts" entry to `Sidebar.tsx`; verify the full view against local CallOps
+- [x] 4.1 Create `components/ContactsView.tsx`: table (phone, name, status chip, network, retry count, last attempted) from `GET /campaigns/{id}/contacts?page&search&status` — proxied via new `app/api/campaigns/[id]/contacts/route.ts`; campaign-scope selector + masked phone
+- [x] 4.2 Status filter from `useLookup('contact-statuses')`; search (Enter/button) + prev/next pagination wired (page resets on scope/filter change)
+- [x] 4.3 CSV import: parse via `lib/parseCsv.ts` (`parseContacts`), `POST /campaigns/{id}/contacts/import` (new route); shows created/updated/duplicates/rejected summary
+- [x] 4.4 Row actions Archive / Retry / DNC via new `app/api/contacts/[id]/[action]/route.ts` (allowlisted) → `/contacts/{id}/{archive,retry,do-not-call}`
+- [x] 4.5 Added "Contacts" entry to `Sidebar.tsx` + `app/page.tsx` view + title. ⚠ NOT yet verified against local CallOps (not running this session) — see test plan
+- [x] 4.6 Added `Contact` type to `types/index.ts`
 
 ## 5. Dashboard analytics (M2-3)
 
-- [ ] 5.1 Add proxy reads for `GET /companies/{id}/dashboard{,/live,/outcomes,/call-volume,/campaign-performance}` and `/intent-stats`
-- [ ] 5.2 Point KPI cards, reports table, OutcomeDonut, call-volume chart, live queue at these; `CallQuality.tsx` ← intent-stats
-- [ ] 5.3 **Remove** the local roll-up: `REPORT_KEYS`/`REPORT_HEADERS` (`app/page.tsx`), client-side summation (`lib/dashboardInsights.tsx`), positional donut buckets (`Charts.tsx`/`lib/chartTheme.ts`)
-- [ ] 5.4 Verify opt-out shown separately and excluded from connected; figures match CallOps before/after
+- [x] 5.1 `app/api/reports` ← CallOps `/companies/{id}/dashboard/campaign-performance` (joined with `/companies/{id}/campaigns` for agent/status); `app/api/intents` ← `/campaigns/{id}/intent-stats` (per-campaign) + `/companies/{id}/intent-stats` (dashboard-wide fan-out). No Supabase `call_logs`/`intent_stats`/`call_records` reads remain in these routes.
+- [x] 5.2 KPI cards / reports table / OutcomeDonut / CallQuality keep working — **FE contract preserved** (route maps CallOps → existing `CampaignReport`/`IntentStat` shapes), so no consumer change needed
+- [~] 5.3 **Roll-up NOT removed (non-destructive approach)**: `REPORT_KEYS`/`dashboardInsights` summation/donut buckets still exist but now operate on CallOps-sourced data. Decision (Garth 2026-06-30): CallOps 0.2.0 has no cost/CPL/spend or legacy outcome vocab (qualified/voicemail/no_speech/hangup/ni/dnq/callback/busy) → those columns/widgets read **0**. Pruning the now-dead-zero widgets is deferred cleanup, not compliance.
+- [~] 5.4 `connected` from CallOps already EXCLUDES opt-out (backend contract). Figures need click-testing via clauto; "before/after" parity is N/A since the legacy source is intentionally retired.
 
 ## 6. Call history + detail (M2-5)
 
-- [ ] 6.1 Rewire `app/api/logs/route.ts` (and per-campaign call reads) to `GET /companies/{id}/calls` / `GET /campaigns/{id}/calls` with filters
-- [ ] 6.2 `CampaignDetail.tsx` call table reads proxied calls; render `outcome` + `business_disposition` distinctly (missing → "—"); CSV export carries both
-- [ ] 6.3 Call detail: `GET /calls/{id}` + `GET /calls/{id}/recording` (signed URL open)
-- [ ] 6.4 Call detail: live split reads `GET /calls/{id}/call-report` (telephony narrative) + `GET /calls/{id}/telemetry` (model usage); empty/absent → graceful unavailable state (NOT the combined-telemetry spec)
+- [x] 6.1 `app/api/logs/route.ts` already proxies `GET /companies/{id}/calls` / `GET /campaigns/{id}/calls` (prior M2 commit)
+- [~] 6.2 `CampaignDetail.tsx` already renders `outcome` + `business_disposition` distinctly with "—" + CSV (from superseded change); reads proxied calls via `/api/logs`
+- [x] 6.3 Proxy routes added: `app/api/calls/[id]/route.ts` (detail) + `app/api/calls/[id]/recording/route.ts`. **FE detail panel consumer NOT built yet** (needs a real call row to verify)
+- [x] 6.4 Proxy routes added: `app/api/calls/[id]/call-report/route.ts` + `app/api/calls/[id]/telemetry/route.ts` (live split, normalised). **FE panel consumer NOT built yet**
 - [ ] 6.5 Verify against a real call row on local CallOps; script-only call shows no model-usage without error
 
 ## 7. SIP trunks (M2-6)
 
-- [ ] 7.1 Rewire `TelephonyView.tsx` SIP Trunks tab to `GET/POST /companies/{id}/sip-trunks` + update/archive; remove `lib/telephony-mock.ts`
-- [ ] 7.2 Add health-check (`GET /sip-trunks/{id}/health`) and test-call (`POST /sip-trunks/{id}/test-call`) actions; `ok=false` at HTTP 200 shown as failure, not crash
-- [ ] 7.3 Confirm no credential fields are rendered anywhere in trunk UI
+- [x] 7.1 New `components/telephony/SipTrunksPanel.tsx` (CallOps-backed) replaces the mock `TrunksPanel` in the SIP Trunks tab — list/create/archive via new proxy routes (`app/api/companies/[id]/sip-trunks`, `app/api/sip-trunks/[id]` + `/archive`). Also rewired the wizard catalog `app/api/trunks` GET off Supabase `sip_trunks` → CallOps `/companies/{id}/sip-trunks` (kept output shape; wizard unaffected). Dead mock `TrunksPanel`+helpers removed. **Other Telephony tabs (Settings/Providers/Rules/Agents/Test-Dial/Status) stay mock** — no CallOps surface yet; `lib/telephony-mock.ts` retained for them. ⚠ NOT verified against prod (needs logged-in dash)
+- [x] 7.2 Health-check (`app/api/sip-trunks/[id]/health`) + test-call (`app/api/sip-trunks/[id]/test-call`) wired; test-call surfaces `ok:false` at HTTP 200 as a failure, not a crash
+- [x] 7.3 No credential fields rendered — `auth_username`/`auth_password` are entered on create only, never read back (CallOps never returns them)
 
 ## 8. Cleanup, supersede, validate
 

@@ -15,6 +15,7 @@ import AuthView from '@/components/AuthView'
 import SecurityView from '@/components/SecurityView'
 import SettingsView from '@/components/SettingsView'
 import TelephonyView from '@/components/TelephonyView'
+import ContactsView from '@/components/ContactsView'
 import { OutcomeDonut, CampaignBar, SpendChart, FunnelChart } from '@/components/Charts'
 import ProfileView from '@/components/ProfileView'
 import CampaignDetail from '@/components/CampaignDetail'
@@ -61,6 +62,7 @@ const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Control Room',
   companies: 'Companies',
   campaigns: 'Campaigns',
+  contacts:  'Contacts',
   reports:   'Campaign Report',
   quality:   'Call Quality',
   security:  'Security Audit Log',
@@ -824,6 +826,9 @@ export default function Page() {
               />
             </>
           )}
+
+          {/* ── CONTACTS ── */}
+          {view === 'contacts' && <ContactsView />}
 
           {/* ── CALL QUALITY ── */}
           {view === 'quality' && <CallQuality campaigns={campaigns} />}

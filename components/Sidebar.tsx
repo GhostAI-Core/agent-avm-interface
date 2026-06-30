@@ -18,6 +18,7 @@ const NAV_GROUPS = [
       { id: 'dashboard', label: 'Control Room'     },
       { id: 'companies', label: 'Companies'       },
       { id: 'campaigns', label: 'Campaigns'       },
+      { id: 'contacts',  label: 'Contacts'       },
       { id: 'reports',   label: 'Campaign Report' },
       { id: 'quality',   label: 'Call Quality'    },
     ],

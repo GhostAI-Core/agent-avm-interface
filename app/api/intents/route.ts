@@ -1,47 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
+import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
+import { callopsGet, callopsErrorResponse } from '@/utils/callops'
 
 export const dynamic = 'force-dynamic'
+
+// Intent waterfall sourced from CallOps intent-stats — NOT Supabase `intent_stats`/`call_records`.
+//  - per campaign:  GET /campaigns/{id}/intent-stats  -> {connected_total, intents:[{intent_name,step,reached}]}
+//  - dashboard-wide: GET /companies/{id}/intent-stats (fan-out) -> intents tagged with campaign_id
+// Output contract preserved for existing consumers (CallQuality + drop-off insight).
+
+type Intent = { campaign_id?: number; intent_name: string; step: number; reached: number }
+
+function intentsOf(res: unknown): Intent[] {
+  const r = res as { intents?: Intent[]; items?: Intent[] }
+  return r?.intents ?? r?.items ?? (Array.isArray(res) ? (res as Intent[]) : [])
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const campaignId = searchParams.get('campaignId')
   const date = searchParams.get('date') || new Date().toISOString().slice(0, 10)
 
-  const { supabase, user } = await getAuthUser()
-  if (!user) return unauthorized()
+  const { token } = await getAccessToken()
+  if (!token) return unauthorized()
 
-  // No campaignId → all intent rows for the date (dashboard drop-off insights)
-  if (!campaignId) {
-    const { data, error } = await supabase
-      .from('intent_stats')
-      .select('campaign_id, intent_name, step, reached')
-      .eq('day', date)
+  try {
+    // Per-campaign: the "% of Connected" waterfall for one campaign.
+    if (campaignId) {
+      const res = await callopsGet<{ connected_total?: number; intents?: Intent[] }>(
+        `/campaigns/${campaignId}/intent-stats?date=${date}`, token,
+      )
+      const intents = intentsOf(res).map((i) => ({ intent_name: i.intent_name, step: i.step, reached: i.reached }))
+      return NextResponse.json({ day: date, connectedTotal: res.connected_total ?? 0, intents })
+    }
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ day: date, intents: data ?? [] })
+    // Dashboard-wide: all campaigns' intents tagged with campaign_id (drop-off insights).
+    const { companies } = await callopsGet<{ companies: { id: number }[] }>('/companies', token)
+    const all: Intent[] = []
+    for (const co of companies ?? []) {
+      const res = await callopsGet(`/companies/${co.id}/intent-stats?from_date=${date}&to_date=${date}`, token)
+        .catch(() => ({}))
+      for (const i of intentsOf(res)) {
+        if (i.campaign_id != null) all.push(i)
+      }
+    }
+    return NextResponse.json({ day: date, intents: all })
+  } catch (e) {
+    return callopsErrorResponse(e)
   }
-
-  const { data, error } = await supabase
-    .from('intent_stats')
-    .select('intent_name, step, reached')
-    .eq('campaign_id', campaignId)
-    .eq('day', date)
-    .order('intent_name', { ascending: true })
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!data || data.length === 0) {
-    return NextResponse.json({ day: date, connectedTotal: 0, intents: [] })
-  }
-
-  // Connected calls that day = denominator for "% of Connected"
-  const { count } = await supabase
-    .from('call_records')
-    .select('id', { count: 'exact', head: true })
-    .eq('campaign_id', campaignId)
-    .in('outcome', ['connected', 'qualified'])
-    .gte('called_at', `${date}T00:00:00`)
-    .lte('called_at', `${date}T23:59:59`)
-
-  return NextResponse.json({ day: date, connectedTotal: count || 0, intents: data })
 }

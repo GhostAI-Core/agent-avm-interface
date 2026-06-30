@@ -173,15 +173,28 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
 
   const hasCompanies = companies.length > 0
 
-  // Load the configured outbound trunks for the Trunk step.
+  // Load the selected company's outbound trunks (CallOps-owned, per-company) for the Trunk step.
+  // Trunks belong to a company now, so the catalog reloads when the company changes; with no
+  // company picked yet there are no trunks to offer.
   useEffect(() => {
     let cancelled = false
-    fetch('/api/trunks')
-      .then(r => (r.ok ? r.json() : { trunks: [] }))
-      .then(j => { if (!cancelled) setTrunks(j.trunks ?? []) })
-      .catch(() => { /* leave empty → use default trunk */ })
+    if (!companyId) {
+      Promise.resolve().then(() => { if (!cancelled) setTrunks([]) })
+      return () => { cancelled = true }
+    }
+    fetch(`/api/companies/${companyId}/sip-trunks`)
+      .then(r => (r.ok ? r.json() : { items: [] }))
+      .then(j => {
+        if (cancelled) return
+        const items = (j.items ?? []) as Array<{ id: number; name?: string; from_number?: string | null; livekit_trunk_id?: string | null }>
+        setTrunks(items.map(t => ({
+          id: t.id, name: t.name ?? `Trunk ${t.id}`,
+          livekit_trunk_id: t.livekit_trunk_id ?? '', from_number: t.from_number ?? '',
+        })))
+      })
+      .catch(() => { if (!cancelled) setTrunks([]) })
     return () => { cancelled = true }
-  }, [])
+  }, [companyId])
 
   // Measure the script's audio length (for the schedule estimate) whenever the source changes.
   useEffect(() => {
@@ -383,9 +396,11 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
               </Select>
             </FormControl>
             <Typography variant="caption" color="text.secondary">
-              {trunks.length === 0
-                ? 'No trunks configured — the campaign will dial via the default LiveKit trunk.'
-                : 'The SIP outbound trunk this campaign dials through (caller ID comes from the trunk).'}
+              {!companyId
+                ? 'Pick a company first — trunks are configured per company.'
+                : trunks.length === 0
+                  ? 'This company has no trunks yet — add one under Telephony → SIP Trunks, or the campaign won’t be able to dial.'
+                  : 'The SIP outbound trunk this campaign dials through (caller ID comes from the trunk).'}
             </Typography>
           </Stack>
         </Box>

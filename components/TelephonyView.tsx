@@ -15,10 +15,11 @@ import GlassCard from '@/components/ui/GlassCard'
 import StatusChip from '@/components/ui/StatusChip'
 import CrudSection, { type Column } from '@/components/telephony/CrudSection'
 import type { FieldDef, FormValues } from '@/components/telephony/EntityFormDrawer'
-import { useTelephonyStore, type TestResult, type DialResult, type TrunkTestResult } from '@/lib/telephony-mock'
+import { useTelephonyStore, type TestResult, type DialResult } from '@/lib/telephony-mock'
 import { colors } from '@/lib/tokens'
+import SipTrunksPanel from '@/components/telephony/SipTrunksPanel'
 import type {
-  SipProvider, OutboundTrunk, DispatchRule, TelephonyAgent, SystemStatus,
+  SipProvider, DispatchRule, TelephonyAgent, SystemStatus,
 } from '@/types/telephony'
 
 const TABS = ['Settings', 'SIP Providers', 'Outbound Trunks', 'Dispatch Rules', 'Agents', 'Test Dial', 'Status']
@@ -31,7 +32,7 @@ export default function TelephonyView() {
     <Box>
       <Typography sx={{ fontSize: 22, fontWeight: 800, mb: 0.5 }}>Telephony</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        LiveKit telephony management. Mock data — changes are saved to this browser.
+        LiveKit telephony management. SIP Trunks are live via CallOps; the other tabs are still mock (saved to this browser).
       </Typography>
 
       {/* Custom tab bar — uppercase, letter-spaced, green underline on the active tab (mockup). */}
@@ -67,7 +68,7 @@ export default function TelephonyView() {
 
       {tab === 0 && <SettingsPanel store={store} />}
       {tab === 1 && <ProvidersPanel store={store} />}
-      {tab === 2 && <TrunksPanel store={store} />}
+      {tab === 2 && <SipTrunksPanel />}
       {tab === 3 && <RulesPanel store={store} />}
       {tab === 4 && <AgentsPanel store={store} />}
       {tab === 5 && <TestDialPanel store={store} />}
@@ -157,167 +158,6 @@ function ProvidersPanel({ store }: { store: Store }) {
       onDelete={store.deleteProvider}
       onToggle={store.toggleProvider}
     />
-  )
-}
-
-/* ── 3. Outbound Trunks ────────────────────────────────────────────────── */
-// Trunk fields mirror the callops /livekit/trunks schema exactly. `numbers` is a
-// string[] upstream; the drawer edits it as a chips field (Enter to add, drag to
-// reorder), so the form value is already a string[].
-function parseNumbers(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean)
-  return String(raw ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-}
-
-// Trunk-list numbers summary: 0 → "—", exactly 1 → the number, 2+ → "multiple".
-// The full list is still editable in the drawer.
-function summariseNumbers(numbers?: string[]): string {
-  const list = (numbers ?? []).filter(Boolean)
-  if (list.length === 0) return '—'
-  if (list.length === 1) return list[0]
-  return 'multiple'
-}
-
-// Diff a trunk edit down to the fields callops should PATCH. A blank auth_password means
-// "unchanged" (callops never returns it, so we can't diff it) and is omitted.
-function diffTrunk(
-  row: OutboundTrunk,
-  values: Omit<OutboundTrunk, 'id'>,
-): Partial<Pick<OutboundTrunk, 'name' | 'address' | 'numbers' | 'auth_username' | 'auth_password'>> {
-  const changed: Partial<Pick<OutboundTrunk, 'name' | 'address' | 'numbers' | 'auth_username' | 'auth_password'>> = {}
-  if (values.name !== row.name) changed.name = values.name
-  if (values.address !== row.address) changed.address = values.address
-  if (values.auth_username !== row.auth_username) changed.auth_username = values.auth_username
-  const next = values.numbers ?? []
-  const prev = row.numbers ?? []
-  if (next.length !== prev.length || next.some((n, i) => n !== prev[i])) changed.numbers = next
-  if (values.auth_password) changed.auth_password = values.auth_password
-  return changed
-}
-
-function TrunksPanel({ store }: { store: Store }) {
-  // Surfaces the result of the most recent create/update proxy call.
-  const [save, setSave] = useState<{ ok: boolean; message: string } | null>(null)
-  // Test-call form + result.
-  const [testTrunk, setTestTrunk] = useState('')
-  const [testPhone, setTestPhone] = useState('')
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<TrunkTestResult | null>(null)
-
-  const fields: FieldDef[] = [
-    { name: 'name', label: 'Name', type: 'text', required: true },
-    { name: 'address', label: 'SIP Address', type: 'text', required: true, placeholder: 'sip.provider.com' },
-    { name: 'numbers', label: 'Numbers', type: 'chips', required: true,
-      placeholder: '+27111234567', helperText: 'Press Enter to add a number; drag chips to reorder.' },
-    { name: 'auth_username', label: 'Auth Username', type: 'text', required: true },
-    { name: 'auth_password', label: 'Auth Password', type: 'password', required: true,
-      helperText: 'Re-enter on every save — callops never returns it.' },
-    { name: 'enabled', label: 'Enabled', type: 'switch' },
-  ]
-  const columns: Column<OutboundTrunk>[] = [
-    { key: 'name', label: 'Name' },
-    { key: 'address', label: 'Address' },
-    { key: 'numbers', label: 'Numbers', render: (r) => summariseNumbers(r.numbers) },
-    { key: 'trunk_id', label: 'LiveKit Trunk', render: (r) => r.trunk_id || '—' },
-  ]
-  const fromForm = (v: FormValues): Omit<OutboundTrunk, 'id'> => ({
-    name: String(v.name ?? ''), address: String(v.address ?? ''),
-    numbers: parseNumbers(v.numbers), auth_username: String(v.auth_username ?? ''),
-    auth_password: v.auth_password ? String(v.auth_password) : undefined,
-    enabled: Boolean(v.enabled),
-  })
-
-  // Create: POST to callops, then mirror the saved row (incl. the returned trunk_id) locally.
-  async function createTrunk(values: Omit<OutboundTrunk, 'id'>) {
-    setSave(null)
-    const res = await store.saveTrunk(values)
-    if (!res.ok) { setSave({ ok: false, message: res.message }); return }
-    store.createTrunk({ ...values, trunk_id: res.trunk_id ?? values.trunk_id })
-    setSave({ ok: true, message: res.message })
-  }
-
-  // Edit: PATCH only the changed fields to callops (keyed on the LiveKit trunk_id). A trunk that
-  // was never provisioned upstream (no trunk_id) can't be PATCHed — guard with a clear message.
-  async function editTrunk(id: string, values: Omit<OutboundTrunk, 'id'>) {
-    setSave(null)
-    const row = store.trunks.find((t) => t.id === id)
-    if (!row) return
-    if (!row.trunk_id) {
-      setSave({ ok: false, message: `"${row.name}" isn't provisioned in LiveKit yet — save it first.` })
-      return
-    }
-    const changed = diffTrunk(row, values)
-    if (Object.keys(changed).length === 0) { setSave({ ok: true, message: 'No changes to save.' }); return }
-    const res = await store.patchTrunk(row.trunk_id, changed)
-    if (!res.ok) { setSave({ ok: false, message: res.message }); return }
-    store.updateTrunk(id, { ...changed, trunk_id: res.trunk_id ?? row.trunk_id })
-    setSave({ ok: true, message: `Trunk "${values.name}" updated.` })
-  }
-
-  // Delete: DELETE on callops, then drop the local row on success. An un-provisioned trunk only
-  // exists client-side, so it's removed locally without an upstream call.
-  async function removeTrunk(id: string) {
-    setSave(null)
-    const row = store.trunks.find((t) => t.id === id)
-    if (!row) return
-    if (!row.trunk_id) { store.deleteTrunk(id); return }
-    const res = await store.deleteTrunkRemote(row.trunk_id)
-    if (!res.ok) { setSave({ ok: false, message: res.message }); return }
-    store.deleteTrunk(id)
-    setSave({ ok: true, message: `Trunk "${row.name}" deleted.` })
-  }
-
-  async function runTestCall() {
-    setTesting(true); setTestResult(null)
-    setTestResult(await store.testTrunkCall(testTrunk, testPhone))
-    setTesting(false)
-  }
-
-  return (
-    <Stack spacing={3}>
-      {save && <Alert severity={save.ok ? 'success' : 'error'} onClose={() => setSave(null)}>{save.message}</Alert>}
-      <CrudSection<OutboundTrunk>
-        title="Outbound Trunks" entityLabel="Trunk"
-        items={store.trunks} columns={columns} fields={fields}
-        rowKey={(r) => r.id}
-        toFormValues={(r) => ({
-          name: r.name, address: r.address, numbers: [...(r.numbers ?? [])],
-          auth_username: r.auth_username, auth_password: '', enabled: r.enabled,
-        })}
-        emptyForm={{ name: '', address: '', numbers: [], auth_username: '', auth_password: '', enabled: true }}
-        onCreate={(v) => createTrunk(fromForm(v))}
-        onUpdate={(id, v) => editTrunk(id, fromForm(v))}
-        onDelete={(id) => removeTrunk(id)}
-        onToggle={store.toggleTrunk}
-      />
-
-      <Paper sx={{ p: 3, maxWidth: 620 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Test call</Typography>
-        <Stack spacing={2}>
-          {testResult && (
-            <Alert severity={testResult.ok ? 'success' : 'error'}>{testResult.message}</Alert>
-          )}
-          <TextField label="Trunk" size="small" fullWidth select value={testTrunk}
-            onChange={(e) => setTestTrunk(e.target.value)} disabled={store.trunks.length === 0}
-            helperText={store.trunks.length === 0 ? 'Create a trunk first.' : undefined}>
-            {store.trunks.map((t) => (
-              <MenuItem key={t.id} value={t.trunk_id ?? ''} disabled={!t.trunk_id}>
-                {t.name}{t.trunk_id ? '' : ' (not provisioned)'}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField label="Phone Number" size="small" fullWidth value={testPhone}
-            onChange={(e) => setTestPhone(e.target.value)} placeholder="+27 82 123 4567" />
-          <Box>
-            <Button variant="contained" onClick={runTestCall}
-              disabled={testing || !testTrunk || !testPhone}
-              startIcon={testing ? <CircularProgress size={16} /> : undefined}>
-              {testing ? 'Calling…' : 'Place test call'}
-            </Button>
-          </Box>
-        </Stack>
-      </Paper>
-    </Stack>
   )
 }
 

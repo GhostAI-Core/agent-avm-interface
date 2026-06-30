@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, type ReactNode } from 'react'
-import Dialog from '@mui/material/Dialog'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import FormControl from '@mui/material/FormControl'
@@ -324,7 +324,7 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
   const stepBlocked = blockedNoCompany || missing.length > 0
 
   return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth
+    <ResponsiveDialog open onClose={onClose} maxWidth="sm" fullWidth
       slotProps={{ paper: { sx: { overflow: 'hidden', borderRadius: `${radius.lg}px` } } }}>
       <WizardHeader
         icon={<CampaignIcon fontSize="small" />}
@@ -518,6 +518,6 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
           {isLast ? (loading ? 'Creating…' : 'Create Campaign') : 'Next'}
         </Button>
       </DialogActions>
-    </Dialog>
+    </ResponsiveDialog>
   )
 }

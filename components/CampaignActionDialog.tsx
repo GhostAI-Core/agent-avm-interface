@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import Dialog from '@mui/material/Dialog'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
@@ -131,7 +131,7 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
   const dropdownValue = scripts.some(s => s.publicUrl === scriptUrl) ? scriptUrl : ''
 
   return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+    <ResponsiveDialog open onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ fontWeight: 700 }}>
         {mode === 'edit' ? 'Edit Campaign' : 'Reuse as Template'}
         <Typography variant="body2" color="text.secondary">
@@ -254,6 +254,6 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
           {mode === 'edit' ? 'Save' : 'Create from template'}
         </Button>
       </DialogActions>
-    </Dialog>
+    </ResponsiveDialog>
   )
 }

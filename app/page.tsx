@@ -46,13 +46,14 @@ import MenuItem from '@mui/material/MenuItem'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import TextField from '@mui/material/TextField'
-import Dialog from '@mui/material/Dialog'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
 import DataTable, { type DataTableColumn } from '@/components/ui/DataTable'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { AgentChip as TableAgentChip, StatusChip as TableStatusChip, ActionButton, ActionGroup } from '@/components/ui/tableCells'
 import BusinessIcon from '@mui/icons-material/Business'
 import CloseIcon from '@mui/icons-material/Close'
@@ -133,6 +134,11 @@ export default function Page() {
   const [companiesView,    setCompaniesView]    = useState<'cards' | 'table'>('table')
   const [campaignsView,    setCampaignsView]    = useState<'cards' | 'table'>('table')
   const dash = useDashboardLayout()
+  const isMobile = useIsMobile()
+  // On phones the wide scroll-tables are unusable, so list views fall back to the card UI
+  // (Phase 2 gives DataTable a stacked-card mobile layout; until then, force cards here).
+  const companiesViewEff = isMobile ? 'cards' : companiesView
+  const campaignsViewEff = isMobile ? 'cards' : campaignsView
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -590,7 +596,7 @@ export default function Page() {
       <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} onReplayTour={() => setTourStep(0)} />
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <TopBar title={VIEW_TITLES[view]} campaigns={dashCampaigns} onMenu={() => setSideOpen(true)} onLogout={handleLogout} onTour={() => setTourStep(0)} />
-        <Box component="main" sx={{ flex: 1, p: 3, pb: '6rem', overflowY: 'auto' }}>
+        <Box component="main" sx={{ flex: 1, p: { xs: 1.5, sm: 3 }, pb: '6rem', overflowY: 'auto' }}>
           
           {/* ── DASHBOARD ── */}
           {view === 'dashboard' && (
@@ -641,12 +647,12 @@ export default function Page() {
                   <Typography variant="caption" color="text.secondary">{companyStats.length} total</Typography>
                 </Stack>
                 <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
-                  <ViewToggle value={companiesView} onChange={setCompaniesView} />
+                  {!isMobile && <ViewToggle value={companiesView} onChange={setCompaniesView} />}
                   <Button variant="contained" data-tour="new-company" onClick={() => setShowCompanyModal(true)}>+ New Company</Button>
                 </Stack>
               </Stack>
 
-              {companiesView === 'cards' ? (
+              {companiesViewEff === 'cards' ? (
                 <Grid container spacing={2}>
                   {companyStats.map(co => (
                     <Grid key={co.name} size={{ xs: 12, sm: 6, lg: 4 }}>
@@ -702,12 +708,12 @@ export default function Page() {
                   <Typography variant="caption" color="text.secondary">{activeCount} active</Typography>
                 </Stack>
                 <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
-                  <ViewToggle value={campaignsView} onChange={setCampaignsView} />
+                  {!isMobile && <ViewToggle value={campaignsView} onChange={setCampaignsView} />}
                   <Button variant="contained" data-tour="new-campaign" onClick={() => setShowModal(true)}>+ New Campaign</Button>
                 </Stack>
               </Stack>
 
-              {campaignsView === 'table' ? (
+              {campaignsViewEff === 'table' ? (
                 <DataTable<Campaign>
                   rows={campaigns}
                   columns={campaignColumns}
@@ -862,7 +868,7 @@ export default function Page() {
         ]
         const active = charts.find(c => c.id === expandedChart)!
         return (
-          <Dialog open onClose={() => { setExpandedChart(null); setExpandCampaign('') }} maxWidth="lg" fullWidth>
+          <ResponsiveDialog open onClose={() => { setExpandedChart(null); setExpandCampaign('') }} maxWidth="lg" fullWidth>
             <DialogTitle sx={{ fontWeight: 800 }}>
               <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box>
@@ -891,7 +897,7 @@ export default function Page() {
             <DialogActions>
               <Button onClick={() => { setExpandedChart(null); setExpandCampaign('') }}>Close</Button>
             </DialogActions>
-          </Dialog>
+          </ResponsiveDialog>
         )
       })()}
 
@@ -903,7 +909,7 @@ export default function Page() {
           onNeedCompany={() => { setShowModal(false); setShowCompanyModal(true) }}
         />
       )}
-      <Dialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth
+      <ResponsiveDialog open={showCompanyModal} onClose={() => setShowCompanyModal(false)} maxWidth="xs" fullWidth
         slotProps={{ paper: { sx: { overflow: 'hidden', borderRadius: `${radius.lg}px` } } }}
       >
         <Box sx={{
@@ -942,7 +948,7 @@ export default function Page() {
           <Button onClick={() => setShowCompanyModal(false)} variant="outlined">Cancel</Button>
           <Button variant="contained" onClick={createCompany} disabled={!newCompanyName.trim()}>Create</Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
       {campaignAction && (
         <CampaignActionDialog
           mode={campaignAction.mode}

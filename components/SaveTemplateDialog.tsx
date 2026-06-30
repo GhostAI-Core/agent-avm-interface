@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import Dialog from '@mui/material/Dialog'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import Box from '@mui/material/Box'
@@ -35,7 +35,7 @@ export default function SaveTemplateDialog({ onClose, onSave }: Props) {
   }
 
   return (
-    <Dialog
+    <ResponsiveDialog
       open
       onClose={onClose}
       maxWidth="xs"
@@ -100,6 +100,6 @@ export default function SaveTemplateDialog({ onClose, onSave }: Props) {
         <Button onClick={onClose} variant="outlined">Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={!name.trim() || saving}>{saving ? 'Saving…' : 'Save'}</Button>
       </DialogActions>
-    </Dialog>
+    </ResponsiveDialog>
   )
 }

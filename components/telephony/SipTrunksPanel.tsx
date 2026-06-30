@@ -14,7 +14,7 @@ import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import CircularProgress from '@mui/material/CircularProgress'
-import Dialog from '@mui/material/Dialog'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
@@ -228,7 +228,7 @@ export default function SipTrunksPanel() {
       </Paper>
 
       {/* Create dialog — credentials entered here only, never shown in the table. */}
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 700 }}>New SIP Trunk</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -248,10 +248,10 @@ export default function SipTrunksPanel() {
             {saving ? 'Creating…' : 'Create'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* Test-call dialog */}
-      <Dialog open={!!testFor} onClose={() => setTestFor(null)} maxWidth="xs" fullWidth>
+      <ResponsiveDialog open={!!testFor} onClose={() => setTestFor(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 700 }}>Test call — {testFor?.name}</DialogTitle>
         <DialogContent>
           <TextField autoFocus size="small" fullWidth label="Phone number" value={testPhone} sx={{ mt: 1 }}
@@ -265,7 +265,7 @@ export default function SipTrunksPanel() {
             {testing ? 'Calling…' : 'Place test call'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Stack>
   )
 }

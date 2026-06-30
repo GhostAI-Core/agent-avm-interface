@@ -150,7 +150,7 @@ export default function DataTable<R>({
       )}
 
       {/* ── Horizontal-scroll container ── */}
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
         {/* Header row */}
         <div
           style={{

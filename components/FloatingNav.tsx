@@ -13,9 +13,11 @@ const NAV = [
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ]
 
+// FAB sits bottom-right; the menu fans a quarter-arc UP-AND-LEFT into the viewport
+// (θ 90°→180°: from straight-up to straight-left), so every item lands on-screen.
 const TOTAL_ARC = 90
-const START_ANGLE = 180
-const RADIUS = 88
+const START_ANGLE = 90
+const RADIUS = 92
 
 function degToRad(d: number) { return (d * Math.PI) / 180 }
 
@@ -55,7 +57,8 @@ export default function FloatingNav({
         {NAV.map((item, i) => {
           const angle = START_ANGLE + (i / (NAV.length - 1)) * TOTAL_ARC
           const rad = degToRad(angle)
-          const tx = open ? -Math.cos(rad) * RADIUS : 0
+          // x = cosθ·R (0 → -R, rightward none → leftward); y = -sinθ·R (always ≤0, upward)
+          const tx = open ? Math.cos(rad) * RADIUS : 0
           const ty = open ? -Math.sin(rad) * RADIUS : 0
           const isActive = view === item.id
 

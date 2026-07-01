@@ -6,9 +6,14 @@ import type { User } from '@supabase/supabase-js'
 export async function getAuthUser(): Promise<{ supabase: ReturnType<typeof createClient>; user: User | null }> {
   const cookieStore = await cookies()
   const supabase = createClient(cookieStore)
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return { supabase, user: null }
-  return { supabase, user }
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) return { supabase, user: null }
+    return { supabase, user }
+  } catch {
+    // A stale/expired/corrupt session must resolve to "no user" (→ clean 401), never throw a 500.
+    return { supabase, user: null }
+  }
 }
 
 export function unauthorized() {
@@ -24,6 +29,11 @@ export async function getAccessToken(): Promise<{
 }> {
   const cookieStore = await cookies()
   const supabase = createClient(cookieStore)
-  const { data: { session } } = await supabase.auth.getSession()
-  return { supabase, token: session?.access_token ?? null }
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    return { supabase, token: session?.access_token ?? null }
+  } catch {
+    // Stale/expired session → null token (route returns a clean 401), never an unhandled 500.
+    return { supabase, token: null }
+  }
 }

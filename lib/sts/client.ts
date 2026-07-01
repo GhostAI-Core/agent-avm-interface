@@ -9,9 +9,9 @@ export { toE164 }
  * "this number subscribed (press 1) / opted out (press 9)" so STS manages contact on its side. We keep
  * no consent tables of our own. Outbound only — nothing here touches the working app→callops→LiveKit stream.
  *
- * The GUID is PER AGENT (per product): seeker has its own GUID, grace has its own. A campaign dialing
- * with the seeker agent relays under the seeker GUID. Configured via env:
- *   STS_GUID_SEEKER, STS_GUID_GRACE, …   (STS_GUID_<AGENT-UPPERCASED>)
+ * The GUID is PER PRODUCT: seeker has its own GUID, grace has its own. A campaign dialing
+ * the seeker product relays under the seeker GUID. Configured via env:
+ *   STS_GUID_SEEKER, STS_GUID_GRACE, …   (STS_GUID_<PRODUCT-UPPERCASED>)
  *   STS_SDP_BASE_URL                     default http://sdp.smartcalltech.co.za
  *
  * Endpoints (SDP spec rev 1.5):

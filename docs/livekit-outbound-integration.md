@@ -33,9 +33,9 @@ Two outbound paths exist:
 | Path | Use |
 |------|-----|
 | **Production UI path** | Operator controls campaign lifecycle through callops proxy routes. |
-| **Direct LiveKit CLI** | Developer/ops diagnostic path via `npm run dial`; not exposed to the browser. |
+| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial` and the legacy authenticated `POST /api/campaigns/:id/dial` route; not used by production campaign controls. |
 
-There is no `/api/campaigns/:id/dial` route and no `/api/simulate` fallback in the current codebase.
+There is no `/api/simulate` fallback in the current codebase.
 
 ---
 
@@ -45,7 +45,7 @@ There is no `/api/campaigns/:id/dial` route and no `/api/simulate` fallback in t
 
 | File | Role |
 |------|------|
-| `app/api/campaigns/[id]/[action]/route.ts` | Proxies `start`, `pause`, `stop`, and `status` to callops. Falls back to local status writes when callops env is unset. |
+| `app/api/campaigns/[id]/[action]/route.ts` | Proxies `start`, `pause`, `stop`, and `status` to callops. Falls back to local status writes only outside production when callops env is unset; production returns 503. |
 | `app/page.tsx` | Maps UI statuses to lifecycle actions and polls `GET /api/campaigns/:id/status` for running/paused campaigns. |
 | `types/index.ts` | `CampaignStatus` includes `stopped`; `CampaignLiveStatus` mirrors callops live counters. |
 | `scripts/callops-test.ts` | CLI harness for callops status, lifecycle, one-off test calls, outcome simulation, snapshots, and watch mode. |
@@ -55,8 +55,11 @@ There is no `/api/campaigns/:id/dial` route and no `/api/simulate` fallback in t
 
 | File | Role |
 |------|------|
-| `app/api/trunks/route.ts` | SIP trunk catalog for the campaign wizard; optionally cross-checks callops `/livekit/trunks`. |
+| `app/api/trunks/route.ts` | SIP trunk catalog for the campaign wizard; optionally cross-checks callops `/livekit/trunks`; proxies trunk create to callops. |
+| `app/api/trunks/[trunk_id]/route.ts` | Proxies LiveKit trunk PATCH/DELETE to callops by `ST_...` trunk id. |
+| `app/api/trunks/test-call/route.ts` | Proxies one-off SIP test calls to callops `/livekit/test-call`. |
 | `app/api/livekit/webhook/route.ts` | Signature-validated LiveKit webhook fallback updates to `call_records`. |
+| `app/api/campaigns/[id]/dial/route.ts` | Legacy direct LiveKit diagnostic batch dial route with local compliance gate. |
 | `lib/outbound-call.ts` | Direct LiveKit SDK helpers used by the diagnostic CLI. |
 | `lib/livekit.ts` | Server-only exports for LiveKit helpers and webhook receiver. |
 | `lib/phone.ts` | `normalizePhone()` for contact imports before dialing. |
@@ -71,7 +74,7 @@ There is no `/api/campaigns/:id/dial` route and no `/api/simulate` fallback in t
 | `GET /api/logs` | `call_records` |
 | `GET /api/reports` | `call_logs` joined to `campaigns` |
 | `GET /api/intents` | `intent_stats`; `call_records` denominator for campaign-specific views |
-| `GET /api/trunks` | `sip_trunks` |
+| `GET /api/trunks` | `sip_trunks`; optional callops live-trunk cross-check |
 
 ---
 
@@ -92,7 +95,7 @@ When an operator clicks Play/Pause/Stop:
 1. The browser calls `POST /api/campaigns/{id}/{action}`.
 2. The route authenticates the Supabase user.
 3. If callops env is set, the route forwards to `CALLOPS_URL` with `X-Webhook-Secret`.
-4. If callops env is missing, the route updates `campaigns.status` locally and returns `{ mode: 'local' }`.
+4. If callops env is missing outside production, the route updates `campaigns.status` locally and returns `{ mode: 'local' }`; production returns 503.
 5. The UI refreshes campaign data and immediately polls `GET /api/campaigns/{id}/status`.
 
 Live status is only polled for `running` and `paused` campaigns. If callops is unconfigured or returns an error, the UI skips the live stats without blocking the dashboard.
@@ -131,6 +134,7 @@ Copy `.env.local.example` for development or `.env.example` for production. Neve
 | `LIVEKIT_RECORD_*` | Optional S3-compatible egress settings for direct LiveKit diagnostics. |
 | `INWORLD_API_KEY` | Inworld TTS proxy for campaign script generation. |
 | `AVM_SCRIPT_AUDIO_STORAGE_*` | Supabase S3-compatible storage for generated campaign scripts. |
+| `STS_RELAY_SECRET`, `STS_SDP_BASE_URL`, `STS_GUID_<PRODUCT>` | Optional STS relay guard/base/GUIDs for product subscribe or opt-out keypresses. |
 
 ---
 
@@ -144,7 +148,7 @@ Copy `.env.local.example` for development or `.env.example` for production. Neve
 | `call_records` | `campaign_id`, `contact_id`, `phone`, `room`, `outcome`, `talk_seconds`, `cost`, `transferred`, `recording_url` |
 | `intent_stats` | Daily intent waterfall counts |
 
-The campaign wizard stores `campaigns.sip_trunk_id` as the integer `sip_trunks.id`. callops resolves that row to the LiveKit trunk id (`ST_...`). `GET /api/trunks` returns only live-backed trunks when callops can cross-check `/livekit/trunks`; otherwise it returns the full Supabase catalog.
+The campaign wizard stores `campaigns.sip_trunk_id` as the integer `sip_trunks.id`. callops resolves that row to the LiveKit trunk id (`ST_...`). `GET /api/trunks` returns only live-backed trunks when callops can cross-check `/livekit/trunks`; otherwise it returns the full Supabase catalog. Telephony admin writes use `POST /api/trunks`, `PATCH /api/trunks/{ST_...}`, `DELETE /api/trunks/{ST_...}`, and `POST /api/trunks/test-call`, each proxying server-side with `X-Webhook-Secret`.
 
 Campaign create sets `agent_name` to `outbound-recorder`, the deployed LiveKit worker name used by callops.
 
@@ -252,9 +256,11 @@ LIMIT 10;
 
 | Symptom | Likely cause | Check |
 |---------|--------------|-------|
-| Play/Pause/Stop changes only local status | `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` missing | Route returns `{ mode: 'local' }`; set callops env for production |
+| Play/Pause/Stop changes only local status | `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` missing outside production | Route returns `{ mode: 'local' }`; set callops env before production |
+| Play/Pause/Stop returns 503 in production | `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` missing | Set callops env; production refuses local lifecycle writes |
 | Live stats do not show on campaign cards | callops unconfigured/unreachable or campaign not `running`/`paused` | `npm run callops -- status <campaignId>` |
 | Campaign wizard shows no trunks | Empty `sip_trunks` table or callops cross-check filters all rows | `GET /api/trunks`; verify `sip_trunks.livekit_trunk_id` exists in LiveKit |
+| Telephony admin write/test-call returns 503 | callops admin proxy env missing | Set `CALLOPS_URL` and `CALLOPS_WEBHOOK_SECRET` |
 | Agent never joins a call | callops worker name/trunk config mismatch | Campaign create sets `agent_name = outbound-recorder`; verify callops worker registration |
 | Webhook updates missing | LiveKit webhook not configured, invalid LiveKit secrets, or service-role key missing | Server logs and `/api/livekit/webhook` responses |
 | TTS save/generate fails | Inworld or script storage env incomplete | `INWORLD_API_KEY` and `AVM_SCRIPT_AUDIO_STORAGE_*` |

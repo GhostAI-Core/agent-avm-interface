@@ -100,7 +100,7 @@ After auth, the page polls backend APIs on an interval (`NEXT_PUBLIC_POLL_INTERV
 - `GET /api/intents` — intent waterfall for the selected date
 - `GET /api/companies`, `/api/trunks`, `/api/security` — supporting data
 
-Starting, pausing, or stopping a campaign (`updateStatus`) triggers `POST /api/campaigns/:id/start|pause|stop`. When `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset, those POSTs fall back to a local campaign status update for development; `GET /status` reports `{ mode: 'unconfigured' }`.
+Starting, pausing, or stopping a campaign (`updateStatus`) triggers `POST /api/campaigns/:id/start|pause|stop`. When `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset, those POSTs fall back to a local campaign status update only outside production; production returns 503 so callops remains the lifecycle owner. `GET /status` reports `{ mode: 'unconfigured' }` when callops env is missing.
 
 ### Dashboard layout
 
@@ -170,7 +170,7 @@ All application tables enable RLS with **authenticated-only** policies (broad `U
 
 ### Storage
 
-Migration `20260612130000_voice_recordings_storage.sql` creates a private `voice-recordings` bucket. Campaigns reference uploaded files via `campaigns.voice_path`. `lib/voice.ts` can mint a short-lived signed URL for the agent when the direct LiveKit CLI path is used; production dispatch is owned by callops.
+Migration `20260612130000_voice_recordings_storage.sql` creates a private `voice-recordings` bucket. Campaigns reference uploaded files via `campaigns.voice_path` or generated script audio via `campaigns.audio_path`. `lib/voice.ts` can mint a short-lived signed URL for the agent when the direct LiveKit CLI path is used; production dispatch is owned by callops.
 
 ---
 
@@ -188,7 +188,7 @@ The app does **not** call Twilio or Telnyx directly. Those providers are configu
 
 ### Local fallback
 
-When `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset, lifecycle POSTs update `campaigns.status` directly and return `{ mode: 'local' }`. This keeps campaign controls usable in local development but does not dispatch calls or fabricate call records.
+When `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset outside production, lifecycle POSTs update `campaigns.status` directly and return `{ mode: 'local' }`. Production returns `{ error: 'callops not configured' }` with status 503 instead of locally changing lifecycle state.
 
 ### CLI testing
 
@@ -214,6 +214,7 @@ Copy `.env.local.example` (local) or `.env.example` (production). Key groups:
 | `LIVEKIT_RECORD_*` | Optional S3-compatible egress for call recordings |
 | `INWORLD_API_KEY` | Inworld TTS Basic auth credential (base64, server only) for `/api/tts/generate` |
 | `AVM_SCRIPT_AUDIO_STORAGE_*` | Supabase S3 credentials + public URL for generated campaign audio (`script-{campaign-slug}-{DD-MM-YYYY}.mp3` via PutObject) |
+| `STS_RELAY_SECRET`, `STS_SDP_BASE_URL`, `STS_GUID_<PRODUCT>` | Optional STS subscribe/opt-out relay guard, base URL, and per-product GUIDs for `/api/sts/mark` |
 | `NEXT_PUBLIC_POLL_INTERVAL_MS` | Dashboard refresh interval (default 15000) |
 
 Per-campaign overrides: `campaigns.sip_trunk_id` stores the integer `sip_trunks.id` selected in the campaign wizard. callops resolves that to `sip_trunks.livekit_trunk_id`.
@@ -228,19 +229,25 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 |-------|--------|------|-------------|
 | `/api/campaigns` | GET, POST | User | List / create campaigns |
 | `/api/campaigns/:id` | PUT, DELETE | User | Campaign updates / soft delete |
-| `/api/campaigns/:id/start` | POST | User | Proxy campaign start to callops; local status fallback when unconfigured |
-| `/api/campaigns/:id/pause` | POST | User | Proxy campaign pause to callops; local status fallback when unconfigured |
-| `/api/campaigns/:id/stop` | POST | User | Proxy campaign stop to callops; local status fallback when unconfigured |
+| `/api/campaigns/:id/start` | POST | User | Proxy campaign start to callops; local status fallback only outside production |
+| `/api/campaigns/:id/pause` | POST | User | Proxy campaign pause to callops; local status fallback only outside production |
+| `/api/campaigns/:id/stop` | POST | User | Proxy campaign stop to callops; local status fallback only outside production |
 | `/api/campaigns/:id/status` | GET | User | Proxy live queue/call stats from callops |
+| `/api/campaigns/:id/dial` | POST | User | Legacy direct LiveKit diagnostic batch dial; not the production UI lifecycle path |
 | `/api/tts/generate` | POST | User | Generate campaign voice audio via Inworld TTS |
-| `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts` (campaign-labeled) |
+| `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts`; optional text creates reusable `voice_scripts` row |
+| `/api/scripts` | GET | User | List saved campaign script MP3s for campaign edit reuse |
+| `/api/voice-scripts` | GET | User | List saved voice script text/audio rows for voice-generator reuse |
 | `/api/companies` | GET, POST | User | Company management |
-| `/api/trunks` | GET | User | SIP trunk catalog for the campaign wizard |
+| `/api/trunks` | GET, POST | User | SIP trunk catalog and trunk create proxy through callops |
+| `/api/trunks/:trunk_id` | PATCH, DELETE | User | LiveKit SIP trunk update/delete proxy through callops |
+| `/api/trunks/test-call` | POST | User | One-off SIP test call through callops/LiveKit |
 | `/api/logs` | GET | User | Per-call `call_records` |
 | `/api/reports` | GET | User | Aggregate `call_logs` |
 | `/api/intents` | GET | User | Intent waterfall data |
 | `/api/security` | GET | User | Security logs |
 | `/api/dashboard-templates` | GET, POST, DELETE | User | Saved dashboard layouts |
+| `/api/sts/mark` | POST | Optional `x-relay-secret` | Relay product subscribe/opt-out keypresses to STS SDP |
 | `/api/livekit/webhook` | POST | LiveKit signature | Room lifecycle updates |
 | `/api/calls/result` | POST | None | Deprecated no-op; agents should use callops `/calls/outcome` |
 | `/api/health` | GET | None | Health check for deploy |

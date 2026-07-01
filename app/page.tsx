@@ -81,7 +81,7 @@ type CompanyRow = {
   total: number
   cpl: number
 }
-const INACTIVITY_LIMIT = 15 * 60 * 1000 // 15 minutes
+const INACTIVITY_LIMIT = 30 * 60 * 1000 // 30 minutes
 
 // Cards|Table switcher shared by the Companies and Campaigns list views.
 function ViewToggle({ value, onChange }: { value: 'cards' | 'table'; onChange: (v: 'cards' | 'table') => void }) {
@@ -291,9 +291,13 @@ export default function Page() {
         setAuth(false)
       }, INACTIVITY_LIMIT)
     }
-    window.addEventListener('mousemove', resetTimer); window.addEventListener('keydown', resetTimer)
+    // Reset on any real interaction. Include click/scroll/touch (and pointerdown) so automated
+    // or touch-only sessions keep the session alive — mousemove/keydown alone miss CDP-driven
+    // clicks and mobile taps, which was logging active users out mid-session.
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'pointerdown'] as const
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }))
     resetTimer()
-    return () => { clearTimeout(timeout); window.removeEventListener('mousemove', resetTimer); window.removeEventListener('keydown', resetTimer) }
+    return () => { clearTimeout(timeout); events.forEach(e => window.removeEventListener(e, resetTimer)) }
   }, [auth, supabase])
 
   // Filter-independent data — loaded in parallel (no waterfall), only on login.

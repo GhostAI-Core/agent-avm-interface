@@ -21,6 +21,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
 import GlassCard from '@/components/ui/GlassCard'
+import CallDetailDialog from '@/components/CallDetailDialog'
 import { maskPhone } from '@/lib/security'
 import { networkProvider } from '@/lib/networks'
 import { semantic } from '@/lib/tokens'
@@ -57,6 +58,7 @@ export default function CampaignDetail({ report, calls, summary, onBack }: { rep
   const [outcome, setOutcome] = useState('')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('recent')
+  const [selected, setSelected] = useState<CallRecord | null>(null)
 
   const outcomes = useMemo(() => Array.from(new Set(calls.map(c => c.outcome))).sort(), [calls])
 
@@ -160,7 +162,7 @@ export default function CampaignDetail({ report, calls, summary, onBack }: { rep
             </TableHead>
             <TableBody>
               {rows.map(c => (
-                <TableRow key={c.id} hover>
+                <TableRow key={c.id} hover sx={{ cursor: 'pointer' }} onClick={() => setSelected(c)}>
                   <TableCell sx={{ fontSize: '0.82rem' }}>{maskPhone(c.phone)}</TableCell>
                   <TableCell><NetworkLabel phone={c.phone} /></TableCell>
                   <TableCell><StatusChip status={c.outcome} /></TableCell>
@@ -171,7 +173,7 @@ export default function CampaignDetail({ report, calls, summary, onBack }: { rep
                   <TableCell>
                     <Tooltip title={c.recording_url ? 'Play recording' : 'No recording'}>
                       <span>
-                        <IconButton size="small" disabled={!c.recording_url} onClick={() => c.recording_url && window.open(c.recording_url, '_blank')}>
+                        <IconButton size="small" disabled={!c.recording_url} onClick={(e) => { e.stopPropagation(); if (c.recording_url) window.open(c.recording_url, '_blank') }}>
                           <PlayArrowIcon sx={{ fontSize: 18 }} />
                         </IconButton>
                       </span>
@@ -187,6 +189,7 @@ export default function CampaignDetail({ report, calls, summary, onBack }: { rep
           </Table>
         </TableContainer>
       </GlassCard>
+      <CallDetailDialog call={selected} onClose={() => setSelected(null)} />
     </>
   )
 }

@@ -52,7 +52,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const passthrough = ['name', 'agent', 'dialing_speed', 'time_window_start', 'time_window_end',
     'max_concurrent', 'max_retries', 'retry_cooldown_seconds', 'sip_trunk_id',
     'voice_recording_url', 'voice_path', 'transfer_key', 'transfer_target', 'network_provider',
-    'voice_id']
+    'voice_id', 'routing_mode']
   const payload: Record<string, unknown> = {}
   for (const k of passthrough) if (body[k] !== undefined) payload[k] = body[k]
   // The edit form may send the script URL as audio_path — feed the dispatcher-read column.

@@ -78,6 +78,9 @@ export async function POST(req: Request) {
     // CallOps ignores unknown fields today (CampaignCreate has no voice_id yet) — forwarding
     // it here is forward-compatible so it persists the moment Cale adds it to the model.
     voice_id: str(body.voice_id),
+    // Dial mode: 'script' (Seeker/Grace consent-subscribe) | 'lead' (Lead Gen). Column exists;
+    // CallOps ignores it until CampaignCreate accepts it (openspec: campaign-dial-mode).
+    routing_mode: str(body.routing_mode),
     contacts: contactList,
   }
 

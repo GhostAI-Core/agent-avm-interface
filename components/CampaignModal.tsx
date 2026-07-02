@@ -37,6 +37,16 @@ interface Props {
 }
 
 type VoiceMode = 'upload' | 'generate'
+
+// Dial mode toggle → { agent, routing_mode }. Seeker/Grace are `script` (two-step consent
+// subscribe). Lead Gen is `lead` (press-1 → lead, no STS/confirm) — gated until CallOps ships
+// the `routing_mode="lead"` gate (openspec: campaign-dial-mode). Flip to true when it's live.
+const LEAD_GEN_ENABLED = false
+const DIAL_MODES = [
+  { value: 'seeker', label: 'Seeker', agent: 'seeker', routing_mode: 'script' },
+  { value: 'grace', label: 'Grace', agent: 'grace', routing_mode: 'script' },
+  { value: 'lead_gen', label: 'Lead Gen', agent: 'lead_gen', routing_mode: 'lead' },
+] as const
 type ParsedContact = { phone: string; first_name?: string; last_name?: string }
 type Trunk = { id: number; name: string; livekit_trunk_id: string; from_number: string }
 
@@ -147,7 +157,7 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
   // Step 1 — basics
   const [name, setName] = useState('')
   const [companyId, setCompanyId] = useState<number | ''>('')
-  const [product, setProduct] = useState('') // = campaigns.agent (the product)
+  const [product, setProduct] = useState('') // dial mode toggle: 'seeker' | 'grace' | 'lead_gen'
 
   // Step 2 — outbound trunk
   const [trunks, setTrunks] = useState<Trunk[]>([])
@@ -265,7 +275,8 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
       const payload: Record<string, unknown> = {
         name: name.trim(),
         company_id: companyId,
-        agent: product || null,
+        agent: (DIAL_MODES.find(m => m.value === product)?.agent) ?? null,
+        routing_mode: DIAL_MODES.find(m => m.value === product)?.routing_mode,
         sip_trunk_id: sipTrunkId || null,
         dialing_speed: dialingSpeed,
         window_start: windowStart,
@@ -351,16 +362,18 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
                 </FormControl>
               </Grid>
               <Grid size={{ xs: 12, sm: 5 }}>
-                <FormControl size="small" fullWidth>
-                  <InputLabel id="product-label" shrink>Product</InputLabel>
-                  <Select labelId="product-label" label="Product" value={product} displayEmpty notched
-                    onChange={e => setProduct(e.target.value)}
-                    renderValue={(v) => (v ? (v === 'seeker' ? 'Seeker' : 'Grace') : <Box component="span" sx={{ color: semantic.textSoft }}>Auto</Box>)}>
-                    <MenuItem value="">Auto</MenuItem>
-                    <MenuItem value="seeker">Seeker</MenuItem>
-                    <MenuItem value="grace">Grace</MenuItem>
-                  </Select>
-                </FormControl>
+                <Typography variant="caption" sx={{ color: semantic.textSoft, display: 'block', mb: 0.5 }}>Mode</Typography>
+                <ToggleButtonGroup exclusive fullWidth size="small" value={product}
+                  onChange={(_, next) => { if (next) setProduct(next) }}>
+                  {DIAL_MODES.map(m => {
+                    const disabled = m.value === 'lead_gen' && !LEAD_GEN_ENABLED
+                    return (
+                      <ToggleButton key={m.value} value={m.value} disabled={disabled}>
+                        {m.label}{disabled ? ' · soon' : ''}
+                      </ToggleButton>
+                    )
+                  })}
+                </ToggleButtonGroup>
               </Grid>
             </Grid>
           </Stack>

@@ -43,9 +43,9 @@ type VoiceMode = 'upload' | 'generate'
 // the `routing_mode="lead"` gate (openspec: campaign-dial-mode). Flip to true when it's live.
 const LEAD_GEN_ENABLED = true
 const DIAL_MODES = [
-  { value: 'seeker', label: 'Seeker', agent: 'seeker', routing_mode: 'script' },
-  { value: 'grace', label: 'Grace', agent: 'grace', routing_mode: 'script' },
-  { value: 'lead_gen', label: 'Lead Gen', agent: 'lead_gen', routing_mode: 'lead' },
+  { value: 'seeker', label: 'Seeker', agent: 'seeker', routing_mode: 'script', hint: 'Consent · press 1 subscribes' },
+  { value: 'grace', label: 'Grace', agent: 'grace', routing_mode: 'script', hint: 'Consent · press 1 subscribes' },
+  { value: 'lead_gen', label: 'Lead Gen', agent: 'lead_gen', routing_mode: 'lead', hint: 'Press 1 becomes a lead' },
 ] as const
 type ParsedContact = { phone: string; first_name?: string; last_name?: string }
 type Trunk = { id: number; name: string; livekit_trunk_id: string; from_number: string }
@@ -363,22 +363,21 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
               </Grid>
               <Grid size={{ xs: 12, sm: 5 }}>
                 <Typography variant="caption" sx={{ color: semantic.textSoft, display: 'block', mb: 0.5 }}>Mode</Typography>
-                <ToggleButtonGroup exclusive fullWidth size="small" value={product}
-                  onChange={(_, next) => { if (next) setProduct(next) }}>
+                <ToggleButtonGroup exclusive fullWidth value={product}
+                  onChange={(_, next) => { if (next) setProduct(next) }}
+                  sx={{ '& .MuiToggleButton-root': { flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', gap: 0.15, py: 1, px: 1.25 } }}>
                   {DIAL_MODES.map(m => {
                     const disabled = m.value === 'lead_gen' && !LEAD_GEN_ENABLED
                     return (
                       <ToggleButton key={m.value} value={m.value} disabled={disabled}>
-                        {m.label}{disabled ? ' · soon' : ''}
+                        <Typography component="span" sx={{ fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.15 }}>{m.label}</Typography>
+                        <Typography component="span" sx={{ fontSize: '0.62rem', color: semantic.textSoft, lineHeight: 1.25 }}>
+                          {disabled ? 'Coming soon' : m.hint}
+                        </Typography>
                       </ToggleButton>
                     )
                   })}
                 </ToggleButtonGroup>
-                {product === 'lead_gen' && (
-                  <Typography variant="caption" sx={{ color: semantic.textSoft, display: 'block', mt: 0.5 }}>
-                    Lead capture — a press of 1 marks the contact a lead (no product subscribe / consent step).
-                  </Typography>
-                )}
               </Grid>
             </Grid>
           </Stack>

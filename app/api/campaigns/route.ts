@@ -73,6 +73,11 @@ export async function POST(req: Request) {
     transfer_key: str(body.transfer_key),
     transfer_target: str(body.transfer_target),
     network_provider: str(body.network_provider),
+    // Inworld voice id → campaigns.voice_id. The worker needs it to select the TTS voice
+    // and match the two-step-consent confirm audio; a null voice_id makes the agent fail.
+    // CallOps ignores unknown fields today (CampaignCreate has no voice_id yet) — forwarding
+    // it here is forward-compatible so it persists the moment Cale adds it to the model.
+    voice_id: str(body.voice_id),
     contacts: contactList,
   }
 

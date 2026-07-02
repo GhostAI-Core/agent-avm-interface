@@ -134,7 +134,7 @@ const isOutcome = (o: string) => (c: DashCall) => c.outcome === o
 export const DEFAULT_INSIGHTS = [
   'campaigns-table',
   'campaign-report',
-  'dialed', 'connected', 'qualified', 'avg-talk', 'hangup', 'callback', 'avg-cpl', 'total-spent',
+  'dialed', 'connected', 'qualified', 'avg-talk', 'on-air-total', 'avg-cpl', 'total-spent',
   'outcome-donut', 'campaign-compare', 'spend-cpl', 'cost-breakdown', 'funnel',
 ]
 
@@ -158,6 +158,15 @@ export const INSIGHTS: InsightDef[] = [
       const avg = a.length ? a.reduce((s, x) => s + (x.talk_seconds || 0), 0) / a.length : 0
       const series = daySeries(c.calls, b => { const an = b.filter(x => (x.talk_seconds || 0) > 0); return an.length ? an.reduce((s, x) => s + x.talk_seconds, 0) / an.length : 0 })
       return <StatTrend tone="pos" value={fmtTime(avg)} sub="Avg over answered calls" kind="line" series={series} />
+    },
+  },
+  {
+    id: 'on-air-total', title: 'Total On-Air Time', size: 'sm', render: c => {
+      const air = (x: DashCall) => Math.max(Number(x.talk_seconds) || 0, Number(x.on_air_seconds) || 0)
+      const secs = c.calls.reduce((s, x) => s + air(x), 0)
+      const talk = c.calls.reduce((s, x) => s + (Number(x.talk_seconds) || 0), 0)
+      const series = daySeries(c.calls, b => b.reduce((s, x) => s + air(x), 0) / 60)
+      return <StatTrend value={`${fmtN(Math.round(secs / 60))} min`} sub={talk ? `${(secs / talk).toFixed(1)}× talk time` : 'Total call time'} kind="bar" series={series} />
     },
   },
   {

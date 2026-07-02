@@ -42,10 +42,19 @@ export function billedMinutes(talkSeconds: number, incrementSec = COST_MODEL.bil
 }
 
 /**
- * Estimated cost of a single call from its talk time. No-answer/failed calls (talk=0)
- * cost 0 here — any per-attempt/ring charge is not modelled (unknown; add if confirmed).
+ * Estimated cost of a single call.
+ *  - Carrier (utility_connect) bills the ANSWERED leg (~talk time); an unanswered call's
+ *    ring is normally free, so carrier cost uses talkSeconds.
+ *  - LiveKit bills the whole SESSION (on-air = ended_at − started_at), which is ~5.5× talk
+ *    and applies even to no-answers (the SIP/room leg exists during ring). So LiveKit cost
+ *    uses onAirSeconds. If on-air is missing, fall back to talk.
+ *  - AMD AI runs once per ANSWERED call.
  */
-export function estimateCallCost(talkSeconds: number, m: CostModel = COST_MODEL): number {
-  if (!(talkSeconds > 0)) return 0
-  return billedMinutes(talkSeconds, m.billingIncrementSec) * (m.carrierPerMin + m.livekitPerMin) + m.aiPerAnsweredCall
+export function estimateCallCost(talkSeconds: number, onAirSeconds = 0, m: CostModel = COST_MODEL): number {
+  const talk = Math.max(0, talkSeconds || 0)
+  const air = Math.max(talk, onAirSeconds || 0) // on-air ≥ talk; fall back to talk if unknown
+  const carrier = billedMinutes(talk, m.billingIncrementSec) * m.carrierPerMin
+  const livekit = billedMinutes(air, m.billingIncrementSec) * m.livekitPerMin
+  const ai = talk > 0 ? m.aiPerAnsweredCall : 0
+  return carrier + livekit + ai
 }

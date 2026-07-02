@@ -107,6 +107,8 @@ export interface CallReport {
   disconnect_reason?: string | null
   transfer_target?: string | null
   talk_seconds?: number | null
+  /** Total on-air time (session ended_at − started_at); ~5.5× talk. Derived in /api/logs. */
+  on_air_seconds?: number | null
 }
 
 /** One model-usage / SDK metric event from callops `GET /calls/{id}/telemetry`. */
@@ -157,6 +159,8 @@ export interface CallRecord {
   /** Business result (callops /lookups/business-dispositions): subscribe, opt_out, callback, interested. Authoritative — supersedes the deprecated agent_outcome. May be null. */
   business_disposition?: string | null
   talk_seconds: number
+  /** Total on-air time (call_sessions ended_at − started_at); ~5.5× talk. Derived in /api/logs. */
+  on_air_seconds?: number | null
   cost: number
   transferred: boolean
   recording_url?: string | null

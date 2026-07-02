@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic'
 // Columns we never produce (no_speech/hangup/ni/callback/busy_line) stay 0 — honest, not faked.
 
 type CampMeta = { id: number; name: string | null; agent: string | null; agent_name: string | null; status: string | null }
-type RecRow = { campaign_id: number | null; outcome: string | null; talk_seconds: number | null; cost: number | null }
+type RecRow = { id: number; campaign_id: number | null; outcome: string | null; talk_seconds: number | null; cost: number | null }
 
 const OUTCOME_COL: Record<string, keyof CampaignReport> = {
   connected: 'connected',
@@ -63,11 +63,20 @@ export async function GET(req: NextRequest) {
   if (!admin) return NextResponse.json({ error: 'server not configured' }, { status: 503 })
 
   // Campaign metadata (name/agent/status) + all per-call records.
-  const [{ data: camps }, { data: recs, error: recErr }] = await Promise.all([
+  const [{ data: camps }, { data: recs, error: recErr }, { data: sessions }] = await Promise.all([
     admin.from('campaigns').select('id, name, agent, agent_name, status'),
-    admin.from('call_records').select('campaign_id, outcome, talk_seconds, cost'),
+    admin.from('call_records').select('id, campaign_id, outcome, talk_seconds, cost'),
+    admin.from('call_sessions').select('call_record_id, started_at, ended_at'),
   ])
   if (recErr) return NextResponse.json({ error: recErr.message }, { status: 500 })
+
+  // On-air per call (session ended_at − started_at) — LiveKit bills this, not talk.
+  const airByRec = new Map<number, number>()
+  for (const s of (sessions ?? []) as { call_record_id: number | null; started_at: string | null; ended_at: string | null }[]) {
+    if (s.call_record_id == null || !s.started_at || !s.ended_at) continue
+    const secs = (+new Date(s.ended_at) - +new Date(s.started_at)) / 1000
+    if (secs > 0 && secs < 3600) airByRec.set(s.call_record_id, secs)
+  }
 
   const byId = new Map<number, ReturnType<typeof blankReport>>()
   for (const c of (camps ?? []) as CampMeta[]) byId.set(c.id, blankReport(c))
@@ -80,9 +89,10 @@ export async function GET(req: NextRequest) {
     row.dialed += 1
     const col = r.outcome ? OUTCOME_COL[r.outcome] : undefined
     if (col) (row[col] as number) += 1
-    // `cost` is always 0 (CallOps doesn't bill yet) — ESTIMATE from talk time instead.
+    // `cost` is always 0 (CallOps doesn't bill yet) — ESTIMATE from talk + on-air instead.
     const talk = typeof r.talk_seconds === 'number' ? r.talk_seconds : 0
-    row.total_spent += (typeof r.cost === 'number' && r.cost > 0) ? r.cost : estimateCallCost(talk)
+    const onAir = airByRec.get(r.id) ?? talk
+    row.total_spent += (typeof r.cost === 'number' && r.cost > 0) ? r.cost : estimateCallCost(talk, onAir)
     if (talk > 0) { row._talkTotal += talk; row._talkCount += 1 }
   }
 

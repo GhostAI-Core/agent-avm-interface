@@ -1,5 +1,12 @@
 ## ADDED Requirements
 
+<!-- SUPERSEDED (2026-07-02) for the reports/outcome TABLE by change `reports-from-raw-callrecords`:
+the CallOps dashboard analytics endpoints mis-divide the outcome vocab (drop subscribed/opted_out,
+never count dialed — verified live on evra_callops origin/main increment_call_log). Garth ratified
+computing the reports roll-up from raw call_records instead. Control + the campaign-view summary
+aggregates below are UNAFFECTED; this supersession is scoped to the reports/outcome table and is
+interim until CallOps analytics divide the vocab correctly. -->
+
 ### Requirement: Reports and charts consume callops analytics endpoints
 
 The dashboard's report tables, outcome charts, KPI cards, and call-volume views SHALL source their aggregates from callops' deployed dashboard-analytics endpoints rather than rolling up raw `call_records` client- or app-side:

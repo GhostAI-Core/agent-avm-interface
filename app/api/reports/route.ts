@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 //   raw outcome   → report column
 //   connected     → connected
 //   subscribed    → qualified      (the UI's success/conversion bucket; drives CPL)
-//   opted_out     → dnq            (removed / do-not-contact)
+//   opted_out     → opt_out        (compliance opt-out / DNC)
 //   no_answer     → no_answer
 //   voicemail     → voicemail
 //   failed        → failed
@@ -27,7 +27,7 @@ type RecRow = { campaign_id: number | null; outcome: string | null; talk_seconds
 const OUTCOME_COL: Record<string, keyof CampaignReport> = {
   connected: 'connected',
   subscribed: 'qualified',
-  opted_out: 'dnq',
+  opted_out: 'opt_out',
   no_answer: 'no_answer',
   voicemail: 'voicemail',
   failed: 'failed',
@@ -46,7 +46,7 @@ function blankReport(meta: CampMeta): CampaignReport & { _talkTotal: number; _ta
     phone_number: '',
     status: meta.status ?? '',
     dialed: 0, connected: 0, qualified: 0, voicemail: 0, no_speech: 0, hangup: 0,
-    ni: 0, dnq: 0, callback: 0, no_answer: 0, busy_line: 0, failed: 0,
+    ni: 0, dnq: 0, callback: 0, no_answer: 0, busy_line: 0, opt_out: 0, failed: 0,
     duration: '0:00', cpl: 0, total_spent: 0,
     _talkTotal: 0, _talkCount: 0,
   }

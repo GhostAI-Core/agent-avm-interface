@@ -140,6 +140,7 @@ export interface CampaignReport {
   callback: number
   no_answer: number
   busy_line: number
+  opt_out: number
   failed: number
   duration: string
   cpl: number

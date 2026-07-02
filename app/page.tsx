@@ -73,8 +73,8 @@ const VIEW_TITLES: Record<string, string> = {
 
 // Only the buckets we actually produce from raw call_records. The old dialer vocab
 // (no_speech/hangup/ni/callback/busy_line) is never populated, so it's dropped from the display.
-// `qualified` = subscribed/converted, `dnq` = opted-out (see /api/reports mapping).
-const REPORT_KEYS = ['dialed','connected','qualified','voicemail','dnq','no_answer','failed'] as const satisfies (keyof CampaignReport)[]
+// `qualified` = subscribed/converted, `opt_out` = compliance opt-out (see /api/reports mapping).
+const REPORT_KEYS = ['dialed','connected','qualified','voicemail','opt_out','no_answer','failed'] as const satisfies (keyof CampaignReport)[]
 
 // Row shape for the Companies DataTable
 type CompanyRow = {
@@ -574,7 +574,7 @@ export default function Page() {
   // Campaign Report: Campaign (AgentChip + name) then numeric REPORT_KEYS + Duration / CPL / Spent.
   const REPORT_HEADERS: Record<(typeof REPORT_KEYS)[number], string> = {
     dialed: 'Dialed', connected: 'Connected', qualified: 'Subscribed', voicemail: 'Voicemail',
-    dnq: 'Opted Out', no_answer: 'No Answer', failed: 'Failed',
+    opt_out: 'Opted Out', no_answer: 'No Answer', failed: 'Failed',
   }
   const reportColumns: DataTableColumn<CampaignReport>[] = [
     { key: 'campaign', label: 'Campaign', width: '200px',

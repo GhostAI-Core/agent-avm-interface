@@ -28,6 +28,7 @@ type RecRow = { id: number; campaign_id: number | null; outcome: string | null; 
 const OUTCOME_COL: Record<string, keyof CampaignReport> = {
   connected: 'connected',
   subscribed: 'qualified',
+  lead: 'lead',
   opted_out: 'opt_out',
   no_answer: 'no_answer',
   voicemail: 'voicemail',
@@ -47,7 +48,7 @@ function blankReport(meta: CampMeta): CampaignReport & { _talkTotal: number; _ta
     phone_number: '',
     status: meta.status ?? '',
     dialed: 0, connected: 0, qualified: 0, voicemail: 0, no_speech: 0, hangup: 0,
-    ni: 0, dnq: 0, callback: 0, no_answer: 0, busy_line: 0, opt_out: 0, failed: 0,
+    ni: 0, dnq: 0, callback: 0, no_answer: 0, busy_line: 0, opt_out: 0, lead: 0, failed: 0,
     duration: '0:00', cpl: 0, total_spent: 0,
     _talkTotal: 0, _talkCount: 0,
   }
@@ -101,7 +102,8 @@ export async function GET(req: NextRequest) {
     .map(({ _talkTotal, _talkCount, ...row }) => ({
       ...row,
       duration: fmtDuration(_talkCount ? _talkTotal / _talkCount : 0),
-      cpl: row.qualified ? row.total_spent / row.qualified : 0,
+      // CPL = cost per acquisition; a conversion is a subscribe (consent) OR a lead (lead-gen).
+      cpl: (row.qualified + row.lead) ? row.total_spent / (row.qualified + row.lead) : 0,
     }))
 
   const filtered = agent ? reports.filter((r) => r.campaign?.agent === agent) : reports

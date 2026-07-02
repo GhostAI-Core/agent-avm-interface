@@ -40,10 +40,10 @@ export function OutcomeDonut({ reports }: { reports: CampaignReport[] }) {
   const fills = [...outcomeDonutColors]
   const data = {
     // Only the buckets we actually produce (see /api/reports mapping); dead dialer buckets dropped.
-    labels: ['Connected','Subscribed','Voicemail','Opted Out','No Answer','Failed'],
+    labels: ['Connected','Subscribed','Leads','Voicemail','Opted Out','No Answer','Failed'],
     datasets: [{
       data: [
-        sum(reports,'connected'), sum(reports,'qualified'), sum(reports,'voicemail'),
+        sum(reports,'connected'), sum(reports,'qualified'), sum(reports,'lead'), sum(reports,'voicemail'),
         sum(reports,'opt_out'), sum(reports,'no_answer'), sum(reports,'failed'),
       ],
       backgroundColor: fills,

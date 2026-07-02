@@ -16,6 +16,7 @@ import SecurityView from '@/components/SecurityView'
 import SettingsView from '@/components/SettingsView'
 import TelephonyView from '@/components/TelephonyView'
 import ContactsView from '@/components/ContactsView'
+import LeadsView from '@/components/LeadsView'
 import { OutcomeDonut, CampaignBar, SpendChart, FunnelChart } from '@/components/Charts'
 import ProfileView from '@/components/ProfileView'
 import CampaignDetail from '@/components/CampaignDetail'
@@ -74,7 +75,7 @@ const VIEW_TITLES: Record<string, string> = {
 // Only the buckets we actually produce from raw call_records. The old dialer vocab
 // (no_speech/hangup/ni/callback/busy_line) is never populated, so it's dropped from the display.
 // `qualified` = subscribed/converted, `opt_out` = compliance opt-out (see /api/reports mapping).
-const REPORT_KEYS = ['dialed','connected','qualified','voicemail','opt_out','no_answer','failed'] as const satisfies (keyof CampaignReport)[]
+const REPORT_KEYS = ['dialed','connected','qualified','lead','voicemail','opt_out','no_answer','failed'] as const satisfies (keyof CampaignReport)[]
 
 // Row shape for the Companies DataTable
 type CompanyRow = {
@@ -573,7 +574,7 @@ export default function Page() {
 
   // Campaign Report: Campaign (AgentChip + name) then numeric REPORT_KEYS + Duration / CPL / Spent.
   const REPORT_HEADERS: Record<(typeof REPORT_KEYS)[number], string> = {
-    dialed: 'Dialed', connected: 'Connected', qualified: 'Subscribed', voicemail: 'Voicemail',
+    dialed: 'Dialed', connected: 'Connected', qualified: 'Subscribed', lead: 'Leads', voicemail: 'Voicemail',
     opt_out: 'Opted Out', no_answer: 'No Answer', failed: 'Failed',
   }
   const reportColumns: DataTableColumn<CampaignReport>[] = [
@@ -841,6 +842,8 @@ export default function Page() {
 
           {/* ── CONTACTS ── */}
           {view === 'contacts' && <ContactsView />}
+
+          {view === 'leads' && <LeadsView />}
 
           {/* ── CALL QUALITY ── */}
           {view === 'quality' && <CallQuality campaigns={campaigns} />}

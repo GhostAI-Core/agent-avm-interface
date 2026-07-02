@@ -36,7 +36,8 @@ export default function CostBreakdown({ calls }: { calls: (CallRecord & { campai
   const livekit = airMin * m.livekitPerMin
   const ai = talking.length * m.aiPerAnsweredCall
   const allIn = calls.reduce((s, c) => s + estimateCallCost(Number(c.talk_seconds) || 0, onAirOf(c)), 0)
-  const subs = calls.filter(c => c.outcome === 'subscribed').length
+  // A conversion is a subscribe (consent campaigns) or a lead (lead-gen campaigns).
+  const subs = calls.filter(c => c.outcome === 'subscribed' || c.outcome === 'lead').length
   const n = talking.length || 1
   const pctOf = (x: number) => allIn ? `${Math.round((x / allIn) * 100)}%` : '—'
   const incLabel = m.billingIncrementSec === 1 ? 'per-second' : `${m.billingIncrementSec}s`
@@ -65,7 +66,7 @@ export default function CostBreakdown({ calls }: { calls: (CallRecord & { campai
         <Row label="Talking / total calls" value={`${talking.length} / ${calls.length}`} />
         <Row label="Talk time" value={`${talkMin.toFixed(1)} min`} />
         <Row label="On-air time (total call time)" value={`${airMin.toFixed(1)} min`} sub={`${(airMin / (talkMin || 1)).toFixed(1)}× talk`} />
-        <Row label="Subscribes" value={String(subs)} />
+        <Row label="Conversions (subscribe/lead)" value={String(subs)} />
       </Box>
 
       <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 0.5 }}>
@@ -78,7 +79,7 @@ export default function CostBreakdown({ calls }: { calls: (CallRecord & { campai
       </Box>
 
       <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 0.5 }}>
-        <Row label="CPL (cost per subscribe)" value={subs ? R(allIn / subs) : '—'} strong tone={subs ? 'pos' : 'neu'} />
+        <Row label="CPL (cost per conversion)" value={subs ? R(allIn / subs) : '—'} strong tone={subs ? 'pos' : 'neu'} />
       </Box>
 
       <Typography sx={{ fontSize: '0.63rem', color: 'text.disabled', lineHeight: 1.4 }}>

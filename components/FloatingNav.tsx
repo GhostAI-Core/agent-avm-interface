@@ -8,6 +8,7 @@ const NAV = [
   { id: 'companies', label: 'Companies', icon: '🏢' },
   { id: 'campaigns', label: 'Campaigns', icon: '⚡' },
   { id: 'reports', label: 'Report', icon: '📊' },
+  { id: 'leads', label: 'Leads', icon: '◇' },
   { id: 'quality', label: 'Quality', icon: '🎯' },
   { id: 'security', label: 'Security', icon: '🛡' },
   { id: 'settings', label: 'Settings', icon: '⚙' },

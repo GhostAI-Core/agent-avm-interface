@@ -41,7 +41,7 @@ type VoiceMode = 'upload' | 'generate'
 // Dial mode toggle → { agent, routing_mode }. Seeker/Grace are `script` (two-step consent
 // subscribe). Lead Gen is `lead` (press-1 → lead, no STS/confirm) — gated until CallOps ships
 // the `routing_mode="lead"` gate (openspec: campaign-dial-mode). Flip to true when it's live.
-const LEAD_GEN_ENABLED = false
+const LEAD_GEN_ENABLED = true
 const DIAL_MODES = [
   { value: 'seeker', label: 'Seeker', agent: 'seeker', routing_mode: 'script' },
   { value: 'grace', label: 'Grace', agent: 'grace', routing_mode: 'script' },
@@ -374,6 +374,11 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
                     )
                   })}
                 </ToggleButtonGroup>
+                {product === 'lead_gen' && (
+                  <Typography variant="caption" sx={{ color: semantic.textSoft, display: 'block', mt: 0.5 }}>
+                    Lead capture — a press of 1 marks the contact a lead (no product subscribe / consent step).
+                  </Typography>
+                )}
               </Grid>
             </Grid>
           </Stack>

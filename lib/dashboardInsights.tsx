@@ -134,7 +134,7 @@ const isOutcome = (o: string) => (c: DashCall) => c.outcome === o
 export const DEFAULT_INSIGHTS = [
   'campaigns-table',
   'campaign-report',
-  'dialed', 'connected', 'qualified', 'avg-talk', 'on-air-total', 'avg-cpl', 'total-spent',
+  'dialed', 'connected', 'qualified', 'leads', 'avg-talk', 'on-air-total', 'avg-cpl', 'total-spent',
   'outcome-donut', 'campaign-compare', 'spend-cpl', 'cost-breakdown', 'funnel',
 ]
 
@@ -177,23 +177,25 @@ export const INSIGHTS: InsightDef[] = [
       return <StatTrend tone="pos" value={pct(t, a.length)} sub={`${fmtN(t)} transferred to human`} kind="line" series={series} />
     },
   },
+  { id: 'leads', title: 'Leads', size: 'sm', render: c => <StatTrend tone="pos" value={fmtN(sumR(c.reports, 'lead'))} sub={`${pct(sumR(c.reports, 'lead'), sumR(c.reports, 'connected'))} of connected`} kind="bar" series={daySeries(c.calls, cnt(isOutcome('lead')))} /> },
   { id: 'hangup', title: 'Hangup', size: 'sm', render: c => <StatTrend tone="neg" value={fmtN(sumR(c.reports, 'hangup'))} sub={`${pct(sumR(c.reports, 'hangup'), sumR(c.reports, 'connected'))} of connected`} kind="bar" series={daySeries(c.calls, cnt(isOutcome('hangup')))} /> },
   { id: 'callback', title: 'Callback', size: 'sm', render: c => <StatTrend value={fmtN(sumR(c.reports, 'callback'))} sub={`${pct(sumR(c.reports, 'callback'), sumR(c.reports, 'connected'))} of connected`} kind="bar" series={daySeries(c.calls, cnt(isOutcome('callback')))} /> },
   { id: 'voicemail', title: 'Voicemail', size: 'sm', render: c => <StatTrend value={fmtN(sumR(c.reports, 'voicemail'))} sub={`${pct(sumR(c.reports, 'voicemail'), sumR(c.reports, 'dialed'))} of dialed`} kind="bar" series={daySeries(c.calls, cnt(isOutcome('voicemail')))} /> },
   { id: 'no-answer', title: 'No Answer', size: 'sm', render: c => <StatTrend value={fmtN(sumR(c.reports, 'no_answer'))} sub={`${pct(sumR(c.reports, 'no_answer'), sumR(c.reports, 'dialed'))} of dialed`} kind="bar" series={daySeries(c.calls, cnt(isOutcome('no_answer')))} /> },
   {
     id: 'avg-cpl', title: 'Avg CPL', size: 'sm', render: c => {
-      const cpls = c.reports.filter(r => r.qualified > 0).map(r => Number(r.cpl))
-      const series = daySeries(c.calls, b => { const q = b.filter(isOutcome('qualified')).length; const spend = b.reduce((s, x) => s + Number(x.cost || 0), 0); return q ? spend / q : 0 })
-      return <StatTrend value={fmtR(cpls.length ? cpls.reduce((a, b) => a + b, 0) / cpls.length : 0)} sub="Cost per lead" kind="line" series={series} />
+      // Conversion = subscribe OR lead.
+      const cpls = c.reports.filter(r => (r.qualified + r.lead) > 0).map(r => Number(r.cpl))
+      const series = daySeries(c.calls, b => { const q = b.filter(x => x.outcome === 'subscribed' || x.outcome === 'lead').length; const spend = b.reduce((s, x) => s + Number(x.cost || 0), 0); return q ? spend / q : 0 })
+      return <StatTrend value={fmtR(cpls.length ? cpls.reduce((a, b) => a + b, 0) / cpls.length : 0)} sub="Cost per subscribe/lead" kind="line" series={series} />
     },
   },
   { id: 'total-spent', title: 'Total Spent', size: 'sm', render: c => <StatTrend tone="neg" value={fmtR(sumR(c.reports, 'total_spent'))} sub="Across campaigns" kind="bar" series={daySeries(c.calls, b => b.reduce((s, x) => s + Number(x.cost || 0), 0))} /> },
   {
     id: 'spend-efficiency', title: 'Spend Efficiency', size: 'sm', render: c => {
-      const spent = sumR(c.reports, 'total_spent'); const q = sumR(c.reports, 'qualified')
-      const series = daySeries(c.calls, b => { const sp = b.reduce((s, x) => s + Number(x.cost || 0), 0); const qq = b.filter(isOutcome('qualified')).length; return sp ? (qq / sp) * 1000 : 0 })
-      return <StatTrend tone="pos" value={spent ? za((q / spent) * 1000, 2) : '—'} sub="Qualified / R1,000" kind="line" series={series} />
+      const spent = sumR(c.reports, 'total_spent'); const q = sumR(c.reports, 'qualified') + sumR(c.reports, 'lead')
+      const series = daySeries(c.calls, b => { const sp = b.reduce((s, x) => s + Number(x.cost || 0), 0); const qq = b.filter(x => x.outcome === 'subscribed' || x.outcome === 'lead').length; return sp ? (qq / sp) * 1000 : 0 })
+      return <StatTrend tone="pos" value={spent ? za((q / spent) * 1000, 2) : '—'} sub="Conversions / R1,000" kind="line" series={series} />
     },
   },
   {

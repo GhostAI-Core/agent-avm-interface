@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
 import { createAdminClient } from '@/utils/supabase/admin'
+import { estimateCallCost } from '@/lib/callCost'
 import type { Agent, CampaignReport } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -79,8 +80,10 @@ export async function GET(req: NextRequest) {
     row.dialed += 1
     const col = r.outcome ? OUTCOME_COL[r.outcome] : undefined
     if (col) (row[col] as number) += 1
-    if (typeof r.cost === 'number') row.total_spent += r.cost
-    if (typeof r.talk_seconds === 'number' && r.talk_seconds > 0) { row._talkTotal += r.talk_seconds; row._talkCount += 1 }
+    // `cost` is always 0 (CallOps doesn't bill yet) — ESTIMATE from talk time instead.
+    const talk = typeof r.talk_seconds === 'number' ? r.talk_seconds : 0
+    row.total_spent += (typeof r.cost === 'number' && r.cost > 0) ? r.cost : estimateCallCost(talk)
+    if (talk > 0) { row._talkTotal += talk; row._talkCount += 1 }
   }
 
   const reports: CampaignReport[] = [...byId.values()]

@@ -21,7 +21,7 @@ import { parseContacts } from '@/lib/parseCsv'
 import { maskPhone } from '@/lib/security'
 import type { Campaign, Contact } from '@/types'
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 100
 
 type ImportSummary = {
   created?: number

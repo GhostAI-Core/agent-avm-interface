@@ -7,10 +7,12 @@
 // the single `COST_MODEL` block below — nothing else changes.
 //
 // Rates (ZAR, ~R18/USD), sourced 2026-07-02:
-//   - Carrier SA SIP→mobile: Converged Group is not public. Proxy: SA wholesale/retail
-//     SIP-to-mobile ~R0.30–0.90/min (typical ~R0.50); ICASA MTR floor R0.05/min.
-//     Local SIP typically bills PER-SECOND (increment 1s) — the big lever on <30s calls.
-//     Twilio SA-mobile is $0.0499≈R0.90/min but 60/60 (1-min minimum).
+//   - Carrier SA SIP→mobile: batches use the `utility_connect` trunk (Converged Group SBC,
+//     sbc.convergedgroup.co.za, CID +27104760561) — a private wholesale route, rate not public.
+//     Best public proxies for a direct wholesale SA-mobile route: Switch Telecom ~R0.287/min,
+//     Abacus ~R0.50/min → we use ~R0.35/min. This reconciles the felt ~12c "carrier-only" on a
+//     19s call (0.317min × R0.35 ≈ R0.11). Local SIP bills PER-SECOND (increment 1s) — the big
+//     lever on <30s calls. (Twilio SA-mobile is $0.0499≈R0.90/min but 60/60 — 3× on short calls.)
 //   - LiveKit Cloud: agent session $0.010/min + third-party SIP $0.004/min ≈ R0.25/min.
 //   - AI per answered call: AMD gpt-4.1-mini (~$0.001) + ~5s AssemblyAI STT (~$0.0002)
 //     ≈ $0.0012 ≈ R0.02. TTS is pre-generated (not per-call). Recordings not running.
@@ -26,8 +28,8 @@ export interface CostModel {
 // EDIT THESE when the real carrier rate is known. Defaults = research "typical".
 export const COST_MODEL: CostModel = {
   currency: 'ZAR',
-  carrierPerMin: 0.50,
-  livekitPerMin: 0.25,
+  carrierPerMin: 0.35,   // utility_connect wholesale proxy (Switch R0.29 / Abacus R0.50)
+  livekitPerMin: 0.25,   // LiveKit agent-session $0.010 + third-party SIP $0.004 ≈ R0.25
   aiPerAnsweredCall: 0.02,
   billingIncrementSec: 1,
 }

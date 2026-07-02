@@ -19,6 +19,7 @@ import ArchiveIcon from '@mui/icons-material/Archive'
 import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
 import { OutcomeDonut, FunnelChart, CampaignBar, SpendChart } from '@/components/Charts'
+import CostBreakdown from '@/components/CostBreakdown'
 import { BarChart, LineChart, DonutChart, Sparkline, MiniBars } from '@/components/InsightCharts'
 import { maskPhone } from '@/lib/security'
 import { toneColors } from '@/lib/tokens'
@@ -134,7 +135,7 @@ export const DEFAULT_INSIGHTS = [
   'campaigns-table',
   'campaign-report',
   'dialed', 'connected', 'qualified', 'avg-talk', 'hangup', 'callback', 'avg-cpl', 'total-spent',
-  'outcome-donut', 'campaign-compare', 'spend-cpl', 'funnel',
+  'outcome-donut', 'campaign-compare', 'spend-cpl', 'cost-breakdown', 'funnel',
 ]
 
 // Columns for the embedded Campaign Report (mirrors the reports view)
@@ -198,6 +199,7 @@ export const INSIGHTS: InsightDef[] = [
   { id: 'funnel', title: 'Dialling Funnel', size: 'md', render: c => <ChartBox><FunnelChart reports={c.reports} /></ChartBox> },
   { id: 'campaign-compare', title: 'Campaign Comparison', size: 'md', render: c => <ChartBox><CampaignBar reports={c.reports} /></ChartBox> },
   { id: 'spend-cpl', title: 'Spend & CPL', size: 'md', render: c => <ChartBox><SpendChart reports={c.reports} /></ChartBox> },
+  { id: 'cost-breakdown', title: 'CPL / Cost Breakdown', size: 'md', render: c => <CostBreakdown calls={c.calls} /> },
   {
     id: 'company-compare', title: 'Company Comparison (Qualified)', size: 'md', render: c => {
       const byId = new Map(c.campaigns.map(x => [x.id, x.company || '—']))

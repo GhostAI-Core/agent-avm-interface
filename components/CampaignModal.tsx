@@ -45,7 +45,8 @@ const LEAD_GEN_ENABLED = true
 const DIAL_MODES = [
   { value: 'seeker', label: 'Seeker', agent: 'seeker', routing_mode: 'script', hint: 'Consent · press 1 subscribes' },
   { value: 'grace', label: 'Grace', agent: 'grace', routing_mode: 'script', hint: 'Consent · press 1 subscribes' },
-  { value: 'lead_gen', label: 'Lead Gen', agent: 'lead_gen', routing_mode: 'lead', hint: 'Double opt-in · press 1 twice = lead' },
+  // Lead-Gen has no product → agent stays null (campaigns_agent_check rejects 'lead_gen'); routing_mode drives it.
+  { value: 'lead_gen', label: 'Lead Gen', agent: null, routing_mode: 'lead', hint: 'Double opt-in · press 1 twice = lead' },
 ] as const
 type ParsedContact = { phone: string; first_name?: string; last_name?: string }
 type Trunk = { id: number; name: string; livekit_trunk_id: string; from_number: string }

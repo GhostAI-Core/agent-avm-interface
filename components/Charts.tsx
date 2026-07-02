@@ -39,12 +39,12 @@ function ChartPlot({ children }: { children: ReactNode }) {
 export function OutcomeDonut({ reports }: { reports: CampaignReport[] }) {
   const fills = [...outcomeDonutColors]
   const data = {
-    labels: ['Connected','Voicemail','No Speech','Hangup','NI','DNQ','Callback','NA+Busy+Failed'],
+    // Only the buckets we actually produce (see /api/reports mapping); dead dialer buckets dropped.
+    labels: ['Connected','Subscribed','Voicemail','Opted Out','No Answer','Failed'],
     datasets: [{
       data: [
-        sum(reports,'connected'), sum(reports,'voicemail'), sum(reports,'no_speech'),
-        sum(reports,'hangup'), sum(reports,'ni'), sum(reports,'dnq'), sum(reports,'callback'),
-        sum(reports,'no_answer') + sum(reports,'busy_line') + sum(reports,'failed'),
+        sum(reports,'connected'), sum(reports,'qualified'), sum(reports,'voicemail'),
+        sum(reports,'opt_out'), sum(reports,'no_answer'), sum(reports,'failed'),
       ],
       backgroundColor: fills,
       borderColor: fills.map(c => brighterStroke(c)),
@@ -81,8 +81,9 @@ export function CampaignBar({ reports }: { reports: CampaignReport[] }) {
               ...barGlow(chartGlow.connected),
             },
             {
-              label: 'Qualified',
-              data: reports.map(r => r.qualified * 100),
+              // `qualified` is now the raw subscribe count (was a 0–1 rate that got ×100).
+              label: 'Subscribed',
+              data: reports.map(r => r.qualified),
               backgroundColor: gradientFill(qualGrad.top, qualGrad.bottom),
               borderRadius: 3,
               ...barGlow(chartGlow.qualified),
@@ -136,21 +137,21 @@ export function SpendChart({ reports }: { reports: CampaignReport[] }) {
 }
 
 export function FunnelChart({ reports }: { reports: CampaignReport[] }) {
+  // Real conversion funnel from the buckets we produce: Dialed → Connected → Subscribed.
   const vals = [
-    sum(reports,'dialed'), sum(reports,'connected'), sum(reports,'voicemail'),
-    sum(reports,'no_speech'), sum(reports,'hangup'), sum(reports,'qualified'),
+    sum(reports,'dialed'), sum(reports,'connected'), sum(reports,'qualified'),
   ]
   const fills = [...funnelColors]
   const glowForIndex = (i: number) => {
     if (i === 0) return chartGlow.connected
-    if (i === 5) return chartGlow.qualified
+    if (i === 2) return chartGlow.qualified
     return 'transparent'
   }
   return (
     <ChartPlot>
       <Bar
         data={{
-          labels: ['Dialed','Connected','Voicemail','No Speech','Hangup','Qualified'],
+          labels: ['Dialed','Connected','Subscribed'],
           datasets: [{
             data: vals,
             backgroundColor: fills,

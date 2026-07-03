@@ -15,6 +15,7 @@ import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import CircularProgress from '@mui/material/CircularProgress'
+import Chip from '@mui/material/Chip'
 import StatusChip from '@/components/ui/StatusChip'
 import { useLookup } from '@/hooks/useLookup'
 import { parseContacts } from '@/lib/parseCsv'
@@ -51,11 +52,14 @@ export default function ContactsView() {
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [status, setStatus] = useState('')
+  const [network, setNetwork] = useState('')       // '' = All networks; else Vodacom/MTN/Cell C
   const [page, setPage] = useState(1)
 
   // Data
   const [contacts, setContacts] = useState<Contact[]>([])
   const [total, setTotal] = useState(0)
+  const [breakdown, setBreakdown] = useState<Record<string, number> | null>(null)
+  const [gateMsg, setGateMsg] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -89,6 +93,7 @@ export default function ContactsView() {
     try {
       const qs = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) })
       if (status) qs.set('status', status)
+      if (network) qs.set('network', network)
       if (search) qs.set('search', search)
       const res = await fetch(`/api/campaigns/${campaignId}/contacts?${qs}`)
       const json = await res.json().catch(() => ({}))
@@ -96,6 +101,7 @@ export default function ContactsView() {
       if (!res.ok) throw new Error(json?.error ?? `Failed (${res.status})`)
       setContacts(json.items ?? [])
       setTotal(json.total ?? (json.items?.length ?? 0))
+      setBreakdown(json.breakdown ?? null)
     } catch (e) {
       if (!isActive()) return
       setError(e instanceof Error ? e.message : 'Failed to load contacts')
@@ -104,7 +110,7 @@ export default function ContactsView() {
     } finally {
       if (isActive()) setLoading(false)
     }
-  }, [campaignId, page, status, search])
+  }, [campaignId, page, status, network, search])
 
   // Defer the fetch one microtask so setState never runs synchronously inside the effect.
   useEffect(() => {
@@ -113,10 +119,43 @@ export default function ContactsView() {
     return () => { active = false }
   }, [loadContacts])
 
+  // Initialise the network dropdown from the selected campaign's persisted gate (network_provider).
+  useEffect(() => {
+    const c = campaigns.find((x) => String(x.id) === campaignId)
+    setNetwork(c?.network_provider ?? '')
+    setGateMsg(null)
+  }, [campaignId, campaigns])
+
   // Page resets live in the filter handlers below (not an effect) to avoid a cascading render.
   const pickCampaign = (v: string) => { setCampaignId(v); setPage(1) }
   const pickStatus = (v: string) => { setStatus(v); setPage(1) }
   const runSearch = () => { setSearch(searchInput.trim()); setPage(1) }
+
+  // The network control is BOTH a view filter AND the dial gate: picking a network persists
+  // campaigns.network_provider (CallOps then only dials that network) and filters the list.
+  const pickNetwork = async (v: string) => {
+    setNetwork(v)
+    setPage(1)
+    setGateMsg(null)
+    if (!campaignId) return
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ network_provider: v || null }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        setError(j?.error ?? `Could not set the network gate (${res.status})`)
+        return
+      }
+      // reflect the change in the local campaigns cache so a re-select keeps the value
+      setCampaigns((prev) => prev.map((c) => (String(c.id) === campaignId ? { ...c, network_provider: v || null } : c)))
+      setGateMsg(v ? `Dialing ${v} only — non-${v} contacts will be skipped.` : 'Network gate cleared — all networks will be dialed.')
+    } catch {
+      setError('Could not set the network gate')
+    }
+  }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
@@ -204,6 +243,18 @@ export default function ContactsView() {
         </TextField>
 
         <TextField
+          select size="small" label="Network (dial gate)" value={network}
+          onChange={(e) => pickNetwork(e.target.value)} sx={{ minWidth: 180 }}
+          disabled={!campaignId}
+          helperText={network ? `Dials ${network} only` : 'All networks'}
+        >
+          <MenuItem value="">All networks</MenuItem>
+          <MenuItem value="MTN">MTN only</MenuItem>
+          <MenuItem value="Vodacom">Vodacom only</MenuItem>
+          <MenuItem value="Cell C">Cell C only</MenuItem>
+        </TextField>
+
+        <TextField
           size="small" label="Search" value={searchInput} placeholder="Phone or name"
           onChange={(e) => setSearchInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') runSearch() }}
@@ -223,6 +274,24 @@ export default function ContactsView() {
         </Button>
       </Stack>
 
+      {/* Network breakdown — the mix an operator sees before dialing / setting the gate. */}
+      {breakdown && (
+        <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center', mb: 2 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Network mix:</Typography>
+          {(['MTN', 'Vodacom', 'Cell C', 'unknown'] as const).map((k) => (
+            <Chip
+              key={k} size="small"
+              variant={network === k ? 'filled' : 'outlined'}
+              color={network === k ? 'primary' : 'default'}
+              label={`${k} ${breakdown[k] ?? 0}`}
+            />
+          ))}
+        </Stack>
+      )}
+
+      {gateMsg && (
+        <Alert severity="info" sx={{ mb: 2 }} onClose={() => setGateMsg(null)}>{gateMsg}</Alert>
+      )}
       {importMsg && (
         <Alert severity={importMsg.ok ? 'success' : 'error'} sx={{ mb: 2 }} onClose={() => setImportMsg(null)}>
           {importMsg.text}
@@ -254,7 +323,7 @@ export default function ContactsView() {
                 <TableCell sx={{ fontFamily: 'monospace' }}>{maskPhone(c.phone)}</TableCell>
                 <TableCell>{fullName(c)}</TableCell>
                 <TableCell><StatusChip status={c.status} /></TableCell>
-                <TableCell>{c.network || '—'}</TableCell>
+                <TableCell>{c.network_provider || '—'}</TableCell>
                 <TableCell align="right">{c.retry_count ?? 0}</TableCell>
                 <TableCell>{fmtWhen(c.last_attempted_at)}</TableCell>
                 <TableCell align="right">

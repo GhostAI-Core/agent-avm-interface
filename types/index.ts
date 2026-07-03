@@ -50,6 +50,10 @@ export interface Campaign {
   end_date?: string | null
   transfer_key?: string | null
   transfer_target?: string | null
+  /** Single allowed mobile network (Vodacom/MTN/Cell C) or null=all. CallOps only enqueues
+   *  contacts whose network_provider matches; null = no network gate. */
+  network_provider?: string | null
+  routing_mode?: string | null
   // In-call behavior knobs read by the agent worker (see lib/call-behavior.ts).
   answer_delay_sec?: number | null
   silence_timeout_sec?: number | null
@@ -179,7 +183,8 @@ export interface Contact {
   last_name?: string | null
   /** callops /lookups/contact-statuses: pending, in_progress, dialed, failed, retry, archived, do_not_call. */
   status: string
-  network?: string | null
+  /** ICASA-allocated mobile network (Vodacom/MTN/Cell C) derived from the E.164 prefix; null = unknown/non-SA. */
+  network_provider?: string | null
   retry_count?: number | null
   last_attempted_at?: string | null
   created_at?: string

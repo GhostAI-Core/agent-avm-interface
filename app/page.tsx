@@ -425,7 +425,16 @@ export default function Page() {
   async function updateStatus(id: number, status: string) {
     const action = LIFECYCLE[status]
     try {
-      if (action) {
+      if (status === 'archived') {
+        // Archive is a soft-delete owned by callops (DELETE proxies POST /campaigns/{id}/archive).
+        // NOT a PUT — the campaign PATCH passthrough deliberately excludes `status`, so PUT {status}
+        // sends an empty payload and 400s ("No valid fields").
+        const res = await fetch(`/api/campaigns/${id}`, { method: 'DELETE' })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          console.error('Campaign archive failed:', j?.error ?? res.statusText)
+        }
+      } else if (action) {
         const res = await fetch(`/api/campaigns/${id}/${action}`, { method: 'POST' })
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))

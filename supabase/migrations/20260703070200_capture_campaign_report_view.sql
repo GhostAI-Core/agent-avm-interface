@@ -1,64 +1,44 @@
--- Capture-migration STUB (db-schema-cleanup, 2026-07-03): `campaign_report` is a live
--- reporting VIEW (NOT a table) — one row per campaign, all count columns typed BIGINT
--- (COUNT aggregates), FK campaign_id -> campaigns.id, 0 nodes in the knowledge graph
--- (created directly in the Supabase SQL editor). Verified 4 rows live 2026-07-03, growing
--- with call data. It must be CAPTURED, never DROP TABLE-d.
+-- Capture-migration (db-schema-cleanup, 2026-07-03): `campaign_report` is a live reporting
+-- VIEW (NOT a table) — one row per campaign that has call_records, all count columns BIGINT,
+-- FK campaign_id -> campaigns.id. Created directly in the Supabase SQL editor (0 graph nodes),
+-- so it had no repo DDL. Captured here so supabase/migrations/* is authoritative.
 --
--- BLOCKED: extracting the REAL view body requires the DB password / Supabase SQL editor,
--- which is not reachable from either repo's .env (no pg_get_viewdef RPC is exposed via
--- PostgREST). Do NOT ship a reconstructed CREATE OR REPLACE VIEW — replacing the live view
--- with a guessed body would silently change reporting. This file stays a documented stub
--- until the real definition is pasted in.
+-- Body below is the EXACT live definition, extracted 2026-07-03 via
+--   SELECT pg_get_viewdef('campaign_report'::regclass, true);
+-- CREATE OR REPLACE VIEW with this identical body is a no-op against live (idempotent).
 --
--- TO CAPTURE: run this in the Supabase SQL editor and paste the output below, uncommented:
---     SELECT pg_get_viewdef('campaign_report'::regclass, true);
+-- KEEP decision: the dashboard's own reports/leads aggregates read raw call_records directly
+-- (reads-from-raw model, ratified 2026-07-02), so nothing in this repo depends on this view.
+-- It's cheap and harmless, so KEEP + capture rather than supersede/drop. It MAY be dropped
+-- later if confirmed unused by any external consumer (Cale/CallOps/ad-hoc SQL).
 --
--- ── Live column contract (verified 2026-07-03 via service-role read of PostgREST OpenAPI) ──
---   campaign_id        integer            (FK -> campaigns.id)
---   campaign_name      varchar
---   agent              varchar            (null for lead-gen campaigns)
---   dialed             bigint
---   connected          bigint
---   qualified          bigint
---   voicemail          bigint
---   no_speech          bigint
---   hangup             bigint
---   ni                 bigint
---   dnq                bigint
---   callback           bigint
---   no_answer          bigint
---   busy_line          bigint
---   failed             bigint
---   transfers          bigint
---   avg_talk_seconds   numeric
---   total_spent        numeric
---   cpl                numeric
---
--- ── REFERENCE ONLY — reconstructed from the column shape; NOT verified against the live
---    body, so it is COMMENTED OUT and must not be applied. Replace with the pg_get_viewdef
---    output above. It aggregates call_records grouped by campaign, joined to campaigns:
---
--- CREATE OR REPLACE VIEW campaign_report AS
--- SELECT
---   c.id   AS campaign_id,
---   c.name AS campaign_name,
---   c.agent,
---   COUNT(r.*)                                              AS dialed,
---   COUNT(*) FILTER (WHERE r.outcome = 'connected')         AS connected,
---   COUNT(*) FILTER (WHERE r.outcome = 'qualified')         AS qualified,
---   COUNT(*) FILTER (WHERE r.outcome = 'voicemail')         AS voicemail,
---   COUNT(*) FILTER (WHERE r.outcome = 'no_speech')         AS no_speech,
---   COUNT(*) FILTER (WHERE r.outcome = 'hangup')            AS hangup,
---   COUNT(*) FILTER (WHERE r.outcome = 'ni')                AS ni,
---   COUNT(*) FILTER (WHERE r.outcome = 'dnq')               AS dnq,
---   COUNT(*) FILTER (WHERE r.outcome = 'callback')          AS callback,
---   COUNT(*) FILTER (WHERE r.outcome = 'no_answer')         AS no_answer,
---   COUNT(*) FILTER (WHERE r.outcome = 'busy')              AS busy_line,
---   COUNT(*) FILTER (WHERE r.outcome = 'failed')            AS failed,
---   COUNT(*) FILTER (WHERE r.transferred)                   AS transfers,
---   AVG(r.talk_seconds)                                     AS avg_talk_seconds,
---   SUM(r.cost)                                             AS total_spent,
---   SUM(r.cost) / NULLIF(COUNT(*) FILTER (WHERE r.outcome IN ('subscribed','lead')), 0) AS cpl
--- FROM campaigns c
--- LEFT JOIN call_records r ON r.campaign_id = c.id
--- GROUP BY c.id, c.name, c.agent;
+-- KNOWN QUIRK — cpl is wrong for lead-gen campaigns. The view divides total_spent by the
+-- `qualified` count, but lead-gen conversions are outcome='lead' (never 'qualified'), so
+-- campaign_report.cpl is always 0 for lead-gen. Do NOT read cpl from this view for lead-gen;
+-- the dashboard already computes CPL from raw call_records counting subscribed OR lead.
+CREATE OR REPLACE VIEW campaign_report AS
+ SELECT cr.campaign_id,
+    c.name AS campaign_name,
+    c.agent,
+    count(*) AS dialed,
+    count(*) FILTER (WHERE cr.outcome::text = 'connected'::text) AS connected,
+    count(*) FILTER (WHERE cr.outcome::text = 'qualified'::text) AS qualified,
+    count(*) FILTER (WHERE cr.outcome::text = 'voicemail'::text) AS voicemail,
+    count(*) FILTER (WHERE cr.outcome::text = 'no_speech'::text) AS no_speech,
+    count(*) FILTER (WHERE cr.outcome::text = 'hangup'::text) AS hangup,
+    count(*) FILTER (WHERE cr.outcome::text = 'ni'::text) AS ni,
+    count(*) FILTER (WHERE cr.outcome::text = 'dnq'::text) AS dnq,
+    count(*) FILTER (WHERE cr.outcome::text = 'callback'::text) AS callback,
+    count(*) FILTER (WHERE cr.outcome::text = 'no_answer'::text) AS no_answer,
+    count(*) FILTER (WHERE cr.outcome::text = 'busy'::text) AS busy_line,
+    count(*) FILTER (WHERE cr.outcome::text = 'failed'::text) AS failed,
+    count(*) FILTER (WHERE cr.transferred) AS transfers,
+    round(avg(cr.talk_seconds)) AS avg_talk_seconds,
+    sum(cr.cost) AS total_spent,
+        CASE
+            WHEN count(*) FILTER (WHERE cr.outcome::text = 'qualified'::text) > 0 THEN round(sum(cr.cost) / count(*) FILTER (WHERE cr.outcome::text = 'qualified'::text)::numeric, 2)
+            ELSE 0::numeric
+        END AS cpl
+   FROM call_records cr
+     JOIN campaigns c ON c.id = cr.campaign_id
+  GROUP BY cr.campaign_id, c.name, c.agent;

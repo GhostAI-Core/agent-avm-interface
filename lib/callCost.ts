@@ -13,7 +13,10 @@
 //     Abacus ~R0.50/min → we use ~R0.35/min. This reconciles the felt ~12c "carrier-only" on a
 //     19s call (0.317min × R0.35 ≈ R0.11). Local SIP bills PER-SECOND (increment 1s) — the big
 //     lever on <30s calls. (Twilio SA-mobile is $0.0499≈R0.90/min but 60/60 — 3× on short calls.)
-//   - LiveKit Cloud: agent session $0.010/min + third-party SIP $0.004/min ≈ R0.25/min.
+//   - LiveKit: SELF-HOSTED (ws://livekit.evra-ai.com:7880 — our own livekit-server + livekit-sip
+//     containers, confirmed via Arcane). There is NO per-minute LiveKit Cloud charge; it's a flat
+//     server/infra cost, not per-call. So LiveKit contributes R0 to the per-call estimate.
+//     (LiveKit Cloud would be ~$0.010/min agent + $0.004/min SIP ≈ R0.25/min — NOT what we run.)
 //   - AI per answered call: AMD gpt-4.1-mini (~$0.001) + ~5s AssemblyAI STT (~$0.0002)
 //     ≈ $0.0012 ≈ R0.02. TTS is pre-generated (not per-call). Recordings not running.
 
@@ -29,7 +32,7 @@ export interface CostModel {
 export const COST_MODEL: CostModel = {
   currency: 'ZAR',
   carrierPerMin: 0.35,   // utility_connect wholesale proxy (Switch R0.29 / Abacus R0.50)
-  livekitPerMin: 0.25,   // LiveKit agent-session $0.010 + third-party SIP $0.004 ≈ R0.25
+  livekitPerMin: 0,      // SELF-HOSTED LiveKit — flat infra cost, NOT per-call (was 0.25 Cloud est; that inflated CPL ~5×)
   aiPerAnsweredCall: 0.02,
   billingIncrementSec: 1,
 }
@@ -45,9 +48,9 @@ export function billedMinutes(talkSeconds: number, incrementSec = COST_MODEL.bil
  * Estimated cost of a single call.
  *  - Carrier (utility_connect) bills the ANSWERED leg (~talk time); an unanswered call's
  *    ring is normally free, so carrier cost uses talkSeconds.
- *  - LiveKit bills the whole SESSION (on-air = ended_at − started_at), which is ~5.5× talk
- *    and applies even to no-answers (the SIP/room leg exists during ring). So LiveKit cost
- *    uses onAirSeconds. If on-air is missing, fall back to talk.
+ *  - LiveKit is SELF-HOSTED → R0 per-call (livekitPerMin=0). onAirSeconds is still computed and
+ *    kept as a duration metric, but it no longer incurs a LiveKit charge. (If we ever move to
+ *    LiveKit Cloud, set livekitPerMin and this term bills on-air ≈ 5.5× talk.)
  *  - AMD AI runs once per ANSWERED call.
  */
 export function estimateCallCost(talkSeconds: number, onAirSeconds = 0, m: CostModel = COST_MODEL): number {

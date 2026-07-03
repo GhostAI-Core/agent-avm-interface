@@ -1,0 +1,64 @@
+-- Capture-migration STUB (db-schema-cleanup, 2026-07-03): `campaign_report` is a live
+-- reporting VIEW (NOT a table) — one row per campaign, all count columns typed BIGINT
+-- (COUNT aggregates), FK campaign_id -> campaigns.id, 0 nodes in the knowledge graph
+-- (created directly in the Supabase SQL editor). Verified 4 rows live 2026-07-03, growing
+-- with call data. It must be CAPTURED, never DROP TABLE-d.
+--
+-- BLOCKED: extracting the REAL view body requires the DB password / Supabase SQL editor,
+-- which is not reachable from either repo's .env (no pg_get_viewdef RPC is exposed via
+-- PostgREST). Do NOT ship a reconstructed CREATE OR REPLACE VIEW — replacing the live view
+-- with a guessed body would silently change reporting. This file stays a documented stub
+-- until the real definition is pasted in.
+--
+-- TO CAPTURE: run this in the Supabase SQL editor and paste the output below, uncommented:
+--     SELECT pg_get_viewdef('campaign_report'::regclass, true);
+--
+-- ── Live column contract (verified 2026-07-03 via service-role read of PostgREST OpenAPI) ──
+--   campaign_id        integer            (FK -> campaigns.id)
+--   campaign_name      varchar
+--   agent              varchar            (null for lead-gen campaigns)
+--   dialed             bigint
+--   connected          bigint
+--   qualified          bigint
+--   voicemail          bigint
+--   no_speech          bigint
+--   hangup             bigint
+--   ni                 bigint
+--   dnq                bigint
+--   callback           bigint
+--   no_answer          bigint
+--   busy_line          bigint
+--   failed             bigint
+--   transfers          bigint
+--   avg_talk_seconds   numeric
+--   total_spent        numeric
+--   cpl                numeric
+--
+-- ── REFERENCE ONLY — reconstructed from the column shape; NOT verified against the live
+--    body, so it is COMMENTED OUT and must not be applied. Replace with the pg_get_viewdef
+--    output above. It aggregates call_records grouped by campaign, joined to campaigns:
+--
+-- CREATE OR REPLACE VIEW campaign_report AS
+-- SELECT
+--   c.id   AS campaign_id,
+--   c.name AS campaign_name,
+--   c.agent,
+--   COUNT(r.*)                                              AS dialed,
+--   COUNT(*) FILTER (WHERE r.outcome = 'connected')         AS connected,
+--   COUNT(*) FILTER (WHERE r.outcome = 'qualified')         AS qualified,
+--   COUNT(*) FILTER (WHERE r.outcome = 'voicemail')         AS voicemail,
+--   COUNT(*) FILTER (WHERE r.outcome = 'no_speech')         AS no_speech,
+--   COUNT(*) FILTER (WHERE r.outcome = 'hangup')            AS hangup,
+--   COUNT(*) FILTER (WHERE r.outcome = 'ni')                AS ni,
+--   COUNT(*) FILTER (WHERE r.outcome = 'dnq')               AS dnq,
+--   COUNT(*) FILTER (WHERE r.outcome = 'callback')          AS callback,
+--   COUNT(*) FILTER (WHERE r.outcome = 'no_answer')         AS no_answer,
+--   COUNT(*) FILTER (WHERE r.outcome = 'busy')              AS busy_line,
+--   COUNT(*) FILTER (WHERE r.outcome = 'failed')            AS failed,
+--   COUNT(*) FILTER (WHERE r.transferred)                   AS transfers,
+--   AVG(r.talk_seconds)                                     AS avg_talk_seconds,
+--   SUM(r.cost)                                             AS total_spent,
+--   SUM(r.cost) / NULLIF(COUNT(*) FILTER (WHERE r.outcome IN ('subscribed','lead')), 0) AS cpl
+-- FROM campaigns c
+-- LEFT JOIN call_records r ON r.campaign_id = c.id
+-- GROUP BY c.id, c.name, c.agent;

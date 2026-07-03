@@ -15,10 +15,10 @@
 
 ## 3. Tier 2 — retire `/dial`, then drop its tables (coupled)
 
-- [ ] 3.1 (Sequenced with [[provider-dial-gate]]) Delete `app/api/campaigns/[id]/dial/route.ts` and the network clause in `lib/compliance/gate.ts`; confirm nothing imports them
-- [ ] 3.2 Re-verify 0 rows + 0 references for `campaign_contacts`, `compliance_events`
-- [ ] 3.3 `pg_dump` each; write drop-migration `<ts>_drop_dial_tables.sql` with reversible restore
-- [ ] 3.4 Apply; verify dashboard build/lint + health; confirm campaign create/start still work end-to-end
+- [x] 3.1 Delete `app/api/campaigns/[id]/dial/route.ts` — DONE 2026-07-03: route had zero callers repo-wide (UI control path is `[id]/[action]` -> CallOps). `next build` passes clean, route gone from manifest. **Scope correction:** did NOT gut `lib/compliance/gate.ts` — the gate is pure logic (doesn't touch the Tier 2 tables) so deleting the route alone unblocks the drop; and `lib/compliance/outcomes.ts` is still used by `lib/sts/outcomes.test.ts` (NOT dead). Left `lib/compliance/*` in place for [[provider-dial-gate]] to formally retire.
+- [x] 3.2 Re-verify 0 rows + 0 references — DONE: both 0-row; the only code refs were inside the now-deleted `/dial` route (verified incl. `scripts/`).
+- [x] 3.3 Write drop-migration `20260703090000_drop_dial_tables.sql` — DONE: guarded + reversible in-DB backups, drops `compliance_events` then `campaign_contacts`.
+- [ ] 3.4 Apply live (user runs the guarded SQL in the Supabase SQL editor) + verify build/health; confirm campaign create/start still work end-to-end.
 
 ## 4. Keep list (documented, do NOT drop)
 

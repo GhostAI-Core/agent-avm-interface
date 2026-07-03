@@ -8,10 +8,10 @@
 
 ## 2. Tier 1 — drop dead tables (no code coupling)
 
-- [ ] 2.1 Re-verify 0 rows + 0 references immediately before drop: `call_events`, `voip_providers` (grep both repos; the only `call_events` hit is the endpoint fn name `get_call_events`, not a table access; `voip_providers` refs are all historical schema/migrations)
-- [ ] 2.2 `pg_dump` schema+data of each to a timestamped backup file
-- [ ] 2.3 Write drop-migration `supabase/migrations/<ts>_drop_tier1_redundant.sql` (`DROP TABLE IF EXISTS call_events, voip_providers;` + `DROP FUNCTION IF EXISTS process_call_event();` — the orphaned ETL fn; trigger `trg_process_call_event` drops with the table) with a commented reversible restore-from-dump
-- [ ] 2.4 Apply; verify dashboard `/api/health` + CallOps `/health` still green; confirm no dashboard view errors
+- [x] 2.1 Re-verify 0 rows + 0 references immediately before drop — DONE 2026-07-03: both 0-row (service-role count=*/0); no refs in `app/`/`lib/` (only historical migrations mention them)
+- [x] 2.2 Backup schema+data before drop — DONE via in-DB structural backup instead of `pg_dump` (SQL editor can't shell out): `_backup_20260703_call_events`, `_backup_20260703_voip_providers` (`LIKE ... INCLUDING ALL EXCLUDING DEFAULTS/IDENTITY`; the `EXCLUDING` avoids the owned-sequence dependency that first blocked the drop). Full DDL also lives in the original CREATE migrations.
+- [x] 2.3 Write drop-migration `20260703080000_drop_tier1_redundant.sql` — DONE: transaction-guarded (aborts if non-empty) `DROP TABLE call_events, voip_providers` + `DROP FUNCTION process_call_event()`, with commented reversible restore.
+- [x] 2.4 Apply + verify — DONE 2026-07-03: user ran it live, committed cleanly. Verified: `call_events`/`voip_providers` now `404 PGRST205`; replacements healthy (`call_session_events`=719, `sip_trunks`=3); CallOps `/health`=200.
 
 ## 3. Tier 2 — retire `/dial`, then drop its tables (coupled)
 

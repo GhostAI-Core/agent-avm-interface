@@ -22,4 +22,4 @@
 
 ## 4. Keep list (documented, do NOT drop)
 
-- [ ] 4.1 Document that `dial_number_state`, `product_consent`, `suppression_list`, `intent_stats`, `script_audio` are empty-but-wired (kept), and `call_logs` is live-written by CallOps (kept)
+- [x] 4.1 Documented in proposal Non-goals: `dial_number_state`, `product_consent`, `suppression_list`, `intent_stats`, `script_audio` are empty-but-wired (kept, NOT redundant); `call_logs` is live-written by CallOps via RPC counters (kept).

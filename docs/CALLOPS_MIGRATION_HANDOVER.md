@@ -11,7 +11,7 @@
 - The dashboard (`agent-avm-interface`) used to read/write Supabase tables directly for almost everything. It now goes through `evra_callops`'s HTTP API for all operational data (campaigns, calls, contacts, leads, trunks, dashboards, settings, scripts). **Supabase auth stays in the frontend** — the dashboard still uses `@supabase/supabase-js` for login/session, and forwards the user's Supabase JWT to CallOps as a Bearer token on every API call.
 - CallOps validates that JWT itself (ES256 via Supabase's JWKS endpoint) and enforces company-scoped authorization server-side — the frontend no longer relies on Supabase RLS for access control on these tables.
 - A parallel effort cleaned up the shared Supabase schema: dropped dead columns/tables, fixed migrations that existed locally but were never applied, added missing `CHECK` constraints, and reconciled a data-model mismatch between what the agent runtime actually writes and what the API/DB thought was valid.
-- **CallOps changes are committed** (`evra_callops` commit `0954124`, and earlier). **Frontend changes are NOT yet committed** — see [§8 Git state](#8-git-state) before doing anything else.
+- The CallOps migration work described here has landed in the dashboard. Treat this handover as historical context plus integration notes; use the current source and `docs/app-api-reference.md` for route-by-route truth.
 
 ---
 
@@ -38,11 +38,11 @@ Not everything moved. These frontend routes still read/write Supabase tables dir
 
 | Route | Table(s) | Why it's still direct |
 |---|---|---|
-| `app/api/calls/result/route.ts` | `call_records` | Agent-runtime webhook, writes call results as they land. Not yet migrated to a CallOps ingest endpoint. |
+| `app/api/calls/result/route.ts` | `call_records` | Secondary reconciliation endpoint. CallOps remains authoritative via `/calls/outcome`; this route inserts only if the primary write missed. |
 | `app/api/livekit/webhook/route.ts` | `call_records` | LiveKit egress/room webhooks, same reasoning. |
 | `app/api/security/route.ts` | `security_logs` | Small, low-traffic, never migrated. |
 | `app/api/dashboard-templates/route.ts` | `dashboard_templates` | CallOps has an equivalent (`/companies/{id}/dashboard-templates`) that was never wired up here — worth revisiting. |
-| `app/api/campaigns/[id]/[action]/route.ts` | `campaigns` (status patch) | Predates the migration; CallOps has `/campaigns/{id}/{start,stop,pause}` — this route should probably be retired in favor of those. |
+| `app/api/campaigns/[id]/[action]/route.ts` | `campaigns` (local fallback only) | Production proxies lifecycle to CallOps. Outside production, it can patch local status if CallOps env is unset. |
 
 Everything else under `app/api/` now proxies CallOps via `utils/callops.ts` (`callopsGet` / `callopsPost` / `callopsPatch` / `callopsItems`).
 
@@ -64,7 +64,7 @@ Everything else under `app/api/` now proxies CallOps via `utils/callops.ts` (`ca
 | SIP trunks (list) | `sip_trunks` table select | `GET /companies/{id}/sip-trunks` (fans out + dedupes — a trunk can belong to many companies, see §4) | `app/api/trunks/route.ts` |
 | Cost per minute (ZAR) | Hardcoded frontend constant (`lib/callCost.ts`, now deleted) | `GET/PATCH /system-settings` (`cost_per_minute_zar`, admin-only write, cached with TTL server-side) | `app/api/settings/route.ts`, `components/SettingsView.tsx` |
 | Call cost | Client-side estimate | Backend-computed `call_records.cost`, using the live `system_settings` rate at outcome time | `components/CostBreakdown.tsx` sums `cost` from records |
-| Script text reuse library | `voice_scripts` table (direct Supabase, **now broken** — see §6.1) | `POST/GET /script-library` (global, no company scoping) | `app/api/voice-scripts/route.ts` |
+| Script text reuse library | `voice_scripts` table (direct Supabase; broken during migration until fixed, see §6.1) | `POST/GET /script-library` (global, no company scoping) | `app/api/voice-scripts/route.ts` |
 | Per-campaign script history | Existed in CallOps (`script_audio`) but nothing called it | `POST/GET /script-audio` wired into campaign create + edit | `app/api/script-audio/route.ts` (new) |
 
 ---
@@ -134,47 +134,19 @@ Renaming `voice_scripts` → `voice_scripts_deprecated` (§5, `20260705040000`) 
 
 ## 7. Known issues / follow-ups for the next developer
 
-1. **Frontend changes are uncommitted** — see §8. Commit or review before they're lost/conflict.
-2. **`CampaignUpdate` (CallOps) doesn't accept `company_id` or `start_date`** — the edit dialog silently drops changes to those two fields on save. Pre-existing, not touched in this pass.
-3. **Two "reuse script" mechanisms still coexist** and can confuse users: the new `/script-library` (text + voice + audio, global) and the older S3-listing-only `GET /api/scripts` (audio URLs, no text, used in `CampaignActionDialog`'s "reuse as template" mode). Consider consolidating.
-4. **`docs/SUPABASE_SCHEMA.md`** (if still present) was already stale before this migration and hasn't been regenerated — don't trust it, check `information_schema` or the migrations folder instead.
-5. **A Supabase secret key for a *different* project (`STS_SUPABASE_SECRET_KEY`, project `flaonbqsnnzntgiuowmu`) was pasted into chat** during this work. Confirm it's been rotated if it hasn't already — this is unrelated to `evra_avm` (`ytozpjohaphinlsqrxlc`), it's the separate STS/SDP project.
-6. **Routes flagged in §2.1** (`dashboard-templates`, `campaigns/[id]/[action]`) have CallOps equivalents that were never wired up — worth a follow-up pass.
-7. If you ever touch `call_records.outcome` / `business_disposition` constraints again: audit `agent/call_handler.py` (the actual writer), not just `app/` — see the corrective migration in §5 for why this matters.
+1. **`CampaignUpdate` (CallOps) doesn't accept `company_id` or `start_date`** — the edit dialog silently drops changes to those two fields on save. Pre-existing, not touched in this pass.
+2. **Two "reuse script" mechanisms still coexist** and can confuse users: the new `/script-library` (text + voice + audio, global) and the older S3-listing-only `GET /api/scripts` (audio URLs, no text, used in `CampaignActionDialog`'s "reuse as template" mode). Consider consolidating.
+3. **`docs/SUPABASE_SCHEMA.md`** (if still present) was already stale before this migration and hasn't been regenerated — don't trust it, check `information_schema` or the migrations folder instead.
+4. **A Supabase secret key for a *different* project (`STS_SUPABASE_SECRET_KEY`, project `flaonbqsnnzntgiuowmu`) was pasted into chat** during this work. Confirm it's been rotated if it hasn't already — this is unrelated to `evra_avm` (`ytozpjohaphinlsqrxlc`), it's the separate STS/SDP project.
+5. If you ever touch `call_records.outcome` / `business_disposition` constraints again: audit `agent/call_handler.py` (the actual writer), not just `app/` — see the corrective migration in §5 for why this matters.
 
 ---
 
-## 8. Git state
+## 8. Current status
 
-- **`evra_callops`**: all backend work from this migration is committed to `main` (see commit `0954124` "Update call handling, API endpoints, and documentation for enhanced functionality", and the cost-tracking work in `cc01058` before it). Working tree is clean.
-- **`agent-avm-interface`**: work from this migration is **uncommitted** as of this handover. Modified/added/deleted files:
-
-```
- M .env
- M app/api/calls/result/route.ts
- M app/api/campaigns/[id]/contacts/route.ts
- M app/api/campaigns/[id]/route.ts
- M app/api/leads/route.ts
- M app/api/logs/route.ts
- M app/api/reports/route.ts
- M app/api/trunks/route.ts
- M app/api/tts/save/route.ts
- M app/api/voice-scripts/route.ts
- M components/CampaignActionDialog.tsx
- M components/CampaignDetail.tsx
- M components/CampaignModal.tsx
- M components/CostBreakdown.tsx
- M components/SettingsView.tsx
- M components/VoiceGenerator.tsx
- M docs/openapi.json
- D lib/callCost.ts
- M lib/tokens.ts
- M types/index.ts
-?? app/api/script-audio/
-?? app/api/settings/
-```
-
-(`.env` shows as modified locally — double-check nothing sensitive is staged before any commit; it's git-ignored in principle but verify.)
+- The frontend migration work is now committed in this repository.
+- Use `git status` for the current branch state rather than the historical file list from the original handover.
+- Preserve this invariant: operational data routes should proxy CallOps through `utils/callops.ts`, with the direct-Supabase exceptions listed in §2.1.
 
 ---
 

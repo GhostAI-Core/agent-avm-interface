@@ -2,7 +2,7 @@
 
 _The complete set of rules that govern an outbound call, in lifecycle order. Sourced from the
 callops orchestrator (`evra_callops/app/`) and the LiveKit agent worker (`evra_callops/agent/`).
-Last reconciled against live source: 2026-06-26._
+Last reconciled against dashboard source: 2026-07-06._
 
 > Authoritative sources:
 > - Dispatch guards — `evra_callops/app/services/queue_dispatcher.py`, `evra_callops/app/guards/`
@@ -20,6 +20,9 @@ _`app/services/queue_dispatcher.py` + `app/guards/`_
 | **Concurrency cap** | `max_concurrent` (live DB count, multi-instance safe) | per-campaign |
 | **Rate limit** | `dialing_speed` (token bucket) | per-campaign |
 | **Eligibility filter** | only `status ∈ {pending, retry}` **and** `do_not_call = false` are enqueued | — |
+| **Network gate** | when `campaigns.network_provider` is set (`Vodacom` / `MTN` / `Cell C`), only contacts with matching stored `contacts.network_provider` are enqueued; unknown/null contacts are skipped for gated campaigns | per-campaign |
+
+Dashboard controls for the network gate live in `CampaignModal`, `CampaignActionDialog`, and `ContactsView`. The Contacts view also reads CallOps `contacts/network-breakdown` so operators can inspect the whole campaign's carrier mix before setting a gate.
 
 ## ② Ringing — waiting for pickup
 _`agent/call_handler.py`_

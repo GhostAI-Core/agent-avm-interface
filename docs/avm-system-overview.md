@@ -28,27 +28,29 @@ replaces the pre-recorded message with a real-time AI agent. The two generations
 
 ### 2.2 Agent AVM Interface — the dashboard + control plane (generation 2, THIS project)
 - A Next.js + MUI single-page app.
-- **Owns** the human-facing surface: campaign creation, contact lists, voice/script generation,
-  reporting, call-quality review, settings, and the **compliance preview**.
-- It is a **control plane**: it does NOT place calls itself. It tells callops to start/pause/stop and
-  then displays live status and results.
+- **Owns** the human-facing surface: company/product/campaign creation, contact lists, voice/script
+  generation, reporting, call-quality review, settings, and operator-facing controls such as the
+  network dial gate.
+- It is a **control plane**: it does NOT place calls itself and should not read/write operational
+  tables directly. It proxies operational data through CallOps and displays live status/results.
 
 ### 2.3 callops (evra-callops) — the dialer / orchestrator
-- **Owns dialing.** It places the calls, manages pacing, and is therefore the **authoritative place
-  for pre-dial compliance enforcement**.
-- The app sends it lifecycle commands; callops reports live stats back.
+- **Owns dialing and operational data.** It places the calls, manages pacing, enforces pre-dial rules,
+  stores campaigns/contacts/products/trunks/calls, and exposes the API the dashboard consumes.
+- The app sends it lifecycle and CRUD commands; CallOps reports live stats and aggregates back.
 
 ### 2.4 LiveKit — the voice + telephony transport
 - **Owns** the SIP call itself and the AI voice agent + call recording (egress to storage).
 
 ### 2.5 Supabase — the integration plane (the shared spine)
 - Postgres + Auth + Storage.
-- **The meeting point**: STS truth (opt-outs, DNC), the app's campaigns/contacts, callops' dial state,
-  and call results all live here. "The secret is Supabase" — every other system reads and writes this
-  shared database rather than talking point-to-point.
+- **The shared persistence layer**: STS truth (opt-outs, DNC), campaigns/contacts/products, CallOps dial
+  state, and call results live here. The dashboard reaches operational data through CallOps rather than
+  direct table access.
 
-**Relationship summary:** App → commands → callops → dials via → LiveKit. STS → opt-out/DNC truth →
-Supabase. callops + App + STS all read/write → Supabase.
+**Relationship summary:** App → API proxy → CallOps → dials via → LiveKit. STS → opt-out/DNC truth →
+Supabase. CallOps + STS write operational truth; the app reads/writes that truth through CallOps except
+for auth/templates/security/fallback paths.
 
 ---
 
@@ -65,9 +67,10 @@ Supabase. callops + App + STS all read/write → Supabase.
 ## 4. The data model (key tables in Supabase)
 
 ### 4.1 Core calling
-- **companies** → **campaigns** → **contacts** (a campaign dials a list of contacts for a company).
+- **companies** → **products** → **product_script_versions** (a product owns a versioned script and consent-flow type).
+- **companies** → **campaigns** → **contacts** (a campaign dials a list of contacts for a company/product).
 - **call_records** — one row per call: outcome, duration, cost, recording URL.
-- **call_logs / intent_stats** — rolled-up reporting.
+- **CallOps campaign-performance / intent_stats** — rolled-up reporting and intent waterfalls.
 
 ### 4.2 Compliance (schema live in Supabase, currently empty)
 - **suppression_list** — global Do-Not-Contact (DNC). Blocks a phone on every channel/campaign.
@@ -75,7 +78,7 @@ Supabase. callops + App + STS all read/write → Supabase.
   product blocks that contact on every campaign of the same product, but never another product.
 - **dial_number_state** — per-phone daily dialing state (cross-campaign): was the number reached today,
   how many attempts, when it's next eligible.
-- **compliance_events** — audit trail of gate decisions (blocked / passed).
+- **compliance_events** — legacy gate-audit table; current production enforcement/audit should be checked in CallOps.
 
 ### 4.3 Storage buckets
 - **avm_scripts** (public) — the generated pitch audio, one per campaign.
@@ -123,12 +126,13 @@ same product** (the writeback to product_consent / suppression enforces this on 
 
 ## 7. The call flow (end to end)
 
-1. Operator builds a **campaign** in the dashboard: picks a company, uploads contacts, **chooses a
-   voice**, and **generates the pitch script** (text → AI voice → `avm_scripts`).
+1. Operator builds a **campaign** in the dashboard: picks a company/product, uploads contacts, optionally
+   chooses a network filter, **chooses a voice**, and **generates the pitch script** (text → AI voice → `avm_scripts`).
 2. When the voice is chosen, that voice's **opt-in and opt-out response clips** are pulled/cached from
    `avm_response_scripts`, ready to play.
 3. Operator presses **Start** → app tells **callops** to run the campaign.
-4. For each contact, **callops checks the compliance gate**; only allowed numbers are dialed.
+4. For each contact, **callops checks dispatch guards** including status/DNC, time/rate/concurrency/retry,
+   and the campaign network gate; only eligible numbers are dialed.
 5. **LiveKit** places the call; the AI agent plays the pitch.
 6. The person **presses 1 (subscribe)** or **9 (opt out)** → the matching cached clip plays.
 7. The result is reported in **STS vocabulary**, mapped to an internal outcome, stored in
@@ -141,7 +145,8 @@ same product** (the writeback to product_consent / suppression enforces this on 
 ## 8. The frontend (what the operator sees)
 
 - **Dashboard / Control Room** — KPIs, charts, live polling, campaign play/pause/stop.
-- **Campaigns** — create / edit, contact upload, voice + script.
+- **Campaigns** — create / edit, contact upload, voice + script, network gate.
+- **Products** — company-scoped products, consent-flow type, versioned scripts.
 - **Companies** — client roster.
 - **Reports** — outcomes, funnel, spend, per-call drill-down.
 - **Quality** — call + recording review.

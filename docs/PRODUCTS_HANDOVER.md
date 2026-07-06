@@ -211,7 +211,7 @@ New sidebar entry ("Products"). Lets a user:
 The old hardcoded `DIAL_MODES` toggle (Seeker/Grace/Lead Gen buttons) is gone. In its place:
 - A product `<Select>` populated from `fetchProductsForCompany(companyId)` — re-fetched whenever the selected company changes.
 - Picking a product pre-fills the script step (text, audio URL, voice ID, duration) from `fetchCurrentVersion(productId)`.
-- The create payload now sends `product_id` (and `product_version_id` if the user pinned a specific version rather than "current").
+- The create payload now sends `product_id`. The proxy accepts `product_version_id` for API callers, but the current wizard has no version-pinning control and normally omits it.
 - ETA now factors in the pre-filled script's `duration_seconds` via `estimateRunSeconds()`.
 
 ### 5.5 `components/CampaignActionDialog.tsx` (edit / reuse dialog)
@@ -225,7 +225,7 @@ Same product picker as the modal, plus:
 
 This is the fix for the ticket you raised ("Agent filter still hardcoded to Seeker/Grace/Sangoma"):
 - `app/api/reports/route.ts` now fetches each company's campaigns + products, builds a `campaign_id → product_id → product_name` lookup, and attaches `product_id`/`product_name` onto every report row. It accepts a `?product_id=` query param for filtering, falling back to the legacy `?agent=` param if not supplied (so old bookmarked filter states / API callers don't break).
-- `app/page.tsx`'s Reports filter dropdown is now populated live from `fetchProductsForCompany()` across the user's companies. **If a company has products, only its products show in the dropdown, not the 3 legacy names.** If a company has zero products (e.g. a company that predates this feature and hasn't had any products created for it yet), it falls back to the old hardcoded `Seeker/Grace/Sangoma` list so the filter isn't just empty.
+- `app/page.tsx`'s Reports filter dropdown is now populated live from `fetchProductsForCompany()` across the user's companies. When any products are loaded, the dropdown uses product options; if no products load at all (for example, a pre-migration environment with no product rows), it falls back to the old hardcoded `Seeker/Grace/Sangoma` list so the filter isn't empty.
 - The dropdown's value is prefixed (`product:<id>` or `agent:<name>`) so a single `<Select>` can serve both filter types; `reportsQueryParams()` translates that into the right query param.
 - Table rows and CSV export now show `product_name` when present, falling back to `agent`.
 
@@ -236,7 +236,7 @@ This is the fix for the ticket you raised ("Agent filter still hardcoded to Seek
 1. **Create vs. update precedence is asymmetric** — see §4.2. Don't assume PATCH behaves like POST if you're testing the API directly (e.g. with curl/Postman) rather than through the UI.
 2. **`product_version_id = NULL` isn't "live-updated"** — a running campaign does not pick up a newly-published product version automatically. You must re-save the campaign. This is called out in the `_resolve_product_fields` docstring; don't "fix" it without checking whether the dispatcher would need a live join instead (bigger change, wasn't in scope here).
 3. **The `agent` field on a new custom product will be `null`**, not the product's name — it's only populated for the 4 legacy names (`seeker`, `grace`, `lead_gen`... check `_LEGACY_AGENT_VALUES` in `app/api/campaigns.py` for the exact set). Anywhere in the codebase still reading `campaign.agent` directly (instead of `campaign.product_id` → product name) will show blank/null for new products. `CampaignDetail.tsx` and the Reports table were updated to prefer `product_name`; audit anywhere else that reads `.agent` before assuming it'll show something sensible for a new product.
-4. **Reports filter degrades to the legacy 3-agent list per company** if that company has no products yet (pre-migration, or a company that was never backfilled). Don't be surprised if two companies show different dropdown option sets during the transition period.
+4. **Reports filter degrades to the legacy 3-agent list only when no products load at all**. Once at least one product is available, the reports dropdown uses product-prefixed options and the legacy `agent:` fallback is reserved for old bookmarked/API filter states.
 5. **Sangoma is `lead_gen`, not its own integration type** — per product decision, "lead gen" is a consent-flow category, not a product name. Sangoma just happens to be the pre-existing example of a lead-gen product with no STS mapping. Nothing stops you from creating more lead-gen products (e.g. an "Outsurance" product that pushes leads elsewhere in future) — that's the whole point.
 
 ---

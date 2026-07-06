@@ -1,108 +1,103 @@
 # Data model
 
-The database for the Agent AVM Interface. This app is the **control plane** — it manages
-campaigns, dispatches calls via LiveKit, and renders dashboards. The in-call audio is handled by
-an external LiveKit **agent worker** (Seeker/Grace), which dumps results back into Supabase.
+The Agent AVM dashboard is the **control plane**. Operational data is owned by **evra-callops** and shared in Supabase behind CallOps APIs; this Next.js app should access campaigns, contacts, reports, products, trunks, and call history through `app/api/*` proxies backed by `utils/callops.ts`.
 
-Tables grouped by function. ⭐ = added in the 2026-06-18 telephony/compliance work, 🪦 = legacy/parallel.
+Direct Supabase access in this repo is intentionally narrow: authentication/session, `dashboard_templates`, `security_logs`, generated audio storage, LiveKit webhook fallback writes, and `POST /api/calls/result` reconciliation.
+
+Tables grouped by function. 🪦 = retired/legacy.
 
 ## A. Identity, access & audit
 
 | Table | What it does |
 |---|---|
-| **profiles** | One row per operator, extends Supabase `auth.users`. `role` (admin/engineer) + biometric/passkey auth (`face_signature`, `passkey_credential`). Operator identity — not the people being called. |
-| **system_settings** | Global app config: `whitelisted_ips`, `environment`. |
-| **security_logs** | Append-only audit of operator/system events (logins, campaign executions). The dial route writes a `campaign_execution` row per run. |
+| **profiles** | One row per operator, extends Supabase `auth.users`. Stores role (`admin`/`engineer`) and passkey credential metadata. |
+| **security_logs** | Append-only audit for dashboard/security events. Read directly by `/api/security`. |
+| **dashboard_templates** | Saved dashboard layouts (`layout` JSONB) per user/team. Read/write/delete directly by `/api/dashboard-templates`. |
 
-## B. Clients & campaigns (what you're calling about)
-
-| Table | What it does |
-|---|---|
-| **companies** | The **clients** you run campaigns for, plus their point-of-contact (`contact_name/email/phone`). |
-| **campaigns** | A campaign = **one product**. Script (`voice_recording_url`/`voice_path`), `agent` (**= the product**, e.g. seeker/grace), `status`, `dialing_speed`, `time_window_start/end`, transfer config, and gate/behavior knobs: `region`, `require_consent`, `max_attempts_per_day`, `retry_jitter_seconds`, `disclosure_text`, `answer_delay_sec`, `silence_timeout_sec`, `amd_enabled`, `voicemail_action`. FK → `companies`. |
-
-## C. People you call (M:N contact model)
+## B. Clients, products, and campaigns
 
 | Table | What it does |
 |---|---|
-| **contacts** | The **canonical person/number** — `phone`, `first/last_name`, `timezone`. One row per unique number. |
-| **campaign_contacts** ⭐ | The **join**: which contact is in which campaign + **per-campaign dialing status** (`pending/in_progress/dialed/failed/retry`) and `retry_count`. `UNIQUE(campaign_id, contact_id)` → a contact appears once per campaign. Lets one contact belong to many campaigns. |
+| **companies** | Client organizations. Listed/created through CallOps `/companies`. |
+| **products** | Company-scoped product/script identity. `integration_type` is `sts_subscription` or `lead_gen`; `sts_product_key` is required for STS products; `current_version_id` points at the active script version. |
+| **product_script_versions** | Versioned product script rows: `text`, `voice_id`, `audio_url`, `duration_seconds`. New versions do not change product identity. |
+| **campaigns** | Dialing campaign. Stores scheduling (`dialing_speed`, `time_window_start/end`), trunk (`sip_trunk_id`), script (`voice_recording_url`, `voice_id`), transfer settings, retry/concurrency settings, `network_provider`, and product linkage (`product_id`, optional `product_version_id`). |
 
-## D. Telephony plumbing (placing the call)
+Product fields are resolved by CallOps at campaign save time. `product_id` supersedes legacy `campaigns.agent` for display/filtering, but `agent`, `routing_mode`, and `sts_product` still exist as materialized compatibility fields used by downstream CallOps/STS paths.
 
-| Table | What it does |
-|---|---|
-| **sip_trunks** | LiveKit SIP **outbound trunks** — `livekit_trunk_id`, `from_number` (caller ID), optionally scoped to a `company`. The dial route resolves which trunk to dial through. |
-| **voip_providers** 🪦 | Legacy provider credentials from before LiveKit. Dead now. |
-
-## E. Compliance & dial-control (the gate)
+## C. People you call
 
 | Table | What it does |
 |---|---|
-| **product_consent** ⭐ | **Per-(contact, product) consent** (`opted_in/opted_out/unknown`). Product = `campaigns.agent`. Opt-out of one product never affects another. |
-| **suppression_list** ⭐ | Global / company-scoped do-not-dial. Hook for the 2026 national DNC opt-out registry; not written by per-product opt-out. |
-| **dial_number_state** ⭐ | **Per-phone daily frequency rollover** (`reached`, `attempts`, `next_eligible_at`) — cross-campaign throttle (one live answer/day, retry caps, randomized spacing). Driven by `claim_dial()` + `record_dial_outcome()`. |
-| **compliance_events** ⭐ | Immutable audit of **every gate decision** — `gate_pass`/`gate_block`/`opt_out` + `reason` + masked phone. |
+| **contacts** | Campaign-scoped contact rows with `phone`, optional name fields, `status`, retry timestamps, `do_not_call`, and `network_provider`. CallOps owns import normalization, dedupe, status transitions, retry/DNC actions, and queue eligibility. |
+| **campaign_contacts** 🪦 | Dropped by `20260703090000_drop_dial_tables.sql`. The dashboard no longer writes an M:N campaign/contact join. |
 
-## F. Call results & metrics (what happened)
+`contacts.network_provider` is stored by CallOps from the ICASA-prefix carrier label (`Vodacom`, `MTN`, `Cell C`, or unknown). `campaigns.network_provider` is the dial gate: when set, CallOps only enqueues contacts whose stored network matches.
 
-| Table | What it does |
-|---|---|
-| **call_events** ⭐ | The **raw landing table** the agent dumps into (`room`, `event_type`, `payload` JSONB). A `BEFORE INSERT` trigger `process_call_event()` ETLs each row into the structured tables. |
-| **call_records** | The **per-call structured record** — `outcome`, `talk_seconds`, `cost`, `transferred`, `recording_url`, `room`, `contact_id`. Powers KPI cards, Recent Calls, Call Quality. |
-| **intent_stats** | The **conversation funnel** — per campaign/day, how many calls `reached` each `intent` (`step`). Filled by `bump_intent()`. |
-| **call_logs** 🪦 | Older **aggregate** result table with count columns (`dialed/connected/qualified/…`). Simulator writes it; `/api/reports` reads it. Parallel to `call_records`. |
-
-## G. Dashboard UX
+## D. Telephony plumbing
 
 | Table | What it does |
 |---|---|
-| **dashboard_templates** | Saved dashboard **layouts** (JSONB) per user — arrange/pin/hide widgets. |
+| **sip_trunks** | CallOps-owned SIP trunk catalog. Campaigns store the integer trunk id; CallOps resolves credentials and the LiveKit `ST_...` trunk id. |
+| **voip_providers** 🪦 | Legacy provider table from before LiveKit/CallOps trunk ownership. |
 
-## How it ties together (one call's journey)
+Trunk catalog reads fan out through CallOps `GET /companies/{id}/sip-trunks`. Trunk create/update/delete/test-call writes proxy to CallOps LiveKit admin endpoints so credentials never reach the browser.
 
+## E. Script persistence
+
+| Table / store | What it does |
+|---|---|
+| **script_library** | Global script reuse library for `VoiceGenerator` bubbles. Proxied by `/api/voice-scripts`. |
+| **script_audio** | Per-campaign generated script/audio history used when reopening campaign edit/reuse dialogs. Proxied by `/api/script-audio`. |
+| **Supabase S3-compatible script storage** | MP3 object storage used by `/api/tts/save`; metadata is best-effort saved to CallOps `script_library`. |
+| **voice_scripts** 🪦 | Replaced by CallOps `script_library`; no current frontend path reads/writes it directly. |
+
+## F. Call results & metrics
+
+| Table / aggregate | What it does |
+|---|---|
+| **call_records** | Per-call structured record written by CallOps outcome ingestion. Contains `campaign_id`, `contact_id`, `phone`, `room`, `outcome`, `business_disposition`, `talk_seconds`, `cost`, `recording_url`, and timestamps. |
+| **call_sessions** | CallOps/LiveKit session rows used for room duration and recording fallback. Campaign detail recording routes can fall back from `call_records` to session recording URLs. |
+| **intent_stats** | Conversation funnel counts by campaign/day, read through CallOps intent endpoints. |
+| **campaign-performance aggregate** | CallOps report endpoint consumed by `/api/reports`; maps `by_outcome` and `total_cost` into dashboard report rows. |
+| **call_logs** 🪦 | Legacy aggregate table. `/api/reports` no longer reads it. |
+| **call_events** 🪦 | Retired raw event landing table from the older trigger-based path. |
+
+`POST /api/calls/result` is a secondary reconciliation endpoint: CallOps remains the source of truth for `POST /calls/outcome`, and this app inserts a missing `call_records` row only when CallOps forwards a payload whose primary write did not land.
+
+## How it ties together (one campaign's journey)
+
+```text
+companies
+  ├── products ──< product_script_versions
+  └── campaigns
+        │ product_id/product_version_id resolved at save time
+        │ network_provider optionally gates dialing
+        ├── contacts (campaign-scoped status + network_provider)
+        ├── script_audio (per-campaign generated audio history)
+        └── sip_trunks (integer id selected by wizard)
+              │
+              ▼
+        CallOps start/pause/stop lifecycle
+              │
+              ▼
+        CallOps queue + dispatcher enforce status, time window,
+        rate, concurrency, retry, DNC, and network gate
+              │
+              ▼
+        LiveKit agent places SIP call, plays pre-generated script,
+        reports outcome to CallOps /calls/outcome
+              │
+              ▼
+        call_records + call_sessions + intent_stats
+              │
+              ▼
+        Dashboard reads through /api/logs, /api/reports,
+        /api/intents, /api/campaigns/{id}
 ```
-companies ──< campaigns (= product, agent) ──┐
-                                             │ campaign_contacts (join, per-campaign status)
-contacts (canonical phone) ──────────────────┘
-                                             │
-                          DIAL ROUTE pulls pending campaign_contacts
-                                             │
-            ┌──── THE GATE (lib/compliance/gate.ts) ─────────────┐
-            │ region → network(prefix) → product_consent →       │
-            │ calling-window → dial_number_state (frequency)     │
-            └───────────────┬───────────────────┬───────────────┘
-              blocked → compliance_events     allowed
-                                                 │ claim_dial() → dial_number_state
-                                                 │ dispatch via sip_trunks → LiveKit
-                                                 ▼
-                                    external agent runs the call
-                                                 │ dumps rows →
-                                            call_events  ⭐
-                                                 │ TRIGGER process_call_event()
-                          ┌──────────────────────┼───────────────────────┐
-                          ▼                       ▼                       ▼
-                    call_records            intent_stats          (opt-out →) product_consent
-                  (outcome, cost,          (funnel/waterfall)     record_dial_outcome() →
-                   recording, talk)                               dial_number_state
-                          │
-                          ▼
-                  DASHBOARDS (KPIs, Recent Calls, Call Quality, Reports)
-```
-
-**Throughline:** a **company** owns **campaigns** (each = a product); **campaign_contacts** puts canonical
-**contacts** into campaigns; the **dial route** runs each through the **gate** (reads `product_consent`,
-`dial_number_state`, network prefixes, calling window) and audits to **compliance_events**; allowed calls
-dial via **sip_trunks**; the agent dumps **call_events**, which a trigger fans out into **call_records**
-(metrics), **intent_stats** (funnel), and updates **dial_number_state**/**product_consent**; **dashboards**
-read the structured tables.
 
 ## Notes / cleanup debt
 
-- **`call_logs` vs `call_records`** — parallel result models (`call_logs` = older aggregate for the
-  simulator + `/api/reports`; `call_records` = real per-call pipeline for `/api/logs` + Call Quality).
-  Consolidate on `call_records` eventually.
-- **`voip_providers`** — legacy, safe to retire (LiveKit + `sip_trunks` is the live path).
-- **Network labels** — a number's mobile network (Vodacom/MTN/Cell C) is derived from its prefix at
-  display time via `lib/networks.ts` (`networkProvider()`); not stored. Note: SA number portability
-  means the prefix is the *original* allocation, not a guaranteed current carrier.
+- **Legacy `agent` is display debt** — reports and campaign detail prefer `product_name`, but some UI surfaces still render the legacy `campaign.agent` chip. New custom products may leave `agent` null.
+- **`product_version_id = null` is not live re-resolution** — the current product version is materialized onto the campaign at save time. Re-save the campaign to pick up newly published product audio.
+- **Network labels are prefix-derived** — South African number portability means the stored network is the original allocation, not a guaranteed current carrier.

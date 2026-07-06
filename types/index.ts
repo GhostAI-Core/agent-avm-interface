@@ -54,6 +54,13 @@ export interface Campaign {
    *  contacts whose network_provider matches; null = no network gate. */
   network_provider?: string | null
   routing_mode?: string | null
+  /** The product (script + consent-flow) this campaign dials for. Supersedes `agent` as the
+   *  source of truth going forward — see `Product`. Null on legacy/unmigrated campaigns. */
+  product_id?: number | null
+  /** Pin to a specific product_script_versions row; null = always track the product's current version. */
+  product_version_id?: number | null
+  /** Materialized STS product key (derived from the product at save time); read by CallOps' STS relay. */
+  sts_product?: string | null
   // In-call behavior knobs read by the agent worker (see lib/call-behavior.ts).
   answer_delay_sec?: number | null
   silence_timeout_sec?: number | null
@@ -63,6 +70,16 @@ export interface Campaign {
   company?: string | null
   created_at?: string
   updated_at?: string
+}
+
+// Row from `security_logs` (still a direct-Supabase table — see handover doc §2.1).
+export interface SecurityLog {
+  id: string | number
+  event_type: string
+  agent_name?: string | null
+  ip_address?: string | null
+  details?: string | null
+  created_at: string
 }
 
 // Live dispatch stats from callops GET /campaigns/{id}/status (via the proxy).
@@ -132,7 +149,7 @@ export interface Telemetry {
 export interface CampaignReport {
   id: number
   campaign_id: number
-  campaign?: { name: string; agent: Agent }
+  campaign?: { name: string; agent: Agent; product_id?: number; product_name?: string }
   phone_number: string
   status: string
   dialed: number
@@ -220,6 +237,39 @@ export interface CallEvent {
   payload: Record<string, unknown>
   processed: boolean
   created_at: string
+}
+
+/** A version of a product's script (text + voice + generated audio + measured duration). See
+ *  CallOps `product_script_versions`. Version numbers auto-increment per product. */
+export interface ProductScriptVersion {
+  id: number
+  product_id: number
+  version: number
+  text?: string | null
+  voice_id?: string | null
+  audio_url?: string | null
+  duration_seconds?: number | null
+  created_at?: string
+}
+
+/**
+ * A product: the data-driven replacement for the legacy hardcoded campaigns.agent
+ * {seeker, grace} pairing. Bundles a script (product_script_versions, versioned so
+ * "Product A v2" is just a new version under the same product) with a consent-flow:
+ * `sts_subscription` fires the STS subscribe endpoint (keyed by `sts_product_key`),
+ * `lead_gen` registers the opt-in locally only. Campaigns reference a product via
+ * `product_id`. See CallOps `/companies/{id}/products`.
+ */
+export interface Product {
+  id: number
+  company_id: number
+  name: string
+  integration_type: 'sts_subscription' | 'lead_gen' | string
+  sts_product_key?: string | null
+  active: boolean
+  current_version_id?: number | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface IntentStat {

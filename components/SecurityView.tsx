@@ -6,13 +6,14 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Chip from '@mui/material/Chip'
+import type { SecurityLog } from '@/types'
 
 const EVENT_COLOR: Record<string, 'error' | 'success' | 'primary'> = {
   unauthorized_access: 'error',
   login: 'success',
 }
 
-export default function SecurityView({ securityLogs }: { securityLogs: any[] }) {
+export default function SecurityView({ securityLogs }: { securityLogs: SecurityLog[] }) {
   return (
     <Paper sx={{ overflow: 'auto' }}>
       <TableContainer>

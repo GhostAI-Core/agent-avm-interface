@@ -116,7 +116,7 @@ export default function CampaignDetail({ report, calls, summary, onBack }: { rep
         <Button startIcon={<ArrowBackIcon />} onClick={onBack} size="small" variant="outlined">Back to Reports</Button>
         <Box sx={{ flex: 1, minWidth: 200 }}>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>{report.campaign?.name}</Typography>
-          <AgentChip agent={report.campaign?.agent ?? ''} />
+          <AgentChip agent={report.campaign?.product_name ?? report.campaign?.agent ?? ''} />
         </Box>
         <Button variant="outlined" size="small" onClick={exportCsv}>Export Calls CSV</Button>
       </Stack>

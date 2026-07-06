@@ -15,8 +15,10 @@ import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
 import Grid from '@mui/material/Grid'
-import type { Campaign, Company } from '@/types'
+import type { Campaign, Company, Product } from '@/types'
 import { parseContacts } from '@/lib/parseCsv'
+import { fetchProductsForCompany, fetchCurrentVersion } from '@/lib/products'
+import { formatDuration, measureAudioDuration, estimateRunSeconds, DTMF_RESPONSE_SECONDS } from '@/lib/scheduleEstimate'
 import VoiceGenerator from '@/components/VoiceGenerator'
 
 type Mode = 'edit' | 'reuse'
@@ -42,11 +44,16 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // Edit-mode fields mirroring the campaigns table (name, agent, company, speed, window).
+  // Edit-mode fields mirroring the campaigns table (name, product, company, speed, window).
   // Reuse mode never reads these — its payload carries the source campaign's values verbatim.
-  const [agent, setAgent] = useState<string>(campaign.agent ?? '')
+  const [productId, setProductId] = useState<number | ''>(campaign.product_id ?? '')
+  const [products, setProducts] = useState<Product[]>([])
   const [companyId, setCompanyId] = useState<number | ''>(campaign.company_id ?? '')
   const [dialingSpeed, setDialingSpeed] = useState<number>(campaign.dialing_speed ?? 1)
+  const [maxConcurrent, setMaxConcurrent] = useState<number>(campaign.max_concurrent ?? 10)
+  const [maxRetries, setMaxRetries] = useState<number>(campaign.max_retries ?? 2)
+  const [retryCooldownMinutes, setRetryCooldownMinutes] = useState<number>(Math.round((campaign.retry_cooldown_seconds ?? 3600) / 60))
+  const [networkProvider, setNetworkProvider] = useState<string>(campaign.network_provider ?? '')
   const [windowStart, setWindowStart] = useState<string>(campaign.time_window_start ?? '')
   const [windowEnd, setWindowEnd] = useState<string>(campaign.time_window_end ?? '')
   const [sipTrunkId, setSipTrunkId] = useState<string>(campaign.sip_trunk_id != null ? String(campaign.sip_trunk_id) : '')
@@ -54,6 +61,13 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
   const [endDate, setEndDate] = useState<string>(toDateInput(campaign.end_date))
   const [companies, setCompanies] = useState<Company[]>([])
   const [trunks, setTrunks] = useState<Trunk[]>([])
+
+  // Schedule estimate: edit mode estimates the remaining run for contacts still pending under
+  // the (possibly just-changed) speed/concurrency settings; reuse mode estimates the fresh run
+  // for whatever CSV is attached below.
+  const [scriptSeconds, setScriptSeconds] = useState<number | null>(null)
+  const [pendingCount, setPendingCount] = useState<number | null>(null)
+  const [reuseContactCount, setReuseContactCount] = useState<number | null>(null)
 
   // Per-campaign script history (script_audio) — reload the last-saved script's text + voice
   // when reopening this campaign for editing, so VoiceGenerator doesn't start blank.
@@ -87,6 +101,57 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
     return () => { cancelled = true }
   }, [mode])
 
+  // Products (script + consent-flow) available for the selected company.
+  useEffect(() => {
+    if (mode !== 'edit') return
+    let cancelled = false
+    fetchProductsForCompany(companyId).then(list => { if (!cancelled) setProducts(list) })
+    return () => { cancelled = true }
+  }, [mode, companyId])
+
+  // Explicitly switching products pre-fills the script from its current version. Guarded against
+  // the initial value so reopening the dialog doesn't clobber this campaign's already-loaded
+  // script with the product's version the moment scriptHistoryLoaded resolves.
+  const initialProductId = campaign.product_id ?? ''
+  useEffect(() => {
+    if (mode !== 'edit' || productId === initialProductId) return
+    let cancelled = false
+    fetchCurrentVersion(productId).then(v => {
+      if (cancelled || !v) return
+      setScriptUrl(v.audio_url ?? '')
+      setVoiceId(v.voice_id ?? null)
+      setScriptText(v.text ?? '')
+    })
+    return () => { cancelled = true }
+  }, [mode, productId, initialProductId])
+
+  // Pending contacts still to be dialed, for the "estimated remaining run" readout.
+  useEffect(() => {
+    if (mode !== 'edit') return
+    let cancelled = false
+    fetch(`/api/campaigns/${campaign.id}`)
+      .then(r => (r.ok ? r.json() : { summary: null }))
+      .then(j => { if (!cancelled) setPendingCount(j?.summary?.pending ?? null) })
+      .catch(() => { /* estimate just won't show a contact count */ })
+    return () => { cancelled = true }
+  }, [mode, campaign.id])
+
+  // Reuse mode: count the attached CSV's rows for the estimate (no server round-trip needed).
+  useEffect(() => {
+    let cancelled = false
+    const count = mode === 'reuse' && csvFile ? csvFile.text().then(text => parseContacts(text).length) : Promise.resolve(null)
+    count.then(n => { if (!cancelled) setReuseContactCount(n) }).catch(() => { if (!cancelled) setReuseContactCount(null) })
+    return () => { cancelled = true }
+  }, [mode, csvFile])
+
+  // Measure the script's audio length for the estimate, same approach as the create wizard.
+  useEffect(() => {
+    let cancelled = false
+    const measured = scriptUrl ? measureAudioDuration(scriptUrl) : Promise.resolve(null)
+    measured.then(d => { if (!cancelled) setScriptSeconds(d) })
+    return () => { cancelled = true }
+  }, [scriptUrl])
+
   // Reload this campaign's last-saved script text + voice (script_audio, scoped to campaign_id)
   // before rendering VoiceGenerator — it only reads its initialText/initialVoiceId props once,
   // on mount, so we gate the render until this resolves instead of remounting after the fact.
@@ -110,21 +175,34 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
     setLoading(true); setError('')
     try {
       if (mode === 'edit') {
+        // CallOps rejects (409) a PATCH that even includes dialing_speed/max_concurrent/sip_trunk_id
+        // while the campaign is running — pause it first. Omit the keys entirely rather than send
+        // unchanged values, since the check is on key presence, not value diff.
+        const body: Record<string, unknown> = {
+          name: name.trim(),
+          // Product (script + consent-flow) drives routing_mode/sts_product/agent server-side —
+          // see evra_callops app/api/campaigns.py _resolve_product_fields(). Omitted (not sent)
+          // when unchanged, so an untouched product_id never gets clobbered.
+          ...(productId !== initialProductId ? { product_id: productId || null } : {}),
+          company_id: companyId === '' ? null : companyId,
+          time_window_start: windowStart,
+          time_window_end: windowEnd,
+          max_retries: maxRetries,
+          retry_cooldown_seconds: retryCooldownMinutes * 60,
+          network_provider: networkProvider || null,
+          start_date: startDate || null,
+          end_date: endDate || null,
+          audio_path: scriptUrl,
+          voice_id: voiceId || null,
+        }
+        if (!isRunning) {
+          body.dialing_speed = dialingSpeed
+          body.max_concurrent = maxConcurrent
+          body.sip_trunk_id = sipTrunkId === '' ? null : Number(sipTrunkId)
+        }
         const res = await fetch(`/api/campaigns/${campaign.id}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: name.trim(),
-            agent: agent || null,
-            company_id: companyId === '' ? null : companyId,
-            dialing_speed: dialingSpeed,
-            time_window_start: windowStart,
-            time_window_end: windowEnd,
-            sip_trunk_id: sipTrunkId === '' ? null : Number(sipTrunkId),
-            start_date: startDate || null,
-            end_date: endDate || null,
-            audio_path: scriptUrl,
-            voice_id: voiceId || null,
-          }),
+          body: JSON.stringify(body),
         })
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to update')
 
@@ -143,7 +221,7 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
           body: JSON.stringify({
             name,
             company_id: campaign.company_id,   // company is required — carry it from the source campaign
-            agent: campaign.agent,
+            product_id: campaign.product_id ?? undefined,
             dialing_speed: campaign.dialing_speed,
             window_start: campaign.time_window_start,
             window_end: campaign.time_window_end,
@@ -165,6 +243,13 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
 
   // The dropdown's value is the chosen script's URL ('' = none / use the manual field below).
   const dropdownValue = scripts.some(s => s.publicUrl === scriptUrl) ? scriptUrl : ''
+  // CallOps 409s a PATCH touching dialing_speed/max_concurrent/sip_trunk_id while running.
+  const isRunning = mode === 'edit' && campaign.status === 'running'
+
+  const contactCount = mode === 'edit' ? pendingCount : reuseContactCount
+  const estimate = contactCount != null
+    ? estimateRunSeconds({ contactCount, scriptSeconds, dialingSpeed: mode === 'edit' ? dialingSpeed : (campaign.dialing_speed ?? 1), maxConcurrent: mode === 'edit' ? maxConcurrent : (campaign.max_concurrent ?? 10) })
+    : null
 
   return (
     <ResponsiveDialog open onClose={onClose} maxWidth="sm" fullWidth>
@@ -196,20 +281,60 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
                   </FormControl>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 5 }}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="edit-agent-label">Product</InputLabel>
-                    <Select labelId="edit-agent-label" label="Product" value={agent} displayEmpty
-                      onChange={e => setAgent(e.target.value)}>
-                      <MenuItem value="">Auto</MenuItem>
-                      <MenuItem value="seeker">Seeker</MenuItem>
-                      <MenuItem value="grace">Grace</MenuItem>
+                  <FormControl fullWidth size="small" disabled={!companyId}>
+                    <InputLabel id="edit-product-label" shrink>Product</InputLabel>
+                    <Select labelId="edit-product-label" label="Product" value={productId} displayEmpty notched
+                      onChange={e => setProductId(Number(e.target.value) || '')}
+                      renderValue={(v) => {
+                        if (!v) return <em>No product</em>
+                        const p = products.find(x => x.id === v)
+                        return p ? p.name : String(v)
+                      }}>
+                      <MenuItem value={0}><em>No product</em></MenuItem>
+                      {products.map(p => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <TextField label="Dialing Speed (calls/sec)" type="number" size="small" fullWidth
+                {isRunning && (
+                  <Grid size={12}>
+                    <Alert severity="info" sx={{ py: 0 }}>
+                      Pause this campaign to change dialing speed, max concurrent calls, or the outbound trunk.
+                    </Alert>
+                  </Grid>
+                )}
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField label="Dialing Speed (calls/min)" type="number" size="small" fullWidth
+                    disabled={isRunning}
                     value={dialingSpeed} onChange={e => setDialingSpeed(Math.max(1, Number(e.target.value) || 1))}
-                    slotProps={{ htmlInput: { min: 1, max: 10 } }} />
+                    slotProps={{ htmlInput: { min: 1, max: 120 } }} />
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField label="Max Concurrent Calls" type="number" size="small" fullWidth
+                    disabled={isRunning}
+                    value={maxConcurrent} onChange={e => setMaxConcurrent(Math.max(1, Number(e.target.value) || 1))}
+                    slotProps={{ htmlInput: { min: 1, max: 200 } }} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel id="edit-network-label">Network Filter</InputLabel>
+                    <Select labelId="edit-network-label" label="Network Filter" value={networkProvider} displayEmpty
+                      onChange={e => setNetworkProvider(e.target.value)}>
+                      <MenuItem value="">All networks</MenuItem>
+                      <MenuItem value="Vodacom">Vodacom</MenuItem>
+                      <MenuItem value="MTN">MTN</MenuItem>
+                      <MenuItem value="Cell C">Cell C</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField label="Max Retries" type="number" size="small" fullWidth
+                    value={maxRetries} onChange={e => setMaxRetries(Math.max(0, Number(e.target.value) || 0))}
+                    slotProps={{ htmlInput: { min: 0, max: 10 } }} />
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <TextField label="Retry Wait (minutes)" type="number" size="small" fullWidth
+                    value={retryCooldownMinutes} onChange={e => setRetryCooldownMinutes(Math.max(1, Number(e.target.value) || 1))}
+                    slotProps={{ htmlInput: { min: 1, max: 1440 } }} />
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <TextField label="Window Start" type="time" size="small" fullWidth
@@ -222,7 +347,7 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
                     slotProps={{ inputLabel: { shrink: true } }} />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <FormControl size="small" fullWidth>
+                  <FormControl size="small" fullWidth disabled={isRunning}>
                     <InputLabel id="edit-trunk-label" shrink>Outbound Trunk</InputLabel>
                     <Select labelId="edit-trunk-label" label="Outbound Trunk" value={sipTrunkId} displayEmpty notched
                       onChange={e => setSipTrunkId(e.target.value)}
@@ -247,6 +372,14 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
                     slotProps={{ inputLabel: { shrink: true } }} />
                 </Grid>
               </Grid>
+              {estimate && (
+                <Alert severity="info" sx={{ py: 0 }}>
+                  Estimated remaining run: ~{formatDuration(estimate.estimateSeconds)} for {contactCount?.toLocaleString()} pending contact{contactCount === 1 ? '' : 's'}, bound by{' '}
+                  {estimate.rateLimitedSeconds >= estimate.concurrencyLimitedSeconds
+                    ? `${dialingSpeed} calls/min`
+                    : `${maxConcurrent} concurrent × ${scriptSeconds !== null ? formatDuration(scriptSeconds) : 'no script'}+${DTMF_RESPONSE_SECONDS}s`}
+                </Alert>
+              )}
             </>
           )}
 
@@ -285,6 +418,15 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Call list (CSV: phone, first_name, last_name) — leave empty to reuse none</Typography>
               <input type="file" accept=".csv" onChange={e => setCsvFile(e.target.files?.[0] ?? null)} />
             </Box>
+          )}
+
+          {mode === 'reuse' && estimate && (
+            <Alert severity="info" sx={{ py: 0 }}>
+              Estimated run: ~{formatDuration(estimate.estimateSeconds)} for {contactCount?.toLocaleString()} contact{contactCount === 1 ? '' : 's'}, bound by{' '}
+              {estimate.rateLimitedSeconds >= estimate.concurrencyLimitedSeconds
+                ? `${campaign.dialing_speed ?? 1} calls/min`
+                : `${campaign.max_concurrent ?? 10} concurrent × ${scriptSeconds !== null ? formatDuration(scriptSeconds) : 'no script'}+${DTMF_RESPONSE_SECONDS}s`}
+            </Alert>
           )}
         </Stack>
       </DialogContent>

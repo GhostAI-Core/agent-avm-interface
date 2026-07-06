@@ -27,7 +27,9 @@ import VoiceGenerator from '@/components/VoiceGenerator'
 import { colors, semantic, radius } from '@/lib/tokens'
 import { parseContacts } from '@/lib/parseCsv'
 import { createClient } from '@/utils/supabase/client'
-import type { Company } from '@/types'
+import { fetchProductsForCompany, fetchCurrentVersion } from '@/lib/products'
+import { formatDuration, measureAudioDuration, estimateRunSeconds, DTMF_RESPONSE_SECONDS } from '@/lib/scheduleEstimate'
+import type { Company, Product } from '@/types'
 
 interface Props {
   onClose: () => void
@@ -38,16 +40,6 @@ interface Props {
 
 type VoiceMode = 'upload' | 'generate'
 
-// Dial mode toggle → { agent, routing_mode }. Seeker/Grace are `script` (two-step consent
-// subscribe). Lead Gen is `lead` (press-1 → lead, no STS/confirm) — gated until CallOps ships
-// the `routing_mode="lead"` gate (openspec: campaign-dial-mode). Flip to true when it's live.
-const LEAD_GEN_ENABLED = true
-const DIAL_MODES = [
-  { value: 'seeker', label: 'Seeker', agent: 'seeker', routing_mode: 'script', hint: 'Consent · press 1 subscribes' },
-  { value: 'grace', label: 'Grace', agent: 'grace', routing_mode: 'script', hint: 'Consent · press 1 subscribes' },
-  // Lead-Gen has no product → agent stays null (campaigns_agent_check rejects 'lead_gen'); routing_mode drives it.
-  { value: 'lead_gen', label: 'Lead Gen', agent: null, routing_mode: 'lead', hint: 'Double opt-in · press 1 twice = lead' },
-] as const
 type ParsedContact = { phone: string; first_name?: string; last_name?: string }
 type Trunk = { id: number; name: string; livekit_trunk_id: string; from_number: string }
 
@@ -55,33 +47,12 @@ const STEPS = ['Basics', 'Trunk', 'Voice', 'Contacts', 'Schedule']
 const MAX_CSV_BYTES = 15 * 1024 * 1024
 const MAX_VOICE_BYTES = 50 * 1024 * 1024
 const VOICE_BUCKET = 'voice-recordings'
-const DTMF_RESPONSE_SECONDS = 8 // assumed press-1/9 delay per call (decided 2026-06-18)
+const NETWORK_PROVIDERS = ['Vodacom', 'MTN', 'Cell C'] as const
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
-function formatDuration(totalSeconds: number): string {
-  const s = Math.max(0, Math.round(totalSeconds))
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = s % 60
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${sec}s`
-  return `${sec}s`
-}
-
-/** Read an audio file/URL's duration (seconds) client-side, or null if it can't be read. */
-function measureAudioDuration(src: string): Promise<number | null> {
-  return new Promise(resolve => {
-    const a = new Audio()
-    a.preload = 'metadata'
-    a.onloadedmetadata = () => resolve(Number.isFinite(a.duration) ? a.duration : null)
-    a.onerror = () => resolve(null)
-    a.src = src
-  })
 }
 
 function FileField({ name, label, accept, required, icon, hint, file, onFileChange }: {
@@ -158,7 +129,8 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
   // Step 1 — basics
   const [name, setName] = useState('')
   const [companyId, setCompanyId] = useState<number | ''>('')
-  const [product, setProduct] = useState('') // dial mode toggle: 'seeker' | 'grace' | 'lead_gen'
+  const [products, setProducts] = useState<Product[]>([])
+  const [productId, setProductId] = useState<number | ''>('')
 
   // Step 2 — outbound trunk
   const [trunks, setTrunks] = useState<Trunk[]>([])
@@ -176,12 +148,17 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [contacts, setContacts] = useState<ParsedContact[]>([])
 
-  // Step 5 — schedule
+  // Step 5 — schedule. Defaults mirror CallOps' own CampaignCreate defaults exactly
+  // (dialing_speed=1/min, max_concurrent=10, max_retries=2, retry_cooldown_seconds=3600).
   const [dialingSpeed, setDialingSpeed] = useState(1)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [windowStart, setWindowStart] = useState('08:00')
   const [windowEnd, setWindowEnd] = useState('20:00')
+  const [maxConcurrent, setMaxConcurrent] = useState(10)
+  const [maxRetries, setMaxRetries] = useState(2)
+  const [retryCooldownMinutes, setRetryCooldownMinutes] = useState(60)
+  const [networkProvider, setNetworkProvider] = useState('')
 
   const hasCompanies = companies.length > 0
 
@@ -197,6 +174,28 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
     return () => { cancelled = true }
   }, [])
 
+  // Products (script + consent-flow) available for the selected company.
+  useEffect(() => {
+    let cancelled = false
+    fetchProductsForCompany(companyId).then(list => { if (!cancelled) setProducts(list) })
+    return () => { cancelled = true }
+  }, [companyId])
+
+  // Picking a product pre-fills the Voice step with its current script version. Manually
+  // editing the Voice step afterward still overrides this on submit (see `submit()`).
+  useEffect(() => {
+    let cancelled = false
+    fetchCurrentVersion(productId).then(v => {
+      if (cancelled || !v) return
+      setVoiceMode('generate')
+      setVoiceRecordingUrl(v.audio_url ?? null)
+      setVoiceId(v.voice_id ?? null)
+      setScriptText(v.text ?? '')
+      if (v.duration_seconds != null) setScriptSeconds(v.duration_seconds)
+    })
+    return () => { cancelled = true }
+  }, [productId])
+
   // Measure the script's audio length (for the schedule estimate) whenever the source changes.
   useEffect(() => {
     let revoke: string | null = null
@@ -209,9 +208,9 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
     return () => { cancelled = true; if (revoke) URL.revokeObjectURL(revoke) }
   }, [voiceMode, voiceFile, voiceRecordingUrl])
 
-  // Run-time estimate: contacts × (script + press-1/9 delay) ÷ dialing speed.
-  const perCallSeconds = (scriptSeconds ?? 0) + DTMF_RESPONSE_SECONDS
-  const estimateSeconds = contacts.length * perCallSeconds / Math.max(1, dialingSpeed)
+  const { estimateSeconds, rateLimitedSeconds, concurrencyLimitedSeconds } = estimateRunSeconds({
+    contactCount: contacts.length, scriptSeconds, dialingSpeed, maxConcurrent,
+  })
 
   function back() {
     setError('')
@@ -276,14 +275,19 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
       const payload: Record<string, unknown> = {
         name: name.trim(),
         company_id: companyId,
-        agent: (DIAL_MODES.find(m => m.value === product)?.agent) ?? null,
-        routing_mode: DIAL_MODES.find(m => m.value === product)?.routing_mode,
+        // Product (script + consent-flow) drives routing_mode/sts_product/agent server-side —
+        // see evra_callops app/api/campaigns.py _resolve_product_fields().
+        product_id: productId || undefined,
         sip_trunk_id: sipTrunkId || null,
         dialing_speed: dialingSpeed,
         window_start: windowStart,
         window_end: windowEnd,
         start_date: startDate || null,
         end_date: endDate || null,
+        max_concurrent: maxConcurrent,
+        max_retries: maxRetries,
+        retry_cooldown_seconds: retryCooldownMinutes * 60,
+        network_provider: networkProvider || null,
         contacts,
       }
 
@@ -374,22 +378,28 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
                 </FormControl>
               </Grid>
               <Grid size={{ xs: 12, sm: 5 }}>
-                <Typography variant="caption" sx={{ color: semantic.textSoft, display: 'block', mb: 0.5 }}>Mode</Typography>
-                <ToggleButtonGroup exclusive fullWidth value={product}
-                  onChange={(_, next) => { if (next) setProduct(next) }}
-                  sx={{ '& .MuiToggleButton-root': { flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', gap: 0.15, py: 1, px: 1.25 } }}>
-                  {DIAL_MODES.map(m => {
-                    const disabled = m.value === 'lead_gen' && !LEAD_GEN_ENABLED
-                    return (
-                      <ToggleButton key={m.value} value={m.value} disabled={disabled}>
-                        <Typography component="span" sx={{ fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.15 }}>{m.label}</Typography>
-                        <Typography component="span" sx={{ fontSize: '0.62rem', color: semantic.textSoft, lineHeight: 1.25 }}>
-                          {disabled ? 'Coming soon' : m.hint}
-                        </Typography>
-                      </ToggleButton>
-                    )
-                  })}
-                </ToggleButtonGroup>
+                <FormControl size="small" fullWidth disabled={!companyId}>
+                  <InputLabel id="product-label" shrink>Product</InputLabel>
+                  <Select labelId="product-label" label="Product" value={productId} displayEmpty notched
+                    onChange={e => setProductId(Number(e.target.value) || '')}
+                    renderValue={(v) => {
+                      if (!v) return <Box component="span" sx={{ color: semantic.textSoft }}>No product</Box>
+                      const p = products.find(x => x.id === v)
+                      return p ? p.name : String(v)
+                    }}>
+                    <MenuItem value={0}>No product</MenuItem>
+                    {products.map(p => (
+                      <MenuItem key={p.id} value={p.id}>
+                        {p.name} — {p.integration_type === 'sts_subscription' ? 'STS Subscription' : 'Lead Gen'}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  {companyId
+                    ? (products.length ? 'Sets the script + consent-flow for this campaign.' : 'No products yet — add one under Products.')
+                    : 'Choose a company first.'}
+                </Typography>
               </Grid>
             </Grid>
           </Stack>
@@ -474,11 +484,41 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
           <Stack sx={{ gap: 2 }}>
             <SectionLabel>Schedule &amp; Speed</SectionLabel>
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <TextField label="Dialing Speed (calls/sec)" type="number" size="small" fullWidth
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <TextField label="Dialing Speed (calls/min)" type="number" size="small" fullWidth
                   value={dialingSpeed} onChange={e => setDialingSpeed(Math.max(1, Number(e.target.value) || 1))}
-                  slotProps={{ htmlInput: { min: 1, max: 10 } }} />
+                  helperText="Rate limiter — new calls started per minute"
+                  slotProps={{ htmlInput: { min: 1, max: 120 } }} />
               </Grid>
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <TextField label="Max Concurrent Calls" type="number" size="small" fullWidth
+                  value={maxConcurrent} onChange={e => setMaxConcurrent(Math.max(1, Number(e.target.value) || 1))}
+                  helperText="Simultaneous active calls ceiling"
+                  slotProps={{ htmlInput: { min: 1, max: 200 } }} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="network-label">Network Filter</InputLabel>
+                  <Select labelId="network-label" label="Network Filter" value={networkProvider}
+                    onChange={e => setNetworkProvider(e.target.value)}>
+                    <MenuItem value="">All networks</MenuItem>
+                    {NETWORK_PROVIDERS.map(n => <MenuItem key={n} value={n}>{n}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <TextField label="Max Retries" type="number" size="small" fullWidth
+                  value={maxRetries} onChange={e => setMaxRetries(Math.max(0, Number(e.target.value) || 0))}
+                  helperText="For no-answer / busy outcomes"
+                  slotProps={{ htmlInput: { min: 0, max: 10 } }} />
+              </Grid>
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <TextField label="Retry Wait (minutes)" type="number" size="small" fullWidth
+                  value={retryCooldownMinutes} onChange={e => setRetryCooldownMinutes(Math.max(1, Number(e.target.value) || 1))}
+                  helperText="Cooldown before re-dialing"
+                  slotProps={{ htmlInput: { min: 1, max: 1440 } }} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }} />
               <Grid size={{ xs: 6, sm: 4 }}>
                 <TextField label="Start Date" type="date" size="small" fullWidth
                   value={startDate} onChange={e => setStartDate(e.target.value)}
@@ -508,7 +548,7 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
                   Estimated run: ~{formatDuration(estimateSeconds)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {contacts.length.toLocaleString()} contacts × ({scriptSeconds !== null ? formatDuration(scriptSeconds) : 'no script'} + {DTMF_RESPONSE_SECONDS}s press delay) ÷ {dialingSpeed}/sec
+                  {contacts.length.toLocaleString()} contacts, bound by {rateLimitedSeconds >= concurrencyLimitedSeconds ? `${dialingSpeed} calls/min` : `${maxConcurrent} concurrent × ${scriptSeconds !== null ? formatDuration(scriptSeconds) : 'no script'}+${DTMF_RESPONSE_SECONDS}s`}
                 </Typography>
               </Box>
             </Box>

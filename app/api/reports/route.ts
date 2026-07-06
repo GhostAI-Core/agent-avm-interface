@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
 import { callopsGet, callopsItems, callopsErrorResponse } from '@/utils/callops'
-import type { Agent, CampaignReport } from '@/types'
+import type { Agent, CampaignReport, Product } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +37,10 @@ type PerfItem = {
   by_outcome: Record<string, number>
 }
 
+// Minimal shape read off `/companies/{id}/campaigns` items, just to resolve product_id per
+// campaign_id -- campaign-performance doesn't carry it.
+type CampaignLite = { id: number; product_id?: number | null }
+
 const OUTCOME_COL: Record<string, keyof CampaignReport> = {
   connected: 'connected',
   subscribed: 'qualified',
@@ -52,11 +56,18 @@ function fmtDuration(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-function toReport(p: PerfItem): CampaignReport {
+function toReport(p: PerfItem, productId: number | null, productName: string | null): CampaignReport {
   const row: CampaignReport = {
     id: p.campaign_id,
     campaign_id: p.campaign_id,
-    campaign: { name: p.name ?? '—', agent: (p.agent ?? p.agent_name ?? 'seeker') as Agent },
+    campaign: {
+      name: p.name ?? '—',
+      agent: (p.agent ?? p.agent_name ?? 'seeker') as Agent,
+      // Product (script + consent-flow) this campaign dials for -- supersedes `agent` as the
+      // filter/display key so brand-new products (not just seeker/grace/sangoma) show up too.
+      product_id: productId ?? undefined,
+      product_name: productName ?? undefined,
+    },
     phone_number: '',
     status: p.status ?? '',
     dialed: p.calls, connected: 0, qualified: 0, voicemail: 0, no_speech: 0, hangup: 0,
@@ -74,7 +85,9 @@ function toReport(p: PerfItem): CampaignReport {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const agent = searchParams.get('agent')
+  const agent = searchParams.get('agent') // legacy filter: seeker/grace/sangoma (campaigns.agent)
+  const productIdParam = searchParams.get('product_id')
+  const productIdFilter = productIdParam ? Number(productIdParam) : null
 
   const { token } = await getAccessToken()
   if (!token) return unauthorized()
@@ -82,18 +95,33 @@ export async function GET(req: NextRequest) {
   try {
     const companies = await callopsItems<{ id: number }>('/companies', token)
     const perCompany = await Promise.all(
-      (companies ?? []).map((co) =>
-        callopsGet<{ campaigns?: PerfItem[] }>(`/companies/${co.id}/dashboard/campaign-performance`, token)
-          .then((r) => r.campaigns ?? [])
-          .catch(() => [] as PerfItem[]),
-      ),
+      (companies ?? []).map(async (co) => {
+        const [perf, campaignsList, products] = await Promise.all([
+          callopsGet<{ campaigns?: PerfItem[] }>(`/companies/${co.id}/dashboard/campaign-performance`, token)
+            .then((r) => r.campaigns ?? [])
+            .catch(() => [] as PerfItem[]),
+          // Resolve campaign_id -> product_id (campaign-performance doesn't carry it).
+          callopsItems<CampaignLite>(`/companies/${co.id}/campaigns?page_size=200`, token).catch(() => [] as CampaignLite[]),
+          // Resolve product_id -> name for the filter dropdown + report display.
+          callopsItems<Product>(`/companies/${co.id}/products`, token).catch(() => [] as Product[]),
+        ])
+        const productIdByCampaign = new Map(campaignsList.map((c) => [c.id, c.product_id ?? null]))
+        const productNameById = new Map(products.map((p) => [p.id, p.name]))
+        return perf.map((p) => {
+          const productId = productIdByCampaign.get(p.campaign_id) ?? null
+          const productName = productId != null ? productNameById.get(productId) ?? null : null
+          return toReport(p, productId, productName)
+        })
+      }),
     )
 
-    const reports = perCompany.flat()
-      .filter((p) => p.calls > 0) // only campaigns that actually placed calls
-      .map(toReport)
+    const reports = perCompany.flat().filter((r) => r.dialed > 0) // only campaigns that actually placed calls
 
-    const filtered = agent ? reports.filter((r) => r.campaign?.agent === agent) : reports
+    const filtered = productIdFilter != null
+      ? reports.filter((r) => r.campaign?.product_id === productIdFilter)
+      : agent
+        ? reports.filter((r) => r.campaign?.agent === agent)
+        : reports
     return NextResponse.json({ reports: filtered })
   } catch (e) {
     return callopsErrorResponse(e)

@@ -26,10 +26,9 @@ export default function CallQuality({ campaigns }: { campaigns: Campaign[] }) {
   const [intents, setIntents] = useState<IntentStat[]>([])
   const [connectedTotal, setConnectedTotal] = useState(0)
 
-  // Default to the first campaign once the list loads
-  useEffect(() => {
-    if (campaignId === '' && campaigns.length) setCampaignId(campaigns[0].id)
-  }, [campaigns, campaignId])
+  // Default to the first campaign once the list loads — a pure, terminating render-time
+  // adjustment (fires once; setCampaignId makes the guard condition false on the next render).
+  if (campaignId === '' && campaigns.length) setCampaignId(campaigns[0].id)
 
   useEffect(() => {
     if (campaignId === '') return

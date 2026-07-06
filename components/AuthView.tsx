@@ -55,8 +55,8 @@ export default function AuthView({ onAuth, isSecure }: AuthViewProps) {
       void resolveUserRole(supabase, data.session.user.id, meta).catch(err => {
         console.warn('Profile sync failed:', err)
       })
-    } catch (err: any) {
-      setError(err.message || 'Sign in failed')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign in failed')
     } finally {
       setLoading(false)
     }
@@ -84,8 +84,8 @@ export default function AuthView({ onAuth, isSecure }: AuthViewProps) {
       const { error: upErr } = await supabase.from('profiles').upsert({ id: user.id, passkey_credential: credentialData, updated_at: new Date().toISOString() })
       if (upErr) throw upErr
       alert('Passkey Linked! You can now sign in instantly.')
-    } catch (err: any) {
-      setError(err.message || 'Passkey creation failed')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Passkey creation failed')
     } finally { setLoading(false) }
   }
 

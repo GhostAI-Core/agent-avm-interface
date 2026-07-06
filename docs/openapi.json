@@ -3,7 +3,7 @@
   "info": {
     "title": "evra-callops",
     "description": "\n**evra-callops** is the orchestration backend for Evra's outbound call center platform.\n\nIt manages campaign lifecycle (start / pause / stop), dispatches contacts to the LiveKit\nagent worker, processes call outcomes and telemetry, and exposes a full operational API\nfor companies, campaigns, contacts, calls, SIP trunks, dashboards, and audit events.\n\n**Authentication:**\n- Agent-facing endpoints (`/calls/*`, campaign lifecycle) require `X-Webhook-Secret`\n- Frontend endpoints require a Supabase JWT Bearer token\n",
-    "version": "0.2.0"
+    "version": "0.8.0"
   },
   "paths": {
     "/campaigns/{campaign_id}/start": {
@@ -51,7 +51,7 @@
             }
           },
           "409": {
-            "description": "Conflict — campaign is in an incompatible state for this action",
+            "description": "Conflict \u2014 campaign is in an incompatible state for this action",
             "content": {
               "application/json": {
                 "example": {
@@ -118,7 +118,7 @@
             }
           },
           "409": {
-            "description": "Conflict — campaign is in an incompatible state for this action",
+            "description": "Conflict \u2014 campaign is in an incompatible state for this action",
             "content": {
               "application/json": {
                 "example": {
@@ -146,7 +146,7 @@
           "campaigns"
         ],
         "summary": "Stop a campaign",
-        "description": "Permanently stops a running or paused campaign. The contact queue is purged and the dispatcher is halted. This action cannot be undone — use `pause` if you intend to resume later. Returns 409 if the campaign is not active.",
+        "description": "Permanently stops a running or paused campaign. The contact queue is purged and the dispatcher is halted. This action cannot be undone \u2014 use `pause` if you intend to resume later. Returns 409 if the campaign is not active.",
         "operationId": "stop_campaign_campaigns__campaign_id__stop_post",
         "parameters": [
           {
@@ -185,7 +185,7 @@
             }
           },
           "409": {
-            "description": "Conflict — campaign is in an incompatible state for this action",
+            "description": "Conflict \u2014 campaign is in an incompatible state for this action",
             "content": {
               "application/json": {
                 "example": {
@@ -350,13 +350,166 @@
         }
       }
     },
+    "/campaigns/{campaign_id}": {
+      "get": {
+        "tags": [
+          "campaigns-management"
+        ],
+        "summary": "Get campaign detail",
+        "description": "Retrieves full campaign configuration plus a `summary` of contact statuses and call outcome counts. The summary gives a real-time snapshot of how many contacts are pending, in-progress, dialed, or failed, and how many calls have been placed.",
+        "operationId": "get_campaign_campaigns__campaign_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Campaign configuration and contact/call summary",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "campaign": {
+                    "id": 42,
+                    "company_id": 7,
+                    "name": "Summer Outreach 2026",
+                    "agent": "outbound-recorder",
+                    "agent_name": "outbound-recorder",
+                    "status": "draft",
+                    "dialing_speed": 1,
+                    "time_window_start": "09:00",
+                    "time_window_end": "20:30",
+                    "max_concurrent": 10,
+                    "max_retries": 2,
+                    "retry_cooldown_seconds": 3600,
+                    "sip_trunk_id": 5,
+                    "auto_paused": false,
+                    "routing_mode": "script",
+                    "created_at": "2026-06-01T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  },
+                  "summary": {
+                    "contacts_total": 300,
+                    "pending": 120,
+                    "in_progress": 5,
+                    "dialed": 160,
+                    "failed": 15,
+                    "retry": 12,
+                    "calls_total": 195,
+                    "connected": 142,
+                    "opt_out": 8
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "campaigns-management"
+        ],
+        "summary": "Update campaign",
+        "description": "Updates campaign configuration fields. Only fields provided in the request body are changed. Cannot change `sip_trunk_id`, `max_concurrent`, or `dialing_speed` while the campaign is running \u2014 pause it first. Returns 409 if the campaign is running and a restricted field is included.",
+        "operationId": "update_campaign_campaigns__campaign_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated campaign configuration",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "campaign": {
+                    "id": 42,
+                    "company_id": 7,
+                    "name": "Summer Outreach 2026 Updated",
+                    "agent": "outbound-recorder",
+                    "agent_name": "outbound-recorder",
+                    "status": "draft",
+                    "dialing_speed": 1,
+                    "time_window_start": "09:00",
+                    "time_window_end": "20:30",
+                    "max_concurrent": 10,
+                    "max_retries": 2,
+                    "retry_cooldown_seconds": 3600,
+                    "sip_trunk_id": 5,
+                    "auto_paused": false,
+                    "routing_mode": "script",
+                    "created_at": "2026-06-01T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/calls/outcome": {
       "post": {
         "tags": [
           "calls"
         ],
         "summary": "Report call outcome",
-        "description": "Called by the agent worker at the end of each call to report the outcome. Updates the contact record, applies retry logic, releases the concurrency slot, and triggers any post-call hooks. Requires the `X-Webhook-Secret` header.",
+        "description": "Called by the agent worker at the end of each call to report the business outcome. Updates contact lifecycle, call_records, call_logs, and releases the concurrency slot. Requires the `X-Webhook-Secret` header.",
         "operationId": "call_outcome_calls_outcome_post",
         "requestBody": {
           "content": {
@@ -375,9 +528,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CallOutcomeResponse"
-                },
-                "example": {
-                  "status": "ok"
                 }
               }
             }
@@ -408,19 +558,19 @@
         }
       }
     },
-    "/calls/telemetry": {
+    "/calls/call-report": {
       "post": {
         "tags": [
           "calls"
         ],
-        "summary": "Submit call telemetry",
-        "description": "Receives a batch of telemetry events and session metadata from the agent worker for a completed call session. Used for observability, debugging, and audit. Requires the `X-Webhook-Secret` header.",
-        "operationId": "call_telemetry_calls_telemetry_post",
+        "summary": "Submit call report",
+        "description": "Telephony narrative (SIP, AMD, DTMF, playback) for a completed call. Requires `X-Webhook-Secret`.",
+        "operationId": "call_report_calls_call_report_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CallTelemetryRequest"
+                "$ref": "#/components/schemas/CallReportRequest"
               }
             }
           },
@@ -428,14 +578,146 @@
         },
         "responses": {
           "200": {
-            "description": "Telemetry accepted",
+            "description": "Call report accepted",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CallOutcomeResponse"
-                },
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing `X-Webhook-Secret` header",
+            "content": {
+              "application/json": {
                 "example": {
-                  "status": "ok"
+                  "detail": "Invalid webhook secret"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body validation error"
+          }
+        }
+      }
+    },
+    "/calls/model-usage": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Submit model usage",
+        "description": "LiveKit SDK SessionReport for AI usage metrics. Requires `X-Webhook-Secret`.",
+        "operationId": "model_usage_calls_model_usage_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelUsageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Model usage accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallOutcomeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing `X-Webhook-Secret` header",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Invalid webhook secret"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body validation error"
+          }
+        }
+      }
+    },
+    "/calls/events": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Submit call events",
+        "description": "Batch of lifecycle or SDK metric events for a completed call. Requires `X-Webhook-Secret`.",
+        "operationId": "call_events_calls_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallEventsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Events accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallOutcomeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing `X-Webhook-Secret` header",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Invalid webhook secret"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body validation error"
+          }
+        }
+      }
+    },
+    "/calls/milestone": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Submit real-time call milestone",
+        "description": "Best-effort single milestone update during an active call. Requires `X-Webhook-Secret`.",
+        "operationId": "call_milestone_calls_milestone_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallMilestoneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Milestone accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallOutcomeResponse"
                 }
               }
             }
@@ -756,7 +1038,7 @@
           "livekit"
         ],
         "summary": "Update a SIP outbound trunk",
-        "description": "Partially updates an existing SIP outbound trunk. Only fields included in the request body are changed. At least one field must be provided — returns 422 otherwise.",
+        "description": "Partially updates an existing SIP outbound trunk. Only fields included in the request body are changed. At least one field must be provided \u2014 returns 422 otherwise.",
         "operationId": "update_trunk_livekit_trunks__trunk_id__patch",
         "parameters": [
           {
@@ -876,7 +1158,7 @@
           "livekit"
         ],
         "summary": "Place a test SIP call",
-        "description": "Places a one-off outbound SIP test call to verify trunk and carrier connectivity. The request blocks (up to `timeout_seconds`) until the call is answered or fails. `sip_trunk_id` is required — returns 400 if omitted. Always returns HTTP 200; check the `ok` field to determine success.",
+        "description": "Places a one-off outbound SIP test call to verify trunk and carrier connectivity. The request blocks (up to `timeout_seconds`) until the call is answered or fails. `sip_trunk_id` is required \u2014 returns 400 if omitted. Always returns HTTP 200; check the `ok` field to determine success.",
         "operationId": "test_call_livekit_test_call_post",
         "requestBody": {
           "content": {
@@ -962,7 +1244,7 @@
           "livekit"
         ],
         "summary": "Receive LiveKit webhook event",
-        "description": "Endpoint for the LiveKit server to POST real-time room and participant events. Validates the JWT in the `Authorization` header using the LiveKit API secret — returns 401 on failure.\n\n**Events that update session fields:** `room_started` (sets `room_id`, `started_at`), `room_finished` (sets `ended_at`), `participant_joined` / `participant_left` (tracks SIP leg state).\n\n**Events that log an event row only:** `participant_connection_aborted`, `track_published`, `track_unpublished`, `ingress_started`, `ingress_ended`.\n\nEvents for rooms with no matching call session are silently ignored.",
+        "description": "Endpoint for the LiveKit server to POST real-time room and participant events. Validates the JWT in the `Authorization` header using the LiveKit API secret \u2014 returns 401 on failure.\n\n**Events that update session fields:** `room_started` (sets `room_id`, `started_at`), `room_finished` (sets `ended_at`), `participant_joined` / `participant_left` (tracks SIP leg state).\n\n**Events that log an event row only:** `participant_connection_aborted`, `track_published`, `track_unpublished`, `ingress_started`, `ingress_ended`.\n\nEvents for rooms with no matching call session are silently ignored.",
         "operationId": "livekit_webhook_livekit_webhook_post",
         "responses": {
           "200": {
@@ -991,14 +1273,33 @@
         "tags": [
           "me"
         ],
-        "summary": "Get Me",
+        "summary": "Get current user",
+        "description": "Returns the authenticated user's identity, profile, and company memberships. Use this to bootstrap the frontend session after login \u2014 it provides everything needed to render the user's workspace without additional round-trips.",
         "operationId": "get_me_me_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "User identity, profile, and company list",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "user": {
+                    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "email": "jane@example.com"
+                  },
+                  "profile": {
+                    "id": 1,
+                    "full_name": "Jane Smith",
+                    "role": "admin"
+                  },
+                  "companies": [
+                    {
+                      "id": 7,
+                      "name": "Acme Corp",
+                      "role": "admin"
+                    }
+                  ]
+                }
               }
             }
           }
@@ -1015,14 +1316,27 @@
         "tags": [
           "me"
         ],
-        "summary": "Get Me Companies",
+        "summary": "List user's companies",
+        "description": "Returns all companies the authenticated user belongs to, including contact details and account status. Useful for multi-company users who need to switch workspace context.",
         "operationId": "get_me_companies_me_companies_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "List of companies the user belongs to",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "companies": [
+                    {
+                      "id": 7,
+                      "name": "Acme Corp",
+                      "contact_name": "Jane Smith",
+                      "contact_email": "jane@acme.com",
+                      "contact_phone": "+15551234567",
+                      "status": "active"
+                    }
+                  ]
+                }
               }
             }
           }
@@ -1039,14 +1353,43 @@
         "tags": [
           "lookups"
         ],
-        "summary": "Campaign Statuses",
+        "summary": "List campaign statuses",
+        "description": "Returns all valid campaign status values used across the platform. Use these to populate status filter dropdowns in campaign list views and validate form inputs.",
         "operationId": "campaign_statuses_lookups_campaign_statuses_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Valid campaign status values with display labels",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "value": "draft",
+                      "label": "Draft"
+                    },
+                    {
+                      "value": "running",
+                      "label": "Running"
+                    },
+                    {
+                      "value": "paused",
+                      "label": "Paused"
+                    },
+                    {
+                      "value": "stopped",
+                      "label": "Stopped"
+                    },
+                    {
+                      "value": "completed",
+                      "label": "Completed"
+                    },
+                    {
+                      "value": "archived",
+                      "label": "Archived"
+                    }
+                  ]
+                }
               }
             }
           }
@@ -1063,14 +1406,43 @@
         "tags": [
           "lookups"
         ],
-        "summary": "Contact Statuses",
+        "summary": "List contact statuses",
+        "description": "Returns all valid contact status values. Contacts move through these states as the campaign dispatcher processes them \u2014 from `pending` through to `dialed`, `retry`, or terminal states like `do_not_call`.",
         "operationId": "contact_statuses_lookups_contact_statuses_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Valid contact status values with display labels",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "value": "pending",
+                      "label": "Pending"
+                    },
+                    {
+                      "value": "in_progress",
+                      "label": "In Progress"
+                    },
+                    {
+                      "value": "dialed",
+                      "label": "Dialed"
+                    },
+                    {
+                      "value": "failed",
+                      "label": "Failed"
+                    },
+                    {
+                      "value": "retry",
+                      "label": "Retry"
+                    },
+                    {
+                      "value": "do_not_call",
+                      "label": "Do Not Call"
+                    }
+                  ]
+                }
               }
             }
           }
@@ -1087,8 +1459,81 @@
         "tags": [
           "lookups"
         ],
-        "summary": "Call Outcomes",
+        "summary": "List call outcomes",
+        "description": "Returns all valid values of call_records.outcome \u2014 the result of each dial attempt, matching the DB CHECK constraint. `connected` means the contact answered. `no_answer` and `no_speech` (AMD-detected unavailable machine) represent unanswered calls. `failed` indicates a carrier or SIP error. `hangup` is a mid-call/mid-confirm disconnect and `error` a runtime exception during the call. `voicemail`, `callback`, `opted_out`, `subscribed`, and `lead` are business-relevant outcomes recorded on the same column; see `/lookups/business-dispositions` for the separate, agent-reported disposition vocabulary.",
         "operationId": "call_outcomes_lookups_call_outcomes_get",
+        "responses": {
+          "200": {
+            "description": "Valid call outcome values with display labels",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "value": "connected",
+                      "label": "Connected"
+                    },
+                    {
+                      "value": "no_answer",
+                      "label": "No Answer"
+                    },
+                    {
+                      "value": "failed",
+                      "label": "Failed"
+                    },
+                    {
+                      "value": "voicemail",
+                      "label": "Voicemail"
+                    },
+                    {
+                      "value": "hangup",
+                      "label": "Hangup"
+                    },
+                    {
+                      "value": "error",
+                      "label": "Error"
+                    },
+                    {
+                      "value": "no_speech",
+                      "label": "No Speech"
+                    },
+                    {
+                      "value": "callback",
+                      "label": "Callback"
+                    },
+                    {
+                      "value": "opted_out",
+                      "label": "Opted Out"
+                    },
+                    {
+                      "value": "subscribed",
+                      "label": "Subscribed"
+                    },
+                    {
+                      "value": "lead",
+                      "label": "Lead"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/lookups/business-dispositions": {
+      "get": {
+        "tags": [
+          "lookups"
+        ],
+        "summary": "Business Dispositions",
+        "operationId": "business_dispositions_lookups_business_dispositions_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1111,14 +1556,43 @@
         "tags": [
           "lookups"
         ],
-        "summary": "Agent Outcomes",
+        "summary": "List agent outcomes",
+        "description": "Returns all valid agent outcome values that represent the contact's response or action during the call. `opt_out` removes the contact from future calls. `qualified` and `callback` represent positive engagement.",
         "operationId": "agent_outcomes_lookups_agent_outcomes_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Valid agent outcome values with display labels",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "value": "subscribe",
+                      "label": "Subscribe"
+                    },
+                    {
+                      "value": "opt_out",
+                      "label": "Opt Out"
+                    },
+                    {
+                      "value": "lead",
+                      "label": "Lead"
+                    },
+                    {
+                      "value": "callback",
+                      "label": "Callback"
+                    },
+                    {
+                      "value": "single_opt_in",
+                      "label": "Single Opt In"
+                    },
+                    {
+                      "value": "interested",
+                      "label": "Interested"
+                    }
+                  ]
+                }
               }
             }
           }
@@ -1135,14 +1609,39 @@
         "tags": [
           "lookups"
         ],
-        "summary": "Timezones",
+        "summary": "List supported timezones",
+        "description": "Returns all IANA timezone identifiers supported for campaign calling-window scheduling. Use these values in campaign `time_window_start` / `time_window_end` fields.",
         "operationId": "timezones_lookups_timezones_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Supported IANA timezone identifiers",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "value": "America/Chicago",
+                      "label": "America/Chicago"
+                    },
+                    {
+                      "value": "America/Los_Angeles",
+                      "label": "America/Los_Angeles"
+                    },
+                    {
+                      "value": "America/New_York",
+                      "label": "America/New_York"
+                    },
+                    {
+                      "value": "America/Phoenix",
+                      "label": "America/Phoenix"
+                    },
+                    {
+                      "value": "Pacific/Honolulu",
+                      "label": "Pacific/Honolulu"
+                    }
+                  ]
+                }
               }
             }
           }
@@ -1159,14 +1658,31 @@
         "tags": [
           "lookups"
         ],
-        "summary": "Calling Windows",
+        "summary": "List calling window presets",
+        "description": "Returns predefined calling-window presets available for campaign scheduling. Each preset specifies allowed calling hours. Use `business_hours` for standard 8\u201317 calling or `extended_hours` for earlier/later outreach.",
         "operationId": "calling_windows_lookups_calling_windows_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Predefined calling-window presets",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "value": "business_hours",
+                      "label": "Business hours (08:00\u201317:00)"
+                    },
+                    {
+                      "value": "extended_hours",
+                      "label": "Extended hours (07:00\u201320:00)"
+                    },
+                    {
+                      "value": "all_day",
+                      "label": "All day (00:00\u201323:59)"
+                    }
+                  ]
+                }
               }
             }
           }
@@ -1183,7 +1699,8 @@
         "tags": [
           "companies"
         ],
-        "summary": "List Companies",
+        "summary": "List companies",
+        "description": "Returns a paginated list of all companies the authenticated user can access. Results are filtered to the user's company memberships. Defaults to `status=active`. Supports search by name and sorting by name, status, or creation date.",
         "operationId": "list_companies_companies_get",
         "security": [
           {
@@ -1345,7 +1862,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -1357,16 +1874,33 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated list of companies",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 7,
+                      "name": "Acme Corp",
+                      "contact_name": "Jane Smith",
+                      "contact_email": "jane@acme.com",
+                      "contact_phone": "+15551234567",
+                      "status": "active",
+                      "created_at": "2026-01-15T10:00:00Z",
+                      "updated_at": "2026-06-25T09:00:00Z"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 1
+                }
               }
             }
           },
@@ -1386,7 +1920,8 @@
         "tags": [
           "companies"
         ],
-        "summary": "Create Company",
+        "summary": "Create company",
+        "description": "Creates a new company account. The authenticated user is automatically assigned the `admin` role for the new company. Returns 409 if a company with the same name already exists.",
         "operationId": "create_company_companies_post",
         "security": [
           {
@@ -1405,10 +1940,22 @@
         },
         "responses": {
           "201": {
-            "description": "Successful Response",
+            "description": "Company created successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "company": {
+                    "id": 8,
+                    "name": "Beta Corp",
+                    "contact_name": "Bob Jones",
+                    "contact_email": "bob@beta.com",
+                    "contact_phone": "+15559876543",
+                    "status": "active",
+                    "created_at": "2026-06-25T12:00:00Z",
+                    "updated_at": "2026-06-25T12:00:00Z"
+                  }
+                }
               }
             }
           },
@@ -1430,7 +1977,8 @@
         "tags": [
           "companies"
         ],
-        "summary": "Get Company",
+        "summary": "Get company",
+        "description": "Retrieves full details for a single company. Returns 403 if the authenticated user does not belong to this company (existence is not leaked \u2014 the response is identical to a 404 to prevent enumeration).",
         "operationId": "get_company_companies__company_id__get",
         "security": [
           {
@@ -1450,10 +1998,22 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Company details",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "company": {
+                    "id": 7,
+                    "name": "Acme Corp",
+                    "contact_name": "Jane Smith",
+                    "contact_email": "jane@acme.com",
+                    "contact_phone": "+15551234567",
+                    "status": "active",
+                    "created_at": "2026-01-15T10:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  }
+                }
               }
             }
           },
@@ -1473,7 +2033,8 @@
         "tags": [
           "companies"
         ],
-        "summary": "Update Company",
+        "summary": "Update company",
+        "description": "Updates company details. Only fields provided in the request body are changed; omitted fields retain their current values. At least one field must be provided.",
         "operationId": "update_company_companies__company_id__patch",
         "security": [
           {
@@ -1503,10 +2064,22 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Updated company details",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "company": {
+                    "id": 7,
+                    "name": "Acme Corp Updated",
+                    "contact_name": "Jane Smith",
+                    "contact_email": "jane@acme.com",
+                    "contact_phone": "+15551234567",
+                    "status": "active",
+                    "created_at": "2026-01-15T10:00:00Z",
+                    "updated_at": "2026-06-25T13:00:00Z"
+                  }
+                }
               }
             }
           },
@@ -1528,7 +2101,8 @@
         "tags": [
           "companies"
         ],
-        "summary": "Archive Company",
+        "summary": "Archive company",
+        "description": "Archives a company, preventing new campaigns from being launched under it. The company and its data remain accessible in read-only mode. Reversible via the restore endpoint.",
         "operationId": "archive_company_companies__company_id__archive_post",
         "security": [
           {
@@ -1548,10 +2122,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Company archived successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "company_id": 7,
+                  "status": "archived"
+                }
               }
             }
           },
@@ -1573,7 +2151,8 @@
         "tags": [
           "companies"
         ],
-        "summary": "Restore Company",
+        "summary": "Restore company",
+        "description": "Restores an archived company to active status, re-enabling campaign creation and dispatching. Works even when the company is archived (the scope check is relaxed for this endpoint).",
         "operationId": "restore_company_companies__company_id__restore_post",
         "security": [
           {
@@ -1593,10 +2172,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Company restored to active status",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "company_id": 7,
+                  "status": "active"
+                }
               }
             }
           },
@@ -1618,7 +2201,8 @@
         "tags": [
           "campaigns-management"
         ],
-        "summary": "List Campaigns",
+        "summary": "List campaigns",
+        "description": "Returns a paginated list of campaigns belonging to the company. By default excludes archived and deleted campaigns. Pass `status=archived` to list archived campaigns. Supports search by name and sorting by name, status, or date.",
         "operationId": "list_campaigns_companies__company_id__campaigns_get",
         "security": [
           {
@@ -1780,7 +2364,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -1792,16 +2376,42 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated list of campaigns",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 42,
+                      "company_id": 7,
+                      "name": "Summer Outreach 2026",
+                      "agent": "outbound-recorder",
+                      "agent_name": "outbound-recorder",
+                      "status": "draft",
+                      "dialing_speed": 1,
+                      "time_window_start": "09:00",
+                      "time_window_end": "20:30",
+                      "max_concurrent": 10,
+                      "max_retries": 2,
+                      "retry_cooldown_seconds": 3600,
+                      "sip_trunk_id": 5,
+                      "auto_paused": false,
+                      "routing_mode": "script",
+                      "created_at": "2026-06-01T08:00:00Z",
+                      "updated_at": "2026-06-25T09:00:00Z"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 3
+                }
               }
             }
           },
@@ -1821,7 +2431,8 @@
         "tags": [
           "campaigns-management"
         ],
-        "summary": "Create Campaign",
+        "summary": "Create campaign",
+        "description": "Creates a new campaign in `draft` status under the specified company. If a `contacts` array is provided, those contacts are imported immediately. Invalid or duplicate phone numbers are counted in `contacts_rejected`. The campaign must be started separately via `POST /campaigns/{id}/start`.",
         "operationId": "create_campaign_companies__company_id__campaigns_post",
         "security": [
           {
@@ -1851,108 +2462,33 @@
         },
         "responses": {
           "201": {
-            "description": "Successful Response",
+            "description": "Campaign created with contact import summary",
             "content": {
               "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                "schema": {},
+                "example": {
+                  "campaign": {
+                    "id": 43,
+                    "company_id": 7,
+                    "name": "New Campaign",
+                    "agent": "outbound-recorder",
+                    "agent_name": "outbound-recorder",
+                    "status": "draft",
+                    "dialing_speed": 1,
+                    "time_window_start": "09:00",
+                    "time_window_end": "20:30",
+                    "max_concurrent": 10,
+                    "max_retries": 2,
+                    "retry_cooldown_seconds": 3600,
+                    "sip_trunk_id": 5,
+                    "auto_paused": false,
+                    "routing_mode": "script",
+                    "created_at": "2026-06-01T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  },
+                  "contacts_imported": 250,
+                  "contacts_rejected": 3
                 }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/campaigns/{campaign_id}": {
-      "get": {
-        "tags": [
-          "campaigns-management"
-        ],
-        "summary": "Get Campaign",
-        "operationId": "get_campaign_campaigns__campaign_id__get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Campaign Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "campaigns-management"
-        ],
-        "summary": "Update Campaign",
-        "operationId": "update_campaign_campaigns__campaign_id__patch",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Campaign Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CampaignUpdate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
               }
             }
           },
@@ -1974,7 +2510,8 @@
         "tags": [
           "campaigns-management"
         ],
-        "summary": "Archive Campaign",
+        "summary": "Archive campaign",
+        "description": "Archives a completed or stopped campaign. Archived campaigns are hidden from default list views but their data (contacts, calls, outcomes) is retained for reporting. Returns 409 if the campaign is currently running \u2014 stop it first.",
         "operationId": "archive_campaign_campaigns__campaign_id__archive_post",
         "security": [
           {
@@ -1994,10 +2531,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Campaign archived successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "campaign_id": 42,
+                  "status": "archived"
+                }
               }
             }
           },
@@ -2019,7 +2560,8 @@
         "tags": [
           "campaigns-management"
         ],
-        "summary": "Restore Campaign",
+        "summary": "Restore campaign",
+        "description": "Restores an archived campaign back to `draft` status, allowing it to be reconfigured and relaunched. The campaign's contacts and call history are preserved.",
         "operationId": "restore_campaign_campaigns__campaign_id__restore_post",
         "security": [
           {
@@ -2039,10 +2581,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Campaign restored to draft status",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "campaign_id": 42,
+                  "status": "draft"
+                }
               }
             }
           },
@@ -2064,7 +2610,8 @@
         "tags": [
           "campaigns-management"
         ],
-        "summary": "Duplicate Campaign",
+        "summary": "Duplicate campaign",
+        "description": "Creates a full copy of the campaign configuration in `draft` status with the provided name. Set `include_contacts: true` to also copy all non-DNC contacts into the new campaign as `pending`. Returns the new campaign and the number of contacts copied.",
         "operationId": "duplicate_campaign_campaigns__campaign_id__duplicate_post",
         "security": [
           {
@@ -2094,10 +2641,32 @@
         },
         "responses": {
           "201": {
-            "description": "Successful Response",
+            "description": "Duplicated campaign with contact copy count",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "campaign": {
+                    "id": 44,
+                    "company_id": 7,
+                    "name": "Summer Outreach 2026 (copy)",
+                    "agent": "outbound-recorder",
+                    "agent_name": "outbound-recorder",
+                    "status": "draft",
+                    "dialing_speed": 1,
+                    "time_window_start": "09:00",
+                    "time_window_end": "20:30",
+                    "max_concurrent": 10,
+                    "max_retries": 2,
+                    "retry_cooldown_seconds": 3600,
+                    "sip_trunk_id": 5,
+                    "auto_paused": false,
+                    "routing_mode": "script",
+                    "created_at": "2026-06-01T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  },
+                  "contacts_copied": 250
+                }
               }
             }
           },
@@ -2119,7 +2688,8 @@
         "tags": [
           "contacts"
         ],
-        "summary": "List Contacts",
+        "summary": "List campaign contacts",
+        "description": "Returns a paginated list of contacts enrolled in the campaign. Supports filtering by `status` (pending, in_progress, dialed, retry, failed, do_not_call), `network_provider` (`Vodacom`, `MTN`, `Cell C`, or `unknown` for unclassified/non-SA numbers), and full-text search across first name, last name, and phone number.",
         "operationId": "list_contacts_campaigns__campaign_id__contacts_get",
         "security": [
           {
@@ -2142,6 +2712,24 @@
               ],
               "title": "Campaign Id"
             }
+          },
+          {
+            "name": "network_provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by mobile network provider: `Vodacom`, `MTN`, `Cell C`, or `unknown` for numbers that could not be classified.",
+              "title": "Network Provider"
+            },
+            "description": "Filter by mobile network provider: `Vodacom`, `MTN`, `Cell C`, or `unknown` for numbers that could not be classified."
           },
           {
             "name": "page",
@@ -2281,7 +2869,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -2293,16 +2881,35 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated contact list",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 1001,
+                      "campaign_id": 42,
+                      "phone": "+15551234567",
+                      "first_name": "John",
+                      "last_name": "Doe",
+                      "status": "pending",
+                      "retry_count": 0,
+                      "created_at": "2026-06-01T08:00:00Z",
+                      "do_not_call": false,
+                      "network_provider": "Vodacom"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 300
+                }
               }
             }
           },
@@ -2322,7 +2929,8 @@
         "tags": [
           "contacts"
         ],
-        "summary": "Create Contact",
+        "summary": "Create contact",
+        "description": "Adds a single contact to the campaign. The phone number is normalised to E.164 format \u2014 returns 422 if the number is invalid. The contact is created in `pending` status and will be dialled when the campaign dispatcher reaches it.",
         "operationId": "create_contact_campaigns__campaign_id__contacts_post",
         "security": [
           {
@@ -2352,10 +2960,108 @@
         },
         "responses": {
           "201": {
-            "description": "Successful Response",
+            "description": "Contact created in pending status",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "contact": {
+                    "id": 1001,
+                    "campaign_id": 42,
+                    "phone": "+15551234567",
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "status": "pending",
+                    "retry_count": 0,
+                    "created_at": "2026-06-01T08:00:00Z",
+                    "do_not_call": false,
+                    "network_provider": "Vodacom"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/campaigns/{campaign_id}/contacts/network-breakdown": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Contact network provider breakdown",
+        "description": "Returns contact counts grouped by mobile network provider (`Vodacom`, `MTN`, `Cell C`), plus an `unknown` bucket for numbers that could not be classified (non-SA or unrecognised prefix). Optionally narrow to a single contact `status`. Replaces the need for four separate `page_size=1` count calls with the `network_provider` filter.",
+        "operationId": "contacts_network_breakdown_campaigns__campaign_id__contacts_network_breakdown_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Network provider breakdown for the campaign",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "campaign_id": 42,
+                  "total": 300,
+                  "breakdown": [
+                    {
+                      "network_provider": "Cell C",
+                      "count": 40
+                    },
+                    {
+                      "network_provider": "MTN",
+                      "count": 95
+                    },
+                    {
+                      "network_provider": "Vodacom",
+                      "count": 150
+                    },
+                    {
+                      "network_provider": "unknown",
+                      "count": 15
+                    }
+                  ]
+                }
               }
             }
           },
@@ -2377,7 +3083,8 @@
         "tags": [
           "contacts"
         ],
-        "summary": "Bulk Create Contacts",
+        "summary": "Bulk create contacts",
+        "description": "Imports multiple contacts into the campaign in a single request. Each contact must have a valid phone number. Invalid numbers are rejected and returned in the `errors` array. No deduplication is performed \u2014 use the `/import` endpoint if deduplication is needed.",
         "operationId": "bulk_create_contacts_campaigns__campaign_id__contacts_bulk_post",
         "security": [
           {
@@ -2407,10 +3114,20 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Bulk import result with created and rejected counts",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "created": 48,
+                  "rejected": 2,
+                  "errors": [
+                    {
+                      "phone": "555-not-valid",
+                      "error": "Invalid E.164 phone number"
+                    }
+                  ]
+                }
               }
             }
           },
@@ -2432,7 +3149,8 @@
         "tags": [
           "contacts"
         ],
-        "summary": "Import Contacts",
+        "summary": "Import contacts with deduplication",
+        "description": "Imports contacts from a structured payload with optional deduplication against existing campaign contacts. When `dedupe: true` (default), contacts with a matching phone number are updated rather than inserted. Returns a unique `import_id` for tracking plus detailed counts of created, updated, duplicate, and rejected contacts.",
         "operationId": "import_contacts_campaigns__campaign_id__contacts_import_post",
         "security": [
           {
@@ -2462,10 +3180,23 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Import result with per-category counts",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "import_id": "a1b2c3d4-0000-0000-0000-ef1234567890",
+                  "created": 230,
+                  "updated": 15,
+                  "duplicates": 15,
+                  "rejected": 5,
+                  "errors": [
+                    {
+                      "phone": "bad-number",
+                      "error": "Invalid E.164 phone number"
+                    }
+                  ]
+                }
               }
             }
           },
@@ -2487,7 +3218,8 @@
         "tags": [
           "contacts"
         ],
-        "summary": "Get Contact",
+        "summary": "Get contact detail",
+        "description": "Retrieves a single contact record including the contact's last 10 call attempts across all retry cycles. The `recent_calls` array is ordered newest-first and includes outcome, business disposition, talk duration, and timestamp.",
         "operationId": "get_contact_contacts__contact_id__get",
         "security": [
           {
@@ -2507,10 +3239,33 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Contact detail with recent call history",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "contact": {
+                    "id": 1001,
+                    "campaign_id": 42,
+                    "phone": "+15551234567",
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "status": "dialed",
+                    "retry_count": 0,
+                    "created_at": "2026-06-01T08:00:00Z",
+                    "do_not_call": false,
+                    "network_provider": "Vodacom"
+                  },
+                  "recent_calls": [
+                    {
+                      "id": 501,
+                      "outcome": "connected",
+                      "business_disposition": "subscribe",
+                      "talk_seconds": 127,
+                      "called_at": "2026-06-25T14:30:00Z"
+                    }
+                  ]
+                }
               }
             }
           },
@@ -2530,7 +3285,8 @@
         "tags": [
           "contacts"
         ],
-        "summary": "Update Contact",
+        "summary": "Update contact",
+        "description": "Updates a contact's name, phone number, or status. Phone numbers are re-normalised to E.164 on update. Status changes must use a valid contact status value from `/lookups/contact-statuses`.",
         "operationId": "update_contact_contacts__contact_id__patch",
         "security": [
           {
@@ -2560,10 +3316,24 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Updated contact record",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "contact": {
+                    "id": 1001,
+                    "campaign_id": 42,
+                    "phone": "+15551234567",
+                    "first_name": "Jonathan",
+                    "last_name": "Doe",
+                    "status": "pending",
+                    "retry_count": 0,
+                    "created_at": "2026-06-01T08:00:00Z",
+                    "do_not_call": false,
+                    "network_provider": "Vodacom"
+                  }
+                }
               }
             }
           },
@@ -2585,7 +3355,8 @@
         "tags": [
           "contacts"
         ],
-        "summary": "Archive Contact",
+        "summary": "Archive contact",
+        "description": "Sets the contact's status to `archived`, removing it from the active dialling queue. The contact's call history is preserved. Use this to suppress a contact without placing them on the do-not-call list.",
         "operationId": "archive_contact_contacts__contact_id__archive_post",
         "security": [
           {
@@ -2605,10 +3376,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Contact archived",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "contact_id": 1001,
+                  "status": "archived"
+                }
               }
             }
           },
@@ -2630,7 +3405,8 @@
         "tags": [
           "contacts"
         ],
-        "summary": "Retry Contact",
+        "summary": "Queue contact for retry",
+        "description": "Manually re-queues a contact for another dial attempt by setting their status to `retry`. Useful for re-scheduling contacts that failed due to transient errors. The campaign dispatcher will pick them up on the next cycle.",
         "operationId": "retry_contact_contacts__contact_id__retry_post",
         "security": [
           {
@@ -2650,10 +3426,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Contact queued for retry",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "contact_id": 1001,
+                  "status": "retry"
+                }
               }
             }
           },
@@ -2675,7 +3455,8 @@
         "tags": [
           "contacts"
         ],
-        "summary": "Do Not Call",
+        "summary": "Mark contact do-not-call",
+        "description": "Permanently marks a contact as do-not-call. Sets `status` to `do_not_call` and the `do_not_call` flag to `true`. The contact will never be dialled again, even if the campaign is restarted or the contact is re-imported.",
         "operationId": "do_not_call_contacts__contact_id__do_not_call_post",
         "security": [
           {
@@ -2695,10 +3476,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Contact marked do-not-call",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "contact_id": 1001,
+                  "status": "do_not_call"
+                }
               }
             }
           },
@@ -2720,7 +3505,8 @@
         "tags": [
           "calls"
         ],
-        "summary": "List Company Calls",
+        "summary": "List company calls",
+        "description": "Returns a paginated, sortable list of all call records across all campaigns belonging to the company. Supports filtering by `outcome` and date range. Optionally narrow to a single campaign with the `campaign_id` query parameter. Each item is enriched with `started_at`/`ended_at` (room join\u2192leave, from the LiveKit session) and `duration_seconds` \u2014 the true on-air/billed duration, distinct from the agent-reported `talk_seconds`.",
         "operationId": "list_company_calls_companies__company_id__calls_get",
         "security": [
           {
@@ -2882,7 +3668,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -2894,16 +3680,40 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated call records for the company",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 501,
+                      "campaign_id": 42,
+                      "contact_id": 1001,
+                      "phone": "+15551234567",
+                      "room": "call-42-1001-1",
+                      "outcome": "connected",
+                      "business_disposition": "subscribe",
+                      "talk_seconds": 127,
+                      "cost": 0.045,
+                      "transferred": false,
+                      "called_at": "2026-06-25T14:30:00Z",
+                      "created_at": "2026-06-25T14:30:01Z",
+                      "started_at": "2026-06-25T14:30:05Z",
+                      "ended_at": "2026-06-25T14:32:12Z",
+                      "duration_seconds": 127
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 342
+                }
               }
             }
           },
@@ -2925,7 +3735,8 @@
         "tags": [
           "calls"
         ],
-        "summary": "List Campaign Calls",
+        "summary": "List campaign calls",
+        "description": "Returns a paginated list of call records for a specific campaign. Supports the same filters and sort options as the company-level calls list. Useful for drilling into a single campaign's call history. Each item includes `started_at`/`ended_at`/`duration_seconds` (on-air room duration) alongside `talk_seconds`.",
         "operationId": "list_campaign_calls_campaigns__campaign_id__calls_get",
         "security": [
           {
@@ -3087,7 +3898,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -3099,16 +3910,40 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated call records for the campaign",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 501,
+                      "campaign_id": 42,
+                      "contact_id": 1001,
+                      "phone": "+15551234567",
+                      "room": "call-42-1001-1",
+                      "outcome": "connected",
+                      "business_disposition": "subscribe",
+                      "talk_seconds": 127,
+                      "cost": 0.045,
+                      "transferred": false,
+                      "called_at": "2026-06-25T14:30:00Z",
+                      "created_at": "2026-06-25T14:30:01Z",
+                      "started_at": "2026-06-25T14:30:05Z",
+                      "ended_at": "2026-06-25T14:32:12Z",
+                      "duration_seconds": 127
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 520
+                }
               }
             }
           },
@@ -3130,7 +3965,8 @@
         "tags": [
           "calls"
         ],
-        "summary": "List Contact Calls",
+        "summary": "List contact calls",
+        "description": "Returns a paginated list of all call attempts for a specific contact across all retry attempts. Useful for viewing the full call history for a single contact and diagnosing why a contact was not reached. Each item includes `started_at`/`ended_at`/`duration_seconds` (on-air room duration) alongside `talk_seconds`.",
         "operationId": "list_contact_calls_contacts__contact_id__calls_get",
         "security": [
           {
@@ -3301,7 +4137,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -3313,16 +4149,268 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated call records for the contact",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 501,
+                      "campaign_id": 42,
+                      "contact_id": 1001,
+                      "phone": "+15551234567",
+                      "room": "call-42-1001-1",
+                      "outcome": "connected",
+                      "business_disposition": "subscribe",
+                      "talk_seconds": 127,
+                      "cost": 0.045,
+                      "transferred": false,
+                      "called_at": "2026-06-25T14:30:00Z",
+                      "created_at": "2026-06-25T14:30:01Z",
+                      "started_at": "2026-06-25T14:30:05Z",
+                      "ended_at": "2026-06-25T14:32:12Z",
+                      "duration_seconds": 127
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 3
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/companies/{company_id}/leads": {
+      "get": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "List lead-gen opt-ins",
+        "description": "Returns every call where the contact pressed 1 at least once during a Lead-Gen campaign: a DOUBLE opt-in (`outcome=lead`) or a SINGLE opt-in (pressed 1, listened, no second press \u2014 `business_disposition=single_opt_in`). Each item's `optin` field is `double` or `single` accordingly. `double_optin`/`single_optin` are exact totals across the whole filtered set, independent of the current page. Optionally narrow to one campaign with `campaign_id`.",
+        "operationId": "list_leads_companies__company_id__leads_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Company Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "campaign_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "name": "business_disposition",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Disposition"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated lead-gen opt-ins",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 501,
+                      "campaign_id": 42,
+                      "contact_id": 1001,
+                      "phone": "+15551234567",
+                      "called_at": "2026-06-25T14:30:00Z",
+                      "created_at": "2026-06-25T14:30:01Z",
+                      "talk_seconds": 32,
+                      "outcome": "lead",
+                      "business_disposition": "lead",
+                      "cost": 0.0,
+                      "optin": "double"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 87,
+                  "double_optin": 60,
+                  "single_optin": 27
+                }
               }
             }
           },
@@ -3344,8 +4432,87 @@
         "tags": [
           "calls"
         ],
-        "summary": "Get Call",
+        "summary": "Get call detail",
+        "description": "Returns full detail for a single call record, enriched with the associated contact profile, campaign info, and session timestamps (`started_at`, `ended_at`) sourced from the LiveKit session record, plus `duration_seconds` \u2014 the true on-air/billed room duration (join\u2192leave), distinct from the agent-reported `talk_seconds`. Returns 404 if the call does not exist or is out of scope.",
         "operationId": "get_call_calls__call_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "call_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Call Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full call detail with contact and campaign context",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "call": {
+                    "id": 501,
+                    "campaign_id": 42,
+                    "contact_id": 1001,
+                    "phone": "+15551234567",
+                    "room": "call-42-1001-1",
+                    "outcome": "connected",
+                    "business_disposition": "subscribe",
+                    "talk_seconds": 127,
+                    "cost": 0.045,
+                    "transferred": false,
+                    "called_at": "2026-06-25T14:30:00Z",
+                    "created_at": "2026-06-25T14:30:01Z",
+                    "started_at": "2026-06-25T14:30:05Z",
+                    "ended_at": "2026-06-25T14:32:12Z",
+                    "duration_seconds": 127
+                  },
+                  "contact": {
+                    "id": 1001,
+                    "phone": "+15551234567",
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "status": "dialed"
+                  },
+                  "campaign": {
+                    "id": 42,
+                    "name": "Summer Outreach 2026",
+                    "status": "running",
+                    "company_id": 7
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/calls/{call_id}/timings": {
+      "get": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Get dial-attempt stage timings",
+        "description": "Returns milestone timestamps and precomputed segment durations for a dial attempt, anchored at orchestrator dispatch (dispatched_at).",
+        "operationId": "get_call_timings_calls__call_id__timings_get",
         "security": [
           {
             "HTTPBearer": []
@@ -3389,8 +4556,79 @@
         "tags": [
           "calls"
         ],
-        "summary": "Get Call Events",
+        "summary": "Get call events",
+        "description": "Returns the ordered sequence of lifecycle and SDK metric events captured during the call session. Events are sourced from both the agent worker (AMD results, DTMF presses, playback steps) and the LiveKit SDK (speech, interruptions, model metrics). Events are ordered by `occurred_at`.",
         "operationId": "get_call_events_calls__call_id__events_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "call_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Call Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered list of call session events",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "call_id": 501,
+                  "events": [
+                    {
+                      "id": 1,
+                      "source": "agent",
+                      "event_type": "amd_result",
+                      "payload": {
+                        "result": "human",
+                        "confidence": 0.97
+                      },
+                      "occurred_at": "2026-06-25T14:30:08Z"
+                    },
+                    {
+                      "id": 2,
+                      "source": "agent",
+                      "event_type": "playback_step",
+                      "payload": {
+                        "step": "intro",
+                        "audio_file": "intro.mp3"
+                      },
+                      "occurred_at": "2026-06-25T14:30:10Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/calls/{call_id}/call-report": {
+      "get": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Get Call Report",
+        "operationId": "get_call_report_calls__call_id__call_report_get",
         "security": [
           {
             "HTTPBearer": []
@@ -3434,7 +4672,8 @@
         "tags": [
           "calls"
         ],
-        "summary": "Get Call Telemetry",
+        "summary": "Get call telemetry",
+        "description": "Returns LiveKit Agents SDK telemetry events for this call session, including LLM, STT, and TTS metric events emitted by the agent worker. Events are ordered by `occurred_at`. Useful for cost analysis, latency debugging, and model performance review.",
         "operationId": "get_call_telemetry_calls__call_id__telemetry_get",
         "security": [
           {
@@ -3454,10 +4693,36 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "SDK telemetry events for the call session",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "call_id": 501,
+                  "telemetry": [
+                    {
+                      "id": 10,
+                      "source": "agent_sdk",
+                      "event_type": "llm_metrics",
+                      "payload": {
+                        "prompt_tokens": 620,
+                        "completion_tokens": 230,
+                        "duration_ms": 840
+                      },
+                      "occurred_at": "2026-06-25T14:31:00Z"
+                    },
+                    {
+                      "id": 11,
+                      "source": "agent_sdk",
+                      "event_type": "tts_metrics",
+                      "payload": {
+                        "characters": 980,
+                        "duration_ms": 210
+                      },
+                      "occurred_at": "2026-06-25T14:31:02Z"
+                    }
+                  ]
+                }
               }
             }
           },
@@ -3479,7 +4744,8 @@
         "tags": [
           "calls"
         ],
-        "summary": "Get Call Recording",
+        "summary": "Get call recording URL",
+        "description": "Returns a short-lived URL for downloading the call recording. The URL expires 1 hour after it is issued. Returns 404 if no recording exists for this call (recording may not be available if the call was not connected or if recording was disabled for the campaign).",
         "operationId": "get_call_recording_calls__call_id__recording_get",
         "security": [
           {
@@ -3499,10 +4765,27 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Recording URL with expiry timestamp",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "recording_url": "https://storage.example.com/recordings/call-42-1001-1.mp3?token=abc123",
+                  "expires_at": "2026-06-25T15:30:00+00:00"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No recording available for this call",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "not_found",
+                    "message": "No recording for this call"
+                  }
+                }
               }
             }
           },
@@ -3524,7 +4807,8 @@
         "tags": [
           "sip-trunks"
         ],
-        "summary": "List Sip Trunks",
+        "summary": "List SIP trunks",
+        "description": "Returns all SIP trunks linked to the company. Each trunk represents a telephony gateway used for outbound dialling, and may also be linked to other companies (see `company_ids`) if it's a shared carrier connection. Defaults to `status=active`. The `live` field reflects whether the trunk was reachable the last time its health was checked.",
         "operationId": "list_sip_trunks_companies__company_id__sip_trunks_get",
         "security": [
           {
@@ -3686,7 +4970,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -3698,16 +4982,36 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated list of SIP trunks",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 5,
+                      "company_ids": [
+                        7
+                      ],
+                      "name": "Primary Trunk",
+                      "from_number": "+15551112222",
+                      "livekit_trunk_id": "ST_abc123xyz",
+                      "live": true,
+                      "status": "active",
+                      "created_at": "2026-01-20T08:00:00Z",
+                      "updated_at": "2026-06-25T09:00:00Z"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 1
+                }
               }
             }
           },
@@ -3727,7 +5031,8 @@
         "tags": [
           "sip-trunks"
         ],
-        "summary": "Create Sip Trunk",
+        "summary": "Create SIP trunk",
+        "description": "Creates a new SIP trunk and links it to the company. If `livekit_trunk_id` is provided, the trunk is linked to an existing LiveKit SIP trunk. If `address` and `numbers` are provided instead, a new LiveKit SIP trunk is provisioned automatically. The `auth_password` is stored in the vault and never returned in responses. To share an *existing* sip_trunks row with another company instead of creating a duplicate, use `POST /companies/{company_id}/sip-trunks/{sip_trunk_id}/link`.",
         "operationId": "create_sip_trunk_companies__company_id__sip_trunks_post",
         "security": [
           {
@@ -3757,10 +5062,143 @@
         },
         "responses": {
           "201": {
-            "description": "Successful Response",
+            "description": "SIP trunk created successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "sip_trunk": {
+                    "id": 6,
+                    "company_ids": [
+                      7
+                    ],
+                    "name": "Backup Trunk",
+                    "from_number": "+15551112222",
+                    "livekit_trunk_id": "ST_abc123xyz",
+                    "live": false,
+                    "status": "active",
+                    "created_at": "2026-01-20T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/companies/{company_id}/sip-trunks/{sip_trunk_id}/link": {
+      "post": {
+        "tags": [
+          "sip-trunks"
+        ],
+        "summary": "Link an existing SIP trunk to a company",
+        "description": "Links a SIP trunk you already have access to (via one of its currently-linked companies, or admin) to another company, so both can dial through and manage the same carrier connection. Returns 404 if the trunk doesn't exist or you have no access to any of its currently-linked companies. Idempotent \u2014 linking an already-linked company is a no-op.",
+        "operationId": "link_sip_trunk_companies__company_id__sip_trunks__sip_trunk_id__link_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Company Id"
+            }
+          },
+          {
+            "name": "sip_trunk_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Sip Trunk Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Trunk linked to the company",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "sip_trunk_id": 5,
+                  "company_id": 9,
+                  "linked": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sip-trunks"
+        ],
+        "summary": "Unlink a SIP trunk from a company",
+        "description": "Removes the association between a SIP trunk and a company. The trunk row itself is not deleted and remains available to any other companies still linked to it.",
+        "operationId": "unlink_sip_trunk_companies__company_id__sip_trunks__sip_trunk_id__link_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Company Id"
+            }
+          },
+          {
+            "name": "sip_trunk_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Sip Trunk Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trunk unlinked from the company",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "sip_trunk_id": 5,
+                  "company_id": 9,
+                  "linked": false
+                }
               }
             }
           },
@@ -3782,7 +5220,8 @@
         "tags": [
           "sip-trunks"
         ],
-        "summary": "Get Sip Trunk",
+        "summary": "Get SIP trunk",
+        "description": "Retrieves configuration details for a specific SIP trunk by ID. Returns 404 if the trunk does not exist or is out of scope.",
         "operationId": "get_sip_trunk_sip_trunks__sip_trunk_id__get",
         "security": [
           {
@@ -3802,10 +5241,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "SIP trunk configuration",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "sip_trunk": {
+                    "id": 5,
+                    "company_ids": [
+                      7
+                    ],
+                    "name": "Primary Trunk",
+                    "from_number": "+15551112222",
+                    "livekit_trunk_id": "ST_abc123xyz",
+                    "live": true,
+                    "status": "active",
+                    "created_at": "2026-01-20T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  }
+                }
               }
             }
           },
@@ -3825,7 +5279,8 @@
         "tags": [
           "sip-trunks"
         ],
-        "summary": "Update Sip Trunk",
+        "summary": "Update SIP trunk",
+        "description": "Updates the display name, from-number, or SIP credentials for a trunk. Any company currently linked to the trunk may update it \u2014 changes apply to every company sharing it. The `auth_password` is stored in the vault if provided and never returned. At least one field must be included in the request body.",
         "operationId": "update_sip_trunk_sip_trunks__sip_trunk_id__patch",
         "security": [
           {
@@ -3855,10 +5310,25 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Updated SIP trunk configuration",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "sip_trunk": {
+                    "id": 5,
+                    "company_ids": [
+                      7
+                    ],
+                    "name": "Primary Trunk (Updated)",
+                    "from_number": "+15551112222",
+                    "livekit_trunk_id": "ST_abc123xyz",
+                    "live": true,
+                    "status": "active",
+                    "created_at": "2026-01-20T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  }
+                }
               }
             }
           },
@@ -3880,7 +5350,8 @@
         "tags": [
           "sip-trunks"
         ],
-        "summary": "Archive Sip Trunk",
+        "summary": "Archive SIP trunk",
+        "description": "Archives a SIP trunk. Archived trunks cannot be assigned to campaigns. The trunk remains in the database (and linked to all its companies); its history is preserved.",
         "operationId": "archive_sip_trunk_sip_trunks__sip_trunk_id__archive_post",
         "security": [
           {
@@ -3900,10 +5371,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "SIP trunk archived",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "sip_trunk_id": 5,
+                  "status": "archived"
+                }
               }
             }
           },
@@ -3925,7 +5400,8 @@
         "tags": [
           "sip-trunks"
         ],
-        "summary": "Test Call",
+        "summary": "Test SIP trunk",
+        "description": "Dispatches a real outbound call through the SIP trunk to verify it is operational. The call is placed to the `phone` number provided in the request body. Always returns HTTP 200 \u2014 check the `ok` field to determine whether the call was dispatched successfully. The `room_name` can be used to correlate LiveKit events for the test call.",
         "operationId": "test_call_sip_trunks__sip_trunk_id__test_call_post",
         "security": [
           {
@@ -3955,10 +5431,34 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Test call result (check `ok` for success/failure)",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "examples": {
+                  "success": {
+                    "summary": "Call dispatched",
+                    "value": {
+                      "ok": true,
+                      "sip_trunk_id": 5,
+                      "livekit_trunk_id": "ST_abc123xyz",
+                      "phone": "+15551234567",
+                      "room_name": "test-5-a1b2c3d4",
+                      "message": "Test call dispatched"
+                    }
+                  },
+                  "failure": {
+                    "summary": "Dispatch failed",
+                    "value": {
+                      "ok": false,
+                      "sip_trunk_id": 5,
+                      "livekit_trunk_id": "ST_abc123xyz",
+                      "phone": "+15551234567",
+                      "room_name": "test-5-a1b2c3d4",
+                      "message": "trunk not registered in LiveKit"
+                    }
+                  }
+                }
               }
             }
           },
@@ -3980,7 +5480,8 @@
         "tags": [
           "sip-trunks"
         ],
-        "summary": "Trunk Health",
+        "summary": "Check SIP trunk health",
+        "description": "Queries LiveKit to verify the SIP trunk is registered and reachable. Updates the `live` flag on the trunk record. Returns `status: healthy` if the trunk is found in LiveKit, `not_found` if it is missing, or `error` if the LiveKit query failed. Use this before starting a campaign to confirm the trunk is ready.",
         "operationId": "trunk_health_sip_trunks__sip_trunk_id__health_get",
         "security": [
           {
@@ -4000,10 +5501,30 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "SIP trunk health status",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "examples": {
+                  "healthy": {
+                    "summary": "Trunk reachable",
+                    "value": {
+                      "sip_trunk_id": 5,
+                      "livekit_trunk_id": "ST_abc123xyz",
+                      "live": true,
+                      "status": "healthy"
+                    }
+                  },
+                  "not_found": {
+                    "summary": "Trunk not in LiveKit",
+                    "value": {
+                      "sip_trunk_id": 5,
+                      "livekit_trunk_id": "ST_abc123xyz",
+                      "live": false,
+                      "status": "not_found"
+                    }
+                  }
+                }
               }
             }
           },
@@ -4025,7 +5546,8 @@
         "tags": [
           "dashboard"
         ],
-        "summary": "Dashboard Summary",
+        "summary": "Dashboard summary",
+        "description": "Returns high-level operational metrics for the company. By default covers the current calendar day in UTC; use `from_date` / `to_date` to query historical windows. Optionally filter to a single campaign with `campaign_id`. `active_calls` reflects the live count of in-progress calls from the in-memory concurrency tracker.",
         "operationId": "dashboard_summary_companies__company_id__dashboard_get",
         "security": [
           {
@@ -4095,10 +5617,21 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Aggregated operational metrics for the company",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "active_campaigns": 2,
+                  "calls_today": 342,
+                  "connected_today": 215,
+                  "opt_out_today": 18,
+                  "failed_today": 41,
+                  "active_calls": 7,
+                  "average_talk_seconds": 94,
+                  "transfer_count": 12,
+                  "total_cost": 118.72
+                }
               }
             }
           },
@@ -4120,7 +5653,8 @@
         "tags": [
           "dashboard"
         ],
-        "summary": "Dashboard Live",
+        "summary": "Live dashboard state",
+        "description": "Returns real-time operational state: which campaigns are currently running, how many calls are active right now (from the in-memory concurrency tracker), and the contact queue breakdown by status. Poll this endpoint every 5\u201310 seconds to power a live dashboard.",
         "operationId": "dashboard_live_companies__company_id__dashboard_live_get",
         "security": [
           {
@@ -4140,10 +5674,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Real-time campaign and queue state",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "running_campaigns": [
+                    {
+                      "id": 42,
+                      "name": "Summer Outreach 2026",
+                      "status": "running"
+                    }
+                  ],
+                  "active_calls": 7,
+                  "queue_summary": {
+                    "queued": 284,
+                    "in_progress": 7,
+                    "retry": 23
+                  }
+                }
               }
             }
           },
@@ -4165,7 +5714,8 @@
         "tags": [
           "dashboard"
         ],
-        "summary": "Dashboard Outcomes",
+        "summary": "Outcome breakdown",
+        "description": "Returns aggregated call outcome and business disposition counts for the specified date range. `outcomes` reflects the telephony result (connected, voicemail, failed, etc.). `business_dispositions` reflects the contact's response during the call (subscribe, opt_out, callback, etc.). Use this to build outcome breakdown charts and disposition funnels.",
         "operationId": "dashboard_outcomes_companies__company_id__dashboard_outcomes_get",
         "security": [
           {
@@ -4235,10 +5785,44 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Aggregated outcome and business disposition counts",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "outcomes": [
+                    {
+                      "value": "connected",
+                      "count": 215
+                    },
+                    {
+                      "value": "failed",
+                      "count": 41
+                    },
+                    {
+                      "value": "no_answer",
+                      "count": 68
+                    },
+                    {
+                      "value": "voicemail",
+                      "count": 18
+                    }
+                  ],
+                  "business_dispositions": [
+                    {
+                      "value": "subscribe",
+                      "count": 142
+                    },
+                    {
+                      "value": "opt_out",
+                      "count": 18
+                    },
+                    {
+                      "value": "callback",
+                      "count": 55
+                    }
+                  ]
+                }
               }
             }
           },
@@ -4260,7 +5844,8 @@
         "tags": [
           "dashboard"
         ],
-        "summary": "Dashboard Call Volume",
+        "summary": "Call volume time-series",
+        "description": "Returns a time-series of call volume metrics grouped by `hour`, `day`, or `week`. Each bucket in `series` contains the total call count, connected count, and failed count for that period. Use this to render call volume trend charts. Defaults to `day` grouping.",
         "operationId": "dashboard_call_volume_companies__company_id__dashboard_call_volume_get",
         "security": [
           {
@@ -4324,10 +5909,33 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Time-series call volume buckets",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "series": [
+                    {
+                      "period": "2026-06-23",
+                      "calls": 280,
+                      "connected": 175,
+                      "failed": 35
+                    },
+                    {
+                      "period": "2026-06-24",
+                      "calls": 315,
+                      "connected": 198,
+                      "failed": 40
+                    },
+                    {
+                      "period": "2026-06-25",
+                      "calls": 342,
+                      "connected": 215,
+                      "failed": 41
+                    }
+                  ],
+                  "group_by": "day"
+                }
               }
             }
           },
@@ -4349,7 +5957,8 @@
         "tags": [
           "dashboard"
         ],
-        "summary": "Dashboard Campaign Performance",
+        "summary": "Campaign performance comparison",
+        "description": "Returns per-campaign performance statistics including total calls, connected count, opt-out count, failed count, and average talk time in seconds. All campaigns for the company are included regardless of status. Use this to compare campaign effectiveness side-by-side.\n\n`by_outcome` gives a raw tally of every `outcome` value seen for the campaign (e.g. `connected`, `subscribed`, `lead`, `opted_out`, `no_answer`, `voicemail`, `failed`) so callers aren't limited to the handful of pre-aggregated columns above. `total_talk_seconds` and `answered_calls` (calls with talk_seconds > 0) are provided for reference, and `total_cost` is the authoritative sum of each call's persisted `cost` (ZAR) \u2014 callers no longer need to derive their own cost/CPL estimate from talk time.",
         "operationId": "dashboard_campaign_performance_companies__company_id__dashboard_campaign_performance_get",
         "security": [
           {
@@ -4369,10 +5978,158 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Per-campaign performance statistics",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "campaigns": [
+                    {
+                      "campaign_id": 42,
+                      "name": "Summer Outreach 2026",
+                      "status": "running",
+                      "agent": "seeker",
+                      "agent_name": "outbound-recorder",
+                      "calls": 520,
+                      "connected": 340,
+                      "opt_out": 28,
+                      "failed": 62,
+                      "average_talk_seconds": 98,
+                      "total_talk_seconds": 50960,
+                      "answered_calls": 340,
+                      "total_cost": 320.15,
+                      "by_outcome": {
+                        "connected": 340,
+                        "subscribed": 210,
+                        "lead": 12,
+                        "opted_out": 28,
+                        "no_answer": 75,
+                        "voicemail": 5,
+                        "failed": 62
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/companies/{company_id}/dashboard/call-insights": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Call-level insights: daily series, hour-of-day distribution, talk-time distribution, recent calls",
+        "description": "Replaces raw per-call polling for dashboard analytics widgets that need more than outcome counts: a per-day series (calls/transferred/talk-time/cost/outcome breakdown) for sparklines and trend charts, a 24-bucket hour-of-day call distribution (`hourly_distribution`, index 0 = midnight UTC) for a 'busiest hours' chart, a talk-time histogram (`talk_distribution`), and the last 8 calls (`recent`, each with its own `cost`) for a live feed. Each daily bucket's `total_cost` is the sum of the persisted per-call `cost` (ZAR). Bounded to the last `days` days (default 30, max 90) so this stays a cheap, poll-friendly endpoint \u2014 it deliberately does NOT return every call ever made.",
+        "operationId": "dashboard_call_insights_companies__company_id__dashboard_call_insights_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Company Id"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Call-level insight data for the last `days` days",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "daily": [
+                    {
+                      "period": "2026-06-25",
+                      "calls": 280,
+                      "transferred": 12,
+                      "total_talk_seconds": 8400,
+                      "answered_calls": 175,
+                      "total_cost": 65.45,
+                      "by_outcome": {
+                        "connected": 175,
+                        "subscribed": 90,
+                        "failed": 40
+                      }
+                    }
+                  ],
+                  "hourly_distribution": [
+                    0,
+                    0,
+                    1,
+                    3,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "talk_distribution": {
+                    "0s": 40,
+                    "<30s": 120,
+                    "30-60s": 60,
+                    "1-2m": 30,
+                    "2-5m": 10,
+                    "5m+": 2
+                  },
+                  "recent": [
+                    {
+                      "id": 501,
+                      "campaign_id": 42,
+                      "phone": "+15551234567",
+                      "outcome": "connected",
+                      "talk_seconds": 127,
+                      "called_at": "2026-06-25T14:30:00Z",
+                      "cost": 0.76
+                    }
+                  ]
+                }
               }
             }
           },
@@ -4394,7 +6151,8 @@
         "tags": [
           "intent-stats"
         ],
-        "summary": "Campaign Intent Stats",
+        "summary": "Campaign intent stats",
+        "description": "Returns conversation intent metrics for a single campaign, broken down by day, script step, and intent name. Intents are tracked each time a contact reaches a decision point in the script. Also returns the total number of connected calls for the queried period. Supports filtering by a single `date` or a `from_date`/`to_date` range.",
         "operationId": "campaign_intent_stats_campaigns__campaign_id__intent_stats_get",
         "security": [
           {
@@ -4465,10 +6223,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Campaign intent funnel metrics with connected call total",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "campaign_id": 42,
+                  "connected_total": 340,
+                  "intents": [
+                    {
+                      "day": "2026-06-25",
+                      "intent_name": "subscribe",
+                      "step": "offer",
+                      "reached": 142
+                    },
+                    {
+                      "day": "2026-06-25",
+                      "intent_name": "callback",
+                      "step": "offer",
+                      "reached": 55
+                    },
+                    {
+                      "day": "2026-06-25",
+                      "intent_name": "opt_out",
+                      "step": "intro",
+                      "reached": 18
+                    }
+                  ]
+                }
               }
             }
           },
@@ -4490,7 +6272,8 @@
         "tags": [
           "intent-stats"
         ],
-        "summary": "Company Intent Stats",
+        "summary": "Company intent stats",
+        "description": "Returns a company-wide roll-up of conversation intent metrics across all campaigns. Each row identifies the campaign, day, script step, and intent name, making it easy to compare funnel performance across campaigns side-by-side.",
         "operationId": "company_intent_stats_companies__company_id__intent_stats_get",
         "security": [
           {
@@ -4544,10 +6327,36 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Company-wide intent funnel metrics grouped by campaign",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "company_id": 7,
+                  "intents": [
+                    {
+                      "campaign_id": 42,
+                      "day": "2026-06-25",
+                      "intent_name": "subscribe",
+                      "step": "offer",
+                      "reached": 142
+                    },
+                    {
+                      "campaign_id": 43,
+                      "day": "2026-06-25",
+                      "intent_name": "subscribe",
+                      "step": "offer",
+                      "reached": 87
+                    },
+                    {
+                      "campaign_id": 42,
+                      "day": "2026-06-25",
+                      "intent_name": "opt_out",
+                      "step": "intro",
+                      "reached": 18
+                    }
+                  ]
+                }
               }
             }
           },
@@ -4569,7 +6378,8 @@
         "tags": [
           "dashboard-templates"
         ],
-        "summary": "List Templates",
+        "summary": "List dashboard templates",
+        "description": "Returns all saved dashboard templates for the company. By default excludes archived templates. The `is_default` flag indicates which template is the active default for the given `default_scope` (`company` or `user`).",
         "operationId": "list_templates_companies__company_id__dashboard_templates_get",
         "security": [
           {
@@ -4731,7 +6541,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -4743,16 +6553,40 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated list of dashboard templates",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 2,
+                      "company_id": 7,
+                      "name": "Executive Overview",
+                      "config": {
+                        "widgets": [
+                          "summary",
+                          "call-volume",
+                          "outcomes"
+                        ]
+                      },
+                      "status": "active",
+                      "is_default": true,
+                      "default_scope": "company",
+                      "created_at": "2026-03-10T08:00:00Z",
+                      "updated_at": "2026-06-25T09:00:00Z"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 3
+                }
               }
             }
           },
@@ -4772,7 +6606,8 @@
         "tags": [
           "dashboard-templates"
         ],
-        "summary": "Create Template",
+        "summary": "Create dashboard template",
+        "description": "Creates a new dashboard template with the specified widget configuration. Set `default_scope` to `company` to make it the default for all users in the company, or `user` to make it the default for the creating user only. Setting `is_default: true` replaces any existing default for that scope.",
         "operationId": "create_template_companies__company_id__dashboard_templates_post",
         "security": [
           {
@@ -4802,10 +6637,27 @@
         },
         "responses": {
           "201": {
-            "description": "Successful Response",
+            "description": "Dashboard template created",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "template": {
+                    "id": 3,
+                    "company_id": 7,
+                    "name": "My Custom View",
+                    "config": {
+                      "widgets": [
+                        "live",
+                        "campaign-performance"
+                      ]
+                    },
+                    "status": "active",
+                    "is_default": false,
+                    "created_at": "2026-03-10T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  }
+                }
               }
             }
           },
@@ -4827,7 +6679,8 @@
         "tags": [
           "dashboard-templates"
         ],
-        "summary": "Get Template",
+        "summary": "Get dashboard template",
+        "description": "Retrieves a single dashboard template by ID, including its full widget configuration.",
         "operationId": "get_template_dashboard_templates__template_id__get",
         "security": [
           {
@@ -4847,10 +6700,29 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Dashboard template details",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "template": {
+                    "id": 2,
+                    "company_id": 7,
+                    "name": "Executive Overview",
+                    "config": {
+                      "widgets": [
+                        "summary",
+                        "call-volume",
+                        "outcomes"
+                      ]
+                    },
+                    "status": "active",
+                    "is_default": true,
+                    "default_scope": "company",
+                    "created_at": "2026-03-10T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  }
+                }
               }
             }
           },
@@ -4870,7 +6742,8 @@
         "tags": [
           "dashboard-templates"
         ],
-        "summary": "Update Template",
+        "summary": "Update dashboard template",
+        "description": "Updates an existing dashboard template's name, widget configuration, or default settings. Only fields provided in the request body are changed.",
         "operationId": "update_template_dashboard_templates__template_id__patch",
         "security": [
           {
@@ -4900,10 +6773,28 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Updated dashboard template",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "template": {
+                    "id": 2,
+                    "company_id": 7,
+                    "name": "Executive Overview v2",
+                    "config": {
+                      "widgets": [
+                        "summary",
+                        "call-volume"
+                      ]
+                    },
+                    "status": "active",
+                    "is_default": true,
+                    "default_scope": "company",
+                    "created_at": "2026-03-10T08:00:00Z",
+                    "updated_at": "2026-06-25T09:00:00Z"
+                  }
+                }
               }
             }
           },
@@ -4925,7 +6816,8 @@
         "tags": [
           "dashboard-templates"
         ],
-        "summary": "Archive Template",
+        "summary": "Archive dashboard template",
+        "description": "Archives the template, hiding it from the default list without deleting it. If this template was the current default for any scope, the default is cleared.",
         "operationId": "archive_template_dashboard_templates__template_id__archive_post",
         "security": [
           {
@@ -4945,10 +6837,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Template archived",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "template_id": 2,
+                  "status": "archived"
+                }
               }
             }
           },
@@ -4970,7 +6866,8 @@
         "tags": [
           "dashboard-templates"
         ],
-        "summary": "Set Default",
+        "summary": "Set template as default",
+        "description": "Sets this template as the default dashboard view for the specified `scope` (`company` or `user`). Only one template can be the default per scope \u2014 calling this automatically clears the previous default for the same scope.",
         "operationId": "set_default_dashboard_templates__template_id__set_default_post",
         "security": [
           {
@@ -5000,10 +6897,15 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Template set as default for the specified scope",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "template_id": 2,
+                  "default_scope": "company",
+                  "is_default": true
+                }
               }
             }
           },
@@ -5025,7 +6927,8 @@
         "tags": [
           "audit"
         ],
-        "summary": "List Security Logs",
+        "summary": "List security logs",
+        "description": "Returns a paginated audit trail of security-relevant events such as logins, permission changes, and configuration updates. Scoped to the authenticated user's company. Supports filtering by date range and searching by exact event type.",
         "operationId": "list_security_logs_companies__company_id__security_logs_get",
         "security": [
           {
@@ -5187,7 +7090,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -5199,16 +7102,34 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated security log entries",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 101,
+                      "event_type": "campaign.created",
+                      "company_id": 7,
+                      "actor_user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                      "metadata": {
+                        "campaign_id": 42,
+                        "name": "Summer Outreach 2026"
+                      },
+                      "created_at": "2026-06-25T09:00:00Z"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 42
+                }
               }
             }
           },
@@ -5230,8 +7151,8 @@
         "tags": [
           "audit"
         ],
-        "summary": "List Audit Events",
-        "description": "Alias of /security-logs returning the same canonical data.",
+        "summary": "List audit events",
+        "description": "Returns a paginated audit log of all platform events for the company, including campaign lifecycle changes, contact imports, and configuration updates. This is an alias for `/security-logs` and returns the same data from the same table.",
         "operationId": "list_audit_events_companies__company_id__audit_events_get",
         "security": [
           {
@@ -5393,7 +7314,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -5405,16 +7326,34 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated audit event entries",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 101,
+                      "event_type": "campaign.created",
+                      "company_id": 7,
+                      "actor_user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                      "metadata": {
+                        "campaign_id": 42,
+                        "name": "Summer Outreach 2026"
+                      },
+                      "created_at": "2026-06-25T09:00:00Z"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 42
+                }
               }
             }
           },
@@ -5436,8 +7375,8 @@
         "tags": [
           "script-audio"
         ],
-        "summary": "Generate Audio",
-        "description": "Generate TTS audio for preview. Returns a signed URL to the generated file.",
+        "summary": "Generate TTS audio",
+        "description": "Calls the configured TTS provider to synthesise speech from `text`. Returns a signed URL to the generated audio file and its duration. Use this to preview how a campaign script will sound before saving it. Returns 501 if no TTS provider is configured and 502 if the upstream TTS service fails.",
         "operationId": "generate_audio_script_audio_generate_post",
         "requestBody": {
           "content": {
@@ -5451,10 +7390,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Generated audio URL and duration",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "audio_url": "https://cdn.example.com/tts/abc123.mp3",
+                  "duration_seconds": 14.7
+                }
               }
             }
           },
@@ -5481,8 +7424,8 @@
         "tags": [
           "script-audio"
         ],
-        "summary": "Save Audio",
-        "description": "Save audio metadata for a campaign after generate/upload.",
+        "summary": "Save script audio",
+        "description": "Persists audio metadata \u2014 URL, text, voice, and duration \u2014 against a campaign. Typically called after `generate` once the caller is satisfied with the preview. The `audio_url` should be a durable storage URL (not the temporary signed URL from `generate`). Returns the full saved audio record including its assigned `id`.",
         "operationId": "save_audio_script_audio_save_post",
         "requestBody": {
           "content": {
@@ -5496,10 +7439,21 @@
         },
         "responses": {
           "201": {
-            "description": "Successful Response",
+            "description": "Audio record saved",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "audio": {
+                    "id": 12,
+                    "campaign_id": 42,
+                    "audio_url": "https://cdn.example.com/audio/campaign-42-v1.mp3",
+                    "text": "Hi, this is a reminder about your appointment tomorrow at 2pm.",
+                    "voice": "en-US-Neural2-F",
+                    "duration_seconds": 14.7,
+                    "created_at": "2026-06-25T10:30:00Z"
+                  }
+                }
               }
             }
           },
@@ -5526,8 +7480,8 @@
         "tags": [
           "script-audio"
         ],
-        "summary": "List Audio",
-        "description": "List saved script audio metadata. Filter by campaign or company.",
+        "summary": "List script audio",
+        "description": "Returns saved script audio records. Pass `company_id` as a query parameter to retrieve all audio across every campaign in a company (requires company membership). Omit it to filter by `campaign_id` via the standard pagination query. Results are ordered by `created_at` descending by default.",
         "operationId": "list_audio_script_audio_get",
         "security": [
           {
@@ -5689,7 +7643,7 @@
             }
           },
           {
-            "name": "agent_outcome",
+            "name": "business_disposition",
             "in": "query",
             "required": false,
             "schema": {
@@ -5701,16 +7655,32 @@
                   "type": "null"
                 }
               ],
-              "title": "Agent Outcome"
+              "title": "Business Disposition"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Paginated list of script audio records",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 12,
+                      "campaign_id": 42,
+                      "audio_url": "https://cdn.example.com/audio/campaign-42-v1.mp3",
+                      "text": "Hi, this is a reminder about your appointment tomorrow at 2pm.",
+                      "voice": "en-US-Neural2-F",
+                      "duration_seconds": 14.7,
+                      "created_at": "2026-06-25T10:30:00Z"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 1
+                }
               }
             }
           },
@@ -5725,6 +7695,371 @@
             }
           }
         }
+      }
+    },
+    "/script-library": {
+      "post": {
+        "tags": [
+          "script-library"
+        ],
+        "summary": "Save a script to the reusable library",
+        "description": "Saves script `text` (optionally with the `voice_id` it was generated with, the resulting `audio_url`, and a display `campaign_name`) to a global, cross-campaign library. Used to power 'reuse a previous script' pickers. Not scoped to a company or campaign \u2014 any authenticated user can save and list entries.",
+        "operationId": "save_script_script_library_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScriptLibraryCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved script record",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "script": {
+                    "id": 7,
+                    "text": "Hi, this is a reminder about your appointment tomorrow at 2pm.",
+                    "voice_id": "en-US-Neural2-F",
+                    "audio_url": "https://cdn.example.com/audio/script-7.mp3",
+                    "campaign_name": "Appointment Reminders",
+                    "created_at": "2026-07-05T10:30:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "script-library"
+        ],
+        "summary": "List saved scripts",
+        "description": "Returns saved scripts from the global reuse library, newest first.",
+        "operationId": "list_scripts_script_library_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "campaign_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "name": "company_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Company Id"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "name": "business_disposition",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Disposition"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of saved scripts",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": 7,
+                      "text": "Hi, this is a reminder about your appointment tomorrow at 2pm.",
+                      "voice_id": "en-US-Neural2-F",
+                      "audio_url": "https://cdn.example.com/audio/script-7.mp3",
+                      "campaign_name": "Appointment Reminders",
+                      "created_at": "2026-07-05T10:30:00Z"
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 50,
+                  "total": 1
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system-settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get system settings",
+        "description": "Returns global platform settings, currently just the carrier cost-per-minute rate (ZAR) used to price every call. Readable by any authenticated user.",
+        "operationId": "get_settings_system_settings_get",
+        "responses": {
+          "200": {
+            "description": "Current system settings",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "cost_per_minute_zar": 0.35,
+                  "currency": "ZAR",
+                  "updated_at": "2026-07-05T12:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update system settings",
+        "description": "Updates the carrier cost-per-minute rate (ZAR). Admins only \u2014 returns 403 for non-admin users. The new rate takes effect immediately for calls priced after this request (an in-process cache is invalidated on write); it does not retroactively reprice already-completed calls.",
+        "operationId": "update_settings_system_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated system settings",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "cost_per_minute_zar": 0.4,
+                  "currency": "ZAR",
+                  "updated_at": "2026-07-05T12:05:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Non-admin user",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "forbidden",
+                    "message": "Admin role required"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/health": {
@@ -5815,6 +8150,362 @@
         ],
         "title": "BulkCreate"
       },
+      "CallEvent": {
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "title": "Event Type",
+            "description": "Lifecycle or SDK metric event type.",
+            "examples": [
+              "amd_result"
+            ]
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CallEventPayload",
+            "description": "Event-specific fields (shape varies by event_type)."
+          },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At",
+            "description": "ISO 8601 timestamp when the event occurred.",
+            "examples": [
+              "2026-06-25T14:30:08Z"
+            ]
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id",
+            "description": "Optional idempotency key for deduplication on retry (maps to external_id)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_type"
+        ],
+        "title": "CallEvent"
+      },
+      "CallEventPayload": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "description": "AMD result (`amd_result`).",
+            "examples": [
+              "human"
+            ]
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms",
+            "description": "AMD duration (`amd_result`)."
+          },
+          "sip_participant_sid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sip Participant Sid",
+            "description": "SIP participant sid (`sip_connected`)."
+          },
+          "sip_participant_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sip Participant Identity"
+          },
+          "sip_attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sip Attributes"
+          },
+          "disconnect_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disconnect Reason",
+            "description": "Participant disconnect (`participant_disconnected`)."
+          },
+          "talk_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Talk Seconds"
+          },
+          "voice_recording_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Recording Url",
+            "description": "Playback URL (`playback_started`)."
+          },
+          "audio_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Version"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase",
+            "description": "Consent phase (`consent_phase_entered`, `dtmf_timeout`)."
+          },
+          "matched_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Key"
+          },
+          "digits": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digits",
+            "description": "DTMF digits (`dtmf_received`, consent events)."
+          },
+          "timeout_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout Seconds",
+            "description": "DTMF wait timeout (`dtmf_timeout`)."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "CallEventPayload",
+        "description": "Event-specific payload; extra keys allowed for forward compatibility.",
+        "examples": [
+          {
+            "category": "human",
+            "duration_ms": 1200
+          },
+          {
+            "sip_attributes": {
+              "sip.callStatus": "active"
+            },
+            "sip_participant_sid": "PA_sip123"
+          },
+          {
+            "audio_version": "v1",
+            "voice_recording_url": "https://storage.example.com/scripts/intro.mp3"
+          },
+          {
+            "digits": [
+              "1"
+            ],
+            "matched_key": "1",
+            "phase": "confirm"
+          },
+          {
+            "digits": [
+              "1"
+            ],
+            "matched_key": "1"
+          },
+          {
+            "phase": "confirm"
+          },
+          {
+            "timeout_seconds": 5.0
+          }
+        ]
+      },
+      "CallEventsRequest": {
+        "properties": {
+          "room_name": {
+            "type": "string",
+            "title": "Room Name",
+            "description": "LiveKit room name associated with this event batch.",
+            "examples": [
+              "call-178-1"
+            ]
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "Ordered lifecycle or SDK metric events."
+          }
+        },
+        "type": "object",
+        "required": [
+          "room_name"
+        ],
+        "title": "CallEventsRequest",
+        "examples": [
+          {
+            "events": [
+              {
+                "event_type": "sip_connected",
+                "occurred_at": "2026-06-25T14:30:05Z",
+                "payload": {
+                  "sip_attributes": {
+                    "sip.callStatus": "active"
+                  },
+                  "sip_participant_sid": "PA_sip123"
+                }
+              },
+              {
+                "event_type": "amd_result",
+                "occurred_at": "2026-06-25T14:30:08Z",
+                "payload": {
+                  "category": "human",
+                  "duration_ms": 1200
+                }
+              },
+              {
+                "event_type": "playback_started",
+                "occurred_at": "2026-06-25T14:30:10Z",
+                "payload": {
+                  "audio_version": "v1",
+                  "voice_recording_url": "https://storage.example.com/scripts/intro.mp3"
+                }
+              },
+              {
+                "event_type": "consent_phase_entered",
+                "occurred_at": "2026-06-25T14:30:35Z",
+                "payload": {
+                  "digits": [
+                    "1"
+                  ],
+                  "matched_key": "1",
+                  "phase": "confirm"
+                }
+              }
+            ],
+            "room_name": "call-178-1"
+          }
+        ]
+      },
+      "CallMilestoneRequest": {
+        "properties": {
+          "room_name": {
+            "type": "string",
+            "title": "Room Name",
+            "description": "LiveKit room name for the dial attempt."
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type",
+            "description": "Canonical milestone event_type."
+          },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At",
+            "description": "ISO 8601 UTC timestamp."
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "Optional milestone payload."
+          }
+        },
+        "type": "object",
+        "required": [
+          "room_name",
+          "event_type"
+        ],
+        "title": "CallMilestoneRequest"
+      },
       "CallOutcomeRequest": {
         "properties": {
           "contact_id": {
@@ -5838,15 +8529,15 @@
             "title": "Room Name",
             "description": "LiveKit room name that was used for this call.",
             "examples": [
-              "campaign-42-room-001"
+              "call-42-1001-1"
             ]
           },
           "outcome": {
             "type": "string",
             "title": "Outcome",
-            "description": "Call outcome reported by the agent. Typical values: `answered`, `no_answer`, `busy`, `failed`, `transferred`, `voicemail`.",
+            "description": "Normalized telephony outcome (e.g. `connected`, `voicemail`, `opted_out`, `subscribed`).",
             "examples": [
-              "answered"
+              "connected"
             ]
           },
           "phone": {
@@ -5870,19 +8561,10 @@
           "transferred": {
             "type": "boolean",
             "title": "Transferred",
-            "description": "True if the call was transferred to a live agent before ending.",
+            "description": "True if the call was transferred before ending.",
             "default": false,
             "examples": [
               false
-            ]
-          },
-          "retry_count": {
-            "type": "integer",
-            "title": "Retry Count",
-            "description": "Number of times this contact has been retried before this attempt.",
-            "default": 0,
-            "examples": [
-              0
             ]
           },
           "attempt": {
@@ -5894,65 +8576,10 @@
               1
             ]
           },
-          "job_id": {
+          "business_disposition": {
             "type": "string",
-            "title": "Job Id",
-            "description": "LiveKit agent job ID.",
-            "default": "",
-            "examples": [
-              "job_7f3a9c"
-            ]
-          },
-          "room_sid": {
-            "type": "string",
-            "title": "Room Sid",
-            "description": "LiveKit room SID.",
-            "default": "",
-            "examples": [
-              "RM_abc123def456"
-            ]
-          },
-          "sip_participant_sid": {
-            "type": "string",
-            "title": "Sip Participant Sid",
-            "description": "SIP participant SID.",
-            "default": ""
-          },
-          "sip_attributes": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Sip Attributes",
-            "description": "SIP-layer metadata.",
-            "default": {}
-          },
-          "sip_call_status_history": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Sip Call Status History",
-            "description": "SIP call status history.",
-            "default": []
-          },
-          "disconnect_reason": {
-            "type": "string",
-            "title": "Disconnect Reason",
-            "description": "Room disconnect reason.",
-            "default": "",
-            "examples": [
-              "client_initiated"
-            ]
-          },
-          "amd_category": {
-            "type": "string",
-            "title": "Amd Category",
-            "description": "AMD (Answering Machine Detection) category.",
-            "default": ""
-          },
-          "dtmf_digits": {
-            "type": "string",
-            "title": "Dtmf Digits",
-            "description": "DTMF digits pressed during the call.",
+            "title": "Business Disposition",
+            "description": "Business-layer label when the contact made a choice (e.g. `opt_out`, `subscribe`, `callback`).",
             "default": ""
           },
           "started_at": {
@@ -5972,18 +8599,6 @@
             "examples": [
               "2026-06-18T14:32:07Z"
             ]
-          },
-          "agent_outcome": {
-            "type": "string",
-            "title": "Agent Outcome",
-            "description": "Agent-level outcome (e.g. interested, not_interested, opt_out, callback_requested).",
-            "default": ""
-          },
-          "business_disposition": {
-            "type": "string",
-            "title": "Business Disposition",
-            "description": "Business-layer label set by the agent script.",
-            "default": ""
           }
         },
         "type": "object",
@@ -6010,69 +8625,9 @@
         "type": "object",
         "title": "CallOutcomeResponse"
       },
-      "CallTelemetryRequest": {
+      "CallReportBody": {
         "properties": {
-          "room_name": {
-            "type": "string",
-            "title": "Room Name",
-            "description": "LiveKit room name associated with this telemetry batch.",
-            "examples": [
-              "campaign-42-room-001"
-            ]
-          },
-          "session_report": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Session Report",
-            "description": "Serialised `SessionReport` from the LiveKit Agents SDK, emitted at session end. Key fields: `job_id` (agent job ID), `room_id` (room SID), `room` (room name), `duration` (session seconds), `started_at` (unix ts), `timestamp` (report creation unix ts), `sdk_version` (agents SDK version string), `model_usage` (list of per-model token summaries — each has `label`, `prompt_tokens`, `completion_tokens`, `total_tokens`).",
-            "examples": [
-              {
-                "duration": 127.4,
-                "job_id": "job_7f3a9c",
-                "model_usage": [
-                  {
-                    "completion_tokens": 312,
-                    "label": "openai/gpt-4o",
-                    "prompt_tokens": 1840,
-                    "total_tokens": 2152
-                  }
-                ],
-                "room": "campaign-42-room-001",
-                "room_id": "RM_abc123def456",
-                "sdk_version": "0.12.3",
-                "started_at": 1750256400,
-                "timestamp": 1750256527.4
-              }
-            ]
-          },
-          "sip_attributes": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sip Attributes",
-            "description": "SIP-layer metadata captured during the call, separate from the agent `SessionReport`. Typically includes `sip_call_id`, codec, carrier response codes, and any SIP headers forwarded by the LiveKit SIP bridge.",
-            "examples": [
-              {
-                "carrier_code": 200,
-                "codec": "PCMU",
-                "sip_call_id": "abc123@pbx.example.com"
-              }
-            ]
-          },
-          "disconnect_reason": {
+          "room": {
             "anyOf": [
               {
                 "type": "string"
@@ -6081,10 +8636,9 @@
                 "type": "null"
               }
             ],
-            "title": "Disconnect Reason",
-            "description": "Reason the LiveKit room or SIP leg was disconnected. Mirrors LiveKit's `DisconnectReason` enum values, e.g. `client_initiated`, `room_deleted`, `participant_removed`, `signal_close`, `state_mismatch`.",
+            "title": "Room",
             "examples": [
-              "client_initiated"
+              "call-178-1"
             ]
           },
           "job_id": {
@@ -6097,10 +8651,7 @@
               }
             ],
             "title": "Job Id",
-            "description": "LiveKit agent job ID for this session. Matches `session_report.job_id` when both are present.",
-            "examples": [
-              "job_7f3a9c"
-            ]
+            "description": "LiveKit agent job id."
           },
           "room_id": {
             "anyOf": [
@@ -6112,12 +8663,33 @@
               }
             ],
             "title": "Room Id",
-            "description": "LiveKit room SID (server-assigned). Matches `session_report.room_id` when both are present.",
-            "examples": [
-              "RM_abc123def456"
-            ]
+            "description": "LiveKit room sid."
           },
-          "sip_participant_sid": {
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id",
+            "description": "Accepted in POST for traceability; stored on call_sessions / call_records, not call_session_reports."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "Accepted in POST; not persisted to call_session_reports."
+          },
+          "phone": {
             "anyOf": [
               {
                 "type": "string"
@@ -6126,8 +8698,37 @@
                 "type": "null"
               }
             ],
-            "title": "Sip Participant Sid",
-            "description": "SIP participant SID for this session."
+            "title": "Phone",
+            "description": "Accepted in POST; not persisted to call_session_reports."
+          },
+          "attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt",
+            "examples": [
+              1
+            ]
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode",
+            "examples": [
+              "script",
+              "two_step"
+            ]
           },
           "started_at": {
             "anyOf": [
@@ -6139,10 +8740,7 @@
               }
             ],
             "title": "Started At",
-            "description": "ISO 8601 call start time.",
-            "examples": [
-              "2026-06-18T14:30:00Z"
-            ]
+            "description": "ISO 8601 call start."
           },
           "ended_at": {
             "anyOf": [
@@ -6154,10 +8752,7 @@
               }
             ],
             "title": "Ended At",
-            "description": "ISO 8601 call end time.",
-            "examples": [
-              "2026-06-18T14:32:07Z"
-            ]
+            "description": "ISO 8601 call end."
           },
           "amd_category": {
             "anyOf": [
@@ -6169,7 +8764,80 @@
               }
             ],
             "title": "Amd Category",
-            "description": "AMD (Answering Machine Detection) category."
+            "examples": [
+              "human",
+              "machine",
+              "no_answer",
+              "amd_failed"
+            ]
+          },
+          "amd_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amd Duration Ms",
+            "examples": [
+              1200
+            ]
+          },
+          "sip_participant_sid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sip Participant Sid"
+          },
+          "sip_attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sip Attributes",
+            "description": "SIP participant attributes snapshot from LiveKit."
+          },
+          "sip_call_status_history": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sip Call Status History",
+            "description": "Ordered SIP status transitions during the call."
+          },
+          "disconnect_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disconnect Reason",
+            "examples": [
+              "CLIENT_INITIATED"
+            ]
           },
           "dtmf_digits": {
             "anyOf": [
@@ -6181,129 +8849,151 @@
               }
             ],
             "title": "Dtmf Digits",
-            "description": "DTMF digits pressed during the call."
-          },
-          "events": {
-            "items": {
-              "$ref": "#/components/schemas/TelemetryEvent"
-            },
-            "type": "array",
-            "title": "Events",
-            "description": "Ordered list of SDK metric events emitted during the call session.",
-            "default": [],
+            "description": "Concatenated DTMF digits collected.",
             "examples": [
-              [
-                {
-                  "event_type": "stt_metrics",
-                  "occurred_at": "2026-06-18T14:30:02Z",
-                  "payload": {
-                    "acquire_time": 0.04,
-                    "audio_duration": 3.2,
-                    "connection_reused": true,
-                    "label": "deepgram/nova-2",
-                    "streamed": true
-                  }
-                },
-                {
-                  "event_type": "llm_metrics",
-                  "occurred_at": "2026-06-18T14:30:04Z",
-                  "payload": {
-                    "cancelled": false,
-                    "completion_tokens": 87,
-                    "duration": 1.84,
-                    "label": "openai/gpt-4o",
-                    "prompt_tokens": 420,
-                    "tokens_per_second": 47.3,
-                    "total_tokens": 507,
-                    "ttft": 0.312
-                  }
-                },
-                {
-                  "event_type": "tts_metrics",
-                  "occurred_at": "2026-06-18T14:30:06Z",
-                  "payload": {
-                    "audio_duration": 4.1,
-                    "cancelled": false,
-                    "characters_count": 183,
-                    "label": "cartesia/sonic",
-                    "ttfb": 0.21
-                  }
-                }
-              ]
+              "1"
             ]
+          },
+          "matched_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Key",
+            "description": "Last matched IVR key.",
+            "examples": [
+              "1"
+            ]
+          },
+          "transfer_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Target"
+          },
+          "voice_recording_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Recording Url"
+          },
+          "audio_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Version",
+            "description": "Campaign audio cache version string."
+          },
+          "talk_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Talk Seconds",
+            "examples": [
+              25
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "CallReportBody",
+        "description": "Telephony narrative from the agent `_build_call_report()` payload.",
+        "examples": [
+          {
+            "amd_category": "human",
+            "amd_duration_ms": 1200,
+            "attempt": 1,
+            "audio_version": "2026-06-25T10:00:00Z",
+            "campaign_id": 42,
+            "contact_id": 178,
+            "disconnect_reason": "CLIENT_INITIATED",
+            "dtmf_digits": "1",
+            "ended_at": "2026-06-25T14:31:45Z",
+            "job_id": "AJ_abc123",
+            "matched_key": "1",
+            "mode": "script",
+            "phone": "+27821234567",
+            "room": "call-178-1",
+            "room_id": "RM_xyz789",
+            "sip_attributes": {
+              "sip.callStatus": "active",
+              "sip.phoneNumber": "+27821234567"
+            },
+            "sip_call_status_history": [
+              {
+                "at": "2026-06-25T14:30:02Z",
+                "status": "dialing"
+              },
+              {
+                "at": "2026-06-25T14:30:08Z",
+                "status": "active"
+              }
+            ],
+            "sip_participant_sid": "PA_sip123",
+            "started_at": "2026-06-25T14:30:00Z",
+            "talk_seconds": 25,
+            "transfer_target": "",
+            "voice_recording_url": "https://storage.example.com/scripts/intro.mp3"
+          }
+        ]
+      },
+      "CallReportRequest": {
+        "properties": {
+          "room_name": {
+            "type": "string",
+            "title": "Room Name",
+            "description": "LiveKit room name associated with this call report.",
+            "examples": [
+              "call-178-1"
+            ]
+          },
+          "call_report": {
+            "$ref": "#/components/schemas/CallReportBody",
+            "description": "Telephony narrative built by the agent (AMD, SIP, DTMF, playback)."
           }
         },
         "type": "object",
         "required": [
-          "room_name"
+          "room_name",
+          "call_report"
         ],
-        "title": "CallTelemetryRequest",
-        "example": {
-          "disconnect_reason": "client_initiated",
-          "events": [
-            {
-              "event_type": "stt_metrics",
-              "occurred_at": "2026-06-18T14:30:02Z",
-              "payload": {
-                "acquire_time": 0.04,
-                "audio_duration": 3.2,
-                "connection_reused": true,
-                "label": "deepgram/nova-2",
-                "streamed": true
-              }
+        "title": "CallReportRequest",
+        "examples": [
+          {
+            "call_report": {
+              "amd_category": "human",
+              "amd_duration_ms": 1200,
+              "matched_key": "1",
+              "room": "call-178-1",
+              "talk_seconds": 25
             },
-            {
-              "event_type": "llm_metrics",
-              "occurred_at": "2026-06-18T14:30:04Z",
-              "payload": {
-                "cancelled": false,
-                "completion_tokens": 87,
-                "duration": 1.84,
-                "label": "openai/gpt-4o",
-                "prompt_tokens": 420,
-                "tokens_per_second": 47.3,
-                "total_tokens": 507,
-                "ttft": 0.312
-              }
-            },
-            {
-              "event_type": "tts_metrics",
-              "occurred_at": "2026-06-18T14:30:06Z",
-              "payload": {
-                "audio_duration": 4.1,
-                "cancelled": false,
-                "characters_count": 183,
-                "label": "cartesia/sonic",
-                "ttfb": 0.21
-              }
-            }
-          ],
-          "job_id": "job_7f3a9c",
-          "room_id": "RM_abc123def456",
-          "room_name": "campaign-42-room-001",
-          "session_report": {
-            "duration": 127.4,
-            "job_id": "job_7f3a9c",
-            "model_usage": [
-              {
-                "completion_tokens": 312,
-                "label": "openai/gpt-4o",
-                "prompt_tokens": 1840,
-                "total_tokens": 2152
-              }
-            ],
-            "room": "campaign-42-room-001",
-            "room_id": "RM_abc123def456",
-            "sdk_version": "0.12.3",
-            "started_at": 1750256400,
-            "timestamp": 1750256527.4
-          },
-          "sip_attributes": {
-            "carrier_code": 200,
-            "codec": "PCMU",
-            "sip_call_id": "abc123@pbx.example.com"
+            "room_name": "call-178-1"
           }
-        }
+        ]
       },
       "CampaignCreate": {
         "properties": {
@@ -6430,6 +9120,33 @@
             ],
             "title": "Transfer Target"
           },
+          "network_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Provider"
+          },
+          "voice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Id"
+          },
+          "routing_mode": {
+            "type": "string",
+            "title": "Routing Mode",
+            "default": "script"
+          },
           "contacts": {
             "items": {
               "$ref": "#/components/schemas/ContactInput"
@@ -6551,6 +9268,23 @@
           "completed_today"
         ],
         "title": "CampaignLiveStats"
+      },
+      "CampaignPatchRequest": {
+        "properties": {
+          "voice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Id"
+          }
+        },
+        "type": "object",
+        "title": "CampaignPatchRequest"
       },
       "CampaignStatusResponse": {
         "properties": {
@@ -6722,6 +9456,39 @@
               }
             ],
             "title": "Transfer Target"
+          },
+          "network_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Provider"
+          },
+          "voice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Id"
+          },
+          "routing_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routing Mode"
           }
         },
         "type": "object",
@@ -7038,7 +9805,7 @@
               }
             ],
             "title": "Sip Trunk Id",
-            "description": "LiveKit SIP trunk ID to use for the call. Required — returns 400 if omitted.",
+            "description": "LiveKit SIP trunk ID to use for the call. Required \u2014 returns 400 if omitted.",
             "examples": [
               "ST_abc123xyz"
             ]
@@ -7266,7 +10033,7 @@
           "speed": {
             "type": "number",
             "title": "Speed",
-            "default": 1
+            "default": 1.0
           },
           "campaign_id": {
             "anyOf": [
@@ -7365,6 +10132,49 @@
           "url"
         ],
         "title": "LiveKitHealthResponse"
+      },
+      "ModelUsageRequest": {
+        "properties": {
+          "room_name": {
+            "type": "string",
+            "title": "Room Name",
+            "description": "LiveKit room name associated with this usage report.",
+            "examples": [
+              "call-178-1"
+            ]
+          },
+          "sdk_report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SdkReportBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "LiveKit Agents SDK SessionReport serialisation. Omitted for script-only calls."
+          }
+        },
+        "type": "object",
+        "required": [
+          "room_name"
+        ],
+        "title": "ModelUsageRequest",
+        "examples": [
+          {
+            "room_name": "call-178-1",
+            "sdk_report": {
+              "sdk_version": "1.2.3",
+              "usage": [
+                {
+                  "input_tokens": 100,
+                  "output_tokens": 40,
+                  "type": "llm_usage"
+                }
+              ]
+            }
+          }
+        ]
       },
       "OutboundTrunkResponse": {
         "properties": {
@@ -7511,6 +10321,290 @@
         ],
         "title": "SaveRequest"
       },
+      "ScriptLibraryCreate": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "voice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Id"
+          },
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "campaign_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "ScriptLibraryCreate"
+      },
+      "SdkReportBody": {
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "sdk_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sdk Version",
+            "examples": [
+              "1.2.3"
+            ]
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SdkUsageEntry"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage",
+            "description": "Per-model usage breakdown; callops aggregates into typed columns."
+          },
+          "options": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options",
+            "description": "AgentSession options snapshot."
+          },
+          "events": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Events",
+            "description": "Non-metric session events from SDK (metrics excluded in to_dict)."
+          },
+          "chat_history": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat History"
+          },
+          "audio_recording_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Recording Path"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "SdkReportBody",
+        "description": "LiveKit Agents `SessionReport.to_dict()` payload.",
+        "examples": [
+          {
+            "chat_history": {
+              "items": []
+            },
+            "events": [],
+            "job_id": "AJ_abc123",
+            "options": {
+              "allow_interruptions": true,
+              "max_tool_steps": 5
+            },
+            "room": "call-178-1",
+            "room_id": "RM_xyz789",
+            "sdk_version": "1.2.3",
+            "usage": [
+              {
+                "input_tokens": 100,
+                "output_tokens": 40,
+                "type": "llm_usage"
+              },
+              {
+                "characters_count": 250,
+                "type": "tts_usage"
+              },
+              {
+                "audio_duration": 12.5,
+                "type": "stt_usage"
+              }
+            ]
+          }
+        ]
+      },
+      "SdkUsageEntry": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type",
+            "description": "Usage kind.",
+            "examples": [
+              "llm_usage",
+              "tts_usage",
+              "stt_usage"
+            ]
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens",
+            "description": "LLM prompt tokens (llm_usage)."
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens",
+            "description": "LLM completion tokens (llm_usage)."
+          },
+          "characters_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Characters Count",
+            "description": "TTS characters (tts_usage)."
+          },
+          "audio_duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Duration",
+            "description": "STT audio seconds (stt_usage)."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "SdkUsageEntry",
+        "description": "One entry from LiveKit SessionReport `usage` array."
+      },
       "SetDefaultRequest": {
         "properties": {
           "scope": {
@@ -7524,57 +10618,20 @@
         ],
         "title": "SetDefaultRequest"
       },
-      "TelemetryEvent": {
+      "SystemSettingsUpdate": {
         "properties": {
-          "event_type": {
-            "type": "string",
-            "title": "Event Type",
-            "description": "Metric type emitted by the LiveKit Agents SDK. One of: `llm_metrics`, `stt_metrics`, `tts_metrics`, `vad_metrics`, `eou_metrics`, `eot_inference_metrics`, `realtime_model_metrics`, `interruption_metrics`.",
-            "examples": [
-              "llm_metrics"
-            ]
-          },
-          "payload": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Payload",
-            "description": "Metric payload whose shape depends on `event_type`. Common fields by type:\n\n**llm_metrics**: `label` (model id), `ttft` (time-to-first-token s), `duration` (s), `completion_tokens`, `prompt_tokens`, `prompt_cached_tokens`, `total_tokens`, `tokens_per_second`, `cancelled`\n\n**stt_metrics**: `label`, `duration`, `audio_duration` (audio seconds pushed), `input_tokens`, `output_tokens`, `streamed`, `acquire_time`, `connection_reused`\n\n**tts_metrics**: `label`, `ttfb` (time-to-first-byte s), `audio_duration` (synthesized s), `characters_count`, `input_tokens`, `output_tokens`, `cancelled`\n\n**vad_metrics**: `idle_time` (s), `inference_duration_total` (s), `inference_count`\n\n**eou_metrics**: `end_of_utterance_delay` (s), `transcription_delay` (s), `on_user_turn_completed_delay` (s)\n\n**eot_inference_metrics**: `total_duration` (s), `detection_delay` (s), `prediction_duration` (s), `num_requests`\n\n**interruption_metrics**: `num_interruptions`, `num_backchannels`, `total_duration` (s), `detection_delay` (s)\n\n**realtime_model_metrics**: `ttft`, `session_duration`, `input_tokens`, `output_tokens`, `total_tokens`, `input_token_details` (audio/text/cached breakdown), `output_token_details` (text/audio)",
-            "default": {},
-            "examples": [
-              {
-                "cancelled": false,
-                "completion_tokens": 87,
-                "duration": 1.84,
-                "label": "openai/gpt-4o",
-                "prompt_cached_tokens": 380,
-                "prompt_tokens": 420,
-                "tokens_per_second": 47.3,
-                "total_tokens": 507,
-                "ttft": 0.312
-              }
-            ]
-          },
-          "occurred_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Occurred At",
-            "description": "ISO 8601 timestamp when the event occurred, if available.",
-            "examples": [
-              "2026-06-18T14:32:00Z"
-            ]
+          "cost_per_minute_zar": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cost Per Minute Zar"
           }
         },
         "type": "object",
         "required": [
-          "event_type"
+          "cost_per_minute_zar"
         ],
-        "title": "TelemetryEvent"
+        "title": "SystemSettingsUpdate"
       },
       "TemplateCreate": {
         "properties": {
@@ -8122,6 +11179,10 @@
     {
       "name": "script-audio",
       "description": "TTS audio generation, save, and metadata listing."
+    },
+    {
+      "name": "settings",
+      "description": "Global platform settings, incl. the admin-editable carrier cost-per-minute rate (ZAR)."
     }
   ]
 }

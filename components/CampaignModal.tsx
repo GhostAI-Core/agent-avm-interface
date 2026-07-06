@@ -169,6 +169,7 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
   const [voiceRecordingUrl, setVoiceRecordingUrl] = useState<string | null>(null)
   const [voiceId, setVoiceId] = useState<string | null>(null) // Inworld voice id → campaigns.voice_id (generate mode only)
+  const [scriptText, setScriptText] = useState('') // tracked so it can be persisted as per-campaign script_audio history after create
   const [scriptSeconds, setScriptSeconds] = useState<number | null>(null)
 
   // Step 4 — contacts
@@ -184,10 +185,9 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
 
   const hasCompanies = companies.length > 0
 
-  // Load the configured outbound trunks for the Trunk step. Uses the global trunk catalog
-  // (`/api/trunks`) — the per-company endpoint returns nothing because trunks aren't
-  // company-scoped in the data (company_id is null), which left the dropdown empty and produced
-  // trunk-less campaigns that fail `/start` with campaign_missing_sip_trunk.
+  // Load the configured outbound trunks for the Trunk step. `/api/trunks` fans out over the
+  // user's companies via callops GET /companies/{id}/sip-trunks (a trunk may be linked to
+  // several companies through sip_trunk_companies) and dedupes by id.
   useEffect(() => {
     let cancelled = false
     fetch('/api/trunks')
@@ -310,6 +310,17 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
       const res = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) { setError(json.error || 'Failed to create campaign'); return }
+
+      // Best-effort: record this campaign's generated script text against its new id so it can
+      // be reloaded on a future edit. Never blocks campaign creation from succeeding.
+      const newCampaignId = json?.campaign?.id
+      if (newCampaignId && voiceMode === 'generate' && voiceRecordingUrl && scriptText.trim()) {
+        fetch('/api/script-audio', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ campaign_id: newCampaignId, audio_url: voiceRecordingUrl, text: scriptText.trim(), voice: voiceId ?? undefined }),
+        }).catch(() => { /* history is a nice-to-have, not required for campaign creation */ })
+      }
+
       onCreated()
       onClose()
     } catch (err) {
@@ -431,7 +442,7 @@ export default function CampaignModal({ onClose, onCreated, companies, onNeedCom
             ) : (
               <VoiceGenerator key="voice-generator" campaignName={name}
                 voiceRecordingUrl={voiceRecordingUrl} onVoiceRecordingUrlChange={setVoiceRecordingUrl}
-                onVoiceIdChange={setVoiceId} disabled={loading} />
+                onVoiceIdChange={setVoiceId} onScriptTextChange={setScriptText} disabled={loading} />
             )}
 
             {scriptSeconds !== null && (

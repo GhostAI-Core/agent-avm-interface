@@ -55,6 +55,13 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
   const [companies, setCompanies] = useState<Company[]>([])
   const [trunks, setTrunks] = useState<Trunk[]>([])
 
+  // Per-campaign script history (script_audio) — reload the last-saved script's text + voice
+  // when reopening this campaign for editing, so VoiceGenerator doesn't start blank.
+  const [scriptText, setScriptText] = useState('')
+  const [savedVoiceId, setSavedVoiceId] = useState<string | null>(null)
+  const [voiceId, setVoiceId] = useState<string | null>(campaign.voice_id ?? null)
+  const [scriptHistoryLoaded, setScriptHistoryLoaded] = useState(mode !== 'edit')
+
   // Load the saved S3 scripts for the dropdown.
   useEffect(() => {
     let cancelled = false
@@ -80,6 +87,25 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
     return () => { cancelled = true }
   }, [mode])
 
+  // Reload this campaign's last-saved script text + voice (script_audio, scoped to campaign_id)
+  // before rendering VoiceGenerator — it only reads its initialText/initialVoiceId props once,
+  // on mount, so we gate the render until this resolves instead of remounting after the fact.
+  useEffect(() => {
+    if (mode !== 'edit') return
+    let cancelled = false
+    fetch(`/api/script-audio?campaign_id=${campaign.id}`)
+      .then(r => (r.ok ? r.json() : { items: [] }))
+      .then(j => {
+        if (cancelled) return
+        const latest = Array.isArray(j.items) ? j.items[0] : null
+        if (latest?.text) { setScriptText(latest.text); }
+        if (latest?.voice) setSavedVoiceId(latest.voice)
+      })
+      .catch(() => { /* no history yet — VoiceGenerator just starts blank */ })
+      .finally(() => { if (!cancelled) setScriptHistoryLoaded(true) })
+    return () => { cancelled = true }
+  }, [mode, campaign.id])
+
   async function submit() {
     setLoading(true); setError('')
     try {
@@ -97,9 +123,19 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
             start_date: startDate || null,
             end_date: endDate || null,
             audio_path: scriptUrl,
+            voice_id: voiceId || null,
           }),
         })
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to update')
+
+        // Best-effort: record the (possibly new) script text against this campaign's history so
+        // it reloads correctly next time it's reopened for editing.
+        if (scriptUrl && scriptText.trim()) {
+          fetch('/api/script-audio', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ campaign_id: campaign.id, audio_url: scriptUrl, text: scriptText.trim(), voice: voiceId ?? undefined }),
+          }).catch(() => { /* history is a nice-to-have, not required for the edit to succeed */ })
+        }
       } else {
         const contacts = csvFile && csvFile.size > 0 ? parseContacts(await csvFile.text()) : undefined
         const res = await fetch('/api/campaigns', {
@@ -216,11 +252,15 @@ export default function CampaignActionDialog({ mode, campaign, onClose, onDone }
 
           {/* Edit: full voice editor — click a saved script to load its text + voice, edit it,
               and generate a new voice. The saved audio URL becomes this campaign's audio_path. */}
-          {mode === 'edit' && (
+          {mode === 'edit' && scriptHistoryLoaded && (
             <VoiceGenerator
               campaignName={campaign.name}
               voiceRecordingUrl={scriptUrl || null}
               onVoiceRecordingUrlChange={url => setScriptUrl(url ?? '')}
+              onVoiceIdChange={setVoiceId}
+              initialText={scriptText}
+              initialVoiceId={savedVoiceId ?? campaign.voice_id ?? null}
+              onScriptTextChange={setScriptText}
               disabled={loading}
             />
           )}

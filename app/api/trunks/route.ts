@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
+import { getAuthUser, getAccessToken, unauthorized } from '@/utils/supabase/auth'
+import { callopsItems, callopsErrorResponse } from '@/utils/callops'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -8,53 +9,39 @@ export const runtime = 'nodejs'
  * SIP trunk catalog for the campaign wizard.
  *
  * callops resolves a campaign's trunk by INTEGER FK: campaigns.sip_trunk_id ->
- * sip_trunks.id -> sip_trunks.livekit_trunk_id. So the picker stores the sip_trunks
- * row id, and this route returns that catalog. We cross-reference callops
- * /livekit/trunks (server-side, secret-protected) so only rows backed by a real
- * LiveKit trunk are offered; if callops is unreachable we return the full catalog
- * rather than block creation.
+ * sip_trunks.id -> sip_trunks.livekit_trunk_id. So the picker stores the sip_trunks row
+ * id, and this route returns that catalog via callops' company-scoped
+ * GET /companies/{id}/sip-trunks. A trunk can be linked to many companies (shared carrier
+ * connections, via sip_trunk_companies) so we fan out over the user's companies and dedupe
+ * by id, same pattern as /api/campaigns and /api/leads.
  *
  * Returns `{ trunks: [{ id, name, from_number, live }] }`.
  */
+type TrunkListItem = { id: number; name: string; from_number: string; live: boolean }
+
 export async function GET() {
-  const { supabase, user } = await getAuthUser()
-  if (!user) return unauthorized()
+  const { token } = await getAccessToken()
+  if (!token) return unauthorized()
 
-  const { data: rows, error } = await supabase
-    .from('sip_trunks')
-    .select('id, name, from_number, livekit_trunk_id')
-    .order('id')
-  if (error) return NextResponse.json({ trunks: [], error: error.message }, { status: 500 })
+  try {
+    const companies = await callopsItems<{ id: number }>('/companies', token)
+    const perCompany = await Promise.all(
+      companies.map((co) =>
+        callopsItems<TrunkListItem>(`/companies/${co.id}/sip-trunks`, token).catch(() => [] as TrunkListItem[]),
+      ),
+    )
 
-  // Which livekit_trunk_ids actually exist in LiveKit (via callops)?
-  let liveIds: Set<string> | null = null
-  const base = process.env.CALLOPS_URL?.replace(/\/+$/, '')
-  const secret = process.env.CALLOPS_WEBHOOK_SECRET
-  if (base && secret) {
-    try {
-      const res = await fetch(`${base}/livekit/trunks`, {
-        headers: { 'X-Webhook-Secret': secret },
-        cache: 'no-store',
-      })
-      if (res.ok) {
-        const real = (await res.json()) as Array<{ trunk_id: string }>
-        liveIds = new Set(real.map(t => t.trunk_id))
-      }
-    } catch {
-      // callops unreachable → skip the cross-reference, show the full catalog.
-    }
+    const byId = new Map<number, TrunkListItem>()
+    for (const trunk of perCompany.flat()) byId.set(trunk.id, trunk)
+
+    const trunks = Array.from(byId.values())
+      .map((t) => ({ id: t.id, name: t.name, from_number: t.from_number, live: t.live }))
+      .sort((a, b) => a.id - b.id)
+
+    return NextResponse.json({ trunks })
+  } catch (e) {
+    return callopsErrorResponse(e)
   }
-
-  const trunks = (rows ?? [])
-    .map(r => ({
-      id: r.id as number,
-      name: (r.name as string) ?? `Trunk ${r.id}`,
-      from_number: (r.from_number as string) ?? null,
-      live: liveIds ? liveIds.has(r.livekit_trunk_id as string) : true,
-    }))
-    .filter(t => t.live)
-
-  return NextResponse.json({ trunks })
 }
 
 /**

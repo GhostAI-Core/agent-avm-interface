@@ -65,9 +65,13 @@ export default function CampaignDetail({ report, calls, summary, onBack }: { rep
   const kpis = useMemo(() => {
     const total = calls.length || 1
     const answered = calls.filter(c => (c.talk_seconds || 0) > 0)
-    // callops 2-tier contract: 'qualified' is no longer an outcome — positive intent lives in
-    // business_disposition (subscribe = consented opt-in, interested = soft-yes). [[callops-outcome-vocab]]
-    const qualified = calls.filter(c => c.business_disposition === 'subscribe' || c.business_disposition === 'interested')
+    // callops 2-tier contract: positive intent lives in business_disposition, not outcome.
+    // Values actually written by agent/call_handler.py: subscribe, opt_out, lead, callback,
+    // single_opt_in (lead-mode soft yes), interested (script-mode soft yes). qualified/
+    // not_interested are reserved for a future manual override, not yet written by any code
+    // path. 'interested' (not 'not_interested') is the real soft-yes value. [[callops-outcome-vocab]]
+    const POSITIVE_DISPOSITIONS = new Set(['subscribe', 'lead', 'qualified', 'callback', 'single_opt_in', 'interested'])
+    const qualified = calls.filter(c => c.business_disposition && POSITIVE_DISPOSITIONS.has(c.business_disposition))
     const transfers = calls.filter(c => c.transferred)
     const spend = calls.reduce((s, c) => s + Number(c.cost || 0), 0)
     const avgTalk = answered.length ? answered.reduce((s, c) => s + (c.talk_seconds || 0), 0) / answered.length : 0

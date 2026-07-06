@@ -159,9 +159,9 @@ export interface CallRecord {
   id: number
   campaign_id: number
   phone: string
-  /** Telephony outcome (callops /lookups/call-outcomes): connected, voicemail, no_answer, busy, failed, callback. */
+  /** Telephony/business outcome (callops /lookups/call-outcomes): connected, no_answer, busy, failed, voicemail, transferred, opted_out, subscribed, lead. */
   outcome: string
-  /** Business result (callops /lookups/business-dispositions): subscribe, opt_out, callback, interested. Authoritative — supersedes the deprecated agent_outcome. May be null. */
+  /** Raw agent-reported disposition (callops /lookups/business-dispositions): subscribe, opt_out, lead, callback, qualified, not_interested. Authoritative — supersedes the deprecated agent_outcome. May be null. */
   business_disposition?: string | null
   talk_seconds: number
   /** Total on-air time (call_sessions ended_at − started_at); ~5.5× talk. Derived in /api/logs. */

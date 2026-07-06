@@ -1,62 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
+import { callopsGet, callopsErrorResponse } from '@/utils/callops'
 
 export const dynamic = 'force-dynamic'
 
-// Contacts for a campaign, read from Supabase `contacts` (the rows CallOps writes) with an
-// EXACT count. Previously proxied CallOps `/campaigns/{id}/contacts`, which caps `page_size`
-// at 50 and (when it returns no `total`) left the dashboard computing total=50 → totalPages=1
-// → the Next button disabled → stuck at the first 50 numbers regardless of filter. Reading
-// Supabase directly gives the true total so the whole campaign is reachable (consistent with
-// /api/logs + /api/reports).
-
-const COLS = 'id, campaign_id, phone, first_name, last_name, status, created_at, retry_count, ' +
-  'last_attempted_at, person_id, timezone, score, do_not_call, network_provider'
-
+// Contacts for a campaign, proxied from CallOps `GET /campaigns/{id}/contacts` +
+// `GET /campaigns/{id}/contacts/network-breakdown` (CallOps 0.3.0). This previously read
+// Supabase directly because CallOps' `total` was unreliable and there was no dedicated
+// breakdown endpoint (both fixed in 0.3.0 — real `count="exact"` total, page_size up to 200).
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { user } = await getAuthUser()
-  if (!user) return unauthorized()
-  const admin = createAdminClient()
-  if (!admin) return NextResponse.json({ error: 'server not configured' }, { status: 503 })
+  const { token } = await getAccessToken()
+  if (!token) return unauthorized()
 
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status')
   const network = searchParams.get('network')  // Vodacom | MTN | Cell C — filters the visible list
   const search = (searchParams.get('search') || searchParams.get('phone') || '').trim()
   const page = Math.max(1, Number(searchParams.get('page')) || 1)
-  const pageSize = Math.min(500, Math.max(1, Number(searchParams.get('page_size')) || 100))
-  const from = (page - 1) * pageSize
+  const pageSize = Math.min(200, Math.max(1, Number(searchParams.get('page_size')) || 100))
 
-  const campaignId = Number(id)
-  let q = admin.from('contacts').select(COLS, { count: 'exact' }).eq('campaign_id', campaignId)
-  if (status) q = q.eq('status', status)
-  if (network) q = q.eq('network_provider', network)
-  if (search) {
-    const s = search.replace(/[%,]/g, '') // guard PostgREST or-filter syntax
-    q = q.or(`phone.ilike.%${s}%,first_name.ilike.%${s}%,last_name.ilike.%${s}%`)
+  const qs = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  if (status) qs.set('status', status)
+  if (network) qs.set('network_provider', network)
+  if (search) qs.set('search', search)
+
+  try {
+    const [list, breakdownRes] = await Promise.all([
+      callopsGet<{ items?: Record<string, unknown>[]; total?: number }>(
+        `/campaigns/${id}/contacts?${qs}`, token,
+      ),
+      // Breakdown is over the WHOLE campaign (independent of the status/search/network filters
+      // above), so an operator sees the mix before dialing / before setting the network gate.
+      // Tolerate this one failing — the contact list is still useful without it.
+      callopsGet<{ breakdown?: { network_provider: string; count: number }[] }>(
+        `/campaigns/${id}/contacts/network-breakdown`, token,
+      ).catch(() => ({ breakdown: [] as { network_provider: string; count: number }[] })),
+    ])
+
+    const breakdown: Record<string, number> = {}
+    for (const row of breakdownRes.breakdown ?? []) breakdown[row.network_provider] = row.count
+
+    return NextResponse.json({
+      items: list.items ?? [],
+      page,
+      page_size: pageSize,
+      total: list.total ?? (list.items?.length ?? 0),
+      breakdown,
+    })
+  } catch (e) {
+    return callopsErrorResponse(e)
   }
-  q = q.order('created_at', { ascending: true, nullsFirst: false }).range(from, from + pageSize - 1)
-
-  // Network breakdown over the WHOLE campaign (independent of the status/search/network filters),
-  // so an operator sees the mix before dialing / before setting the network gate.
-  const countFor = (net: string | null) => {
-    let c = admin.from('contacts').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId)
-    c = net === null ? c.is('network_provider', null) : c.eq('network_provider', net)
-    return c.then(({ count }) => count ?? 0)
-  }
-
-  const [{ data, error, count }, mtn, vodacom, cellc, unknown] = await Promise.all([
-    q, countFor('MTN'), countFor('Vodacom'), countFor('Cell C'), countFor(null),
-  ])
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({
-    items: data ?? [],
-    page,
-    page_size: pageSize,
-    total: count ?? 0,
-    breakdown: { MTN: mtn, Vodacom: vodacom, 'Cell C': cellc, unknown },
-  })
 }

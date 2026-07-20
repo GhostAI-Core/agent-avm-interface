@@ -1,0 +1,22 @@
+name: evra-site
+
+networks:
+  shared:
+    external: true
+
+services:
+  evra-site:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+    networks:
+      - shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped

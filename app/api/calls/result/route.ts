@@ -20,7 +20,7 @@ export const runtime = 'nodejs'
  *
  *   auth : header `X-Webhook-Secret: <CALLOPS_WEBHOOK_SECRET>`
  *   body : the callops/agent CallOutcomeRequest — { contact_id, campaign_id, room_name, outcome, phone,
- *          talk_seconds?, transferred?, agent_outcome?, business_disposition?, ended_at? }
+ *          talk_seconds?, transferred?, business_disposition?, ended_at? }
  *   resp : { ok, action: 'inserted' | 'exists' | 'skipped' }
  *
  * ASSUMPTIONS to confirm with Cale (the callops→dashboard forward is his in-progress work):
@@ -74,7 +74,6 @@ export async function POST(req: Request) {
     talk_seconds: Number.isFinite(Number(body.talk_seconds)) ? Number(body.talk_seconds) : 0,
     transferred: Boolean(body.transferred),
     room,
-    agent_outcome: typeof body.agent_outcome === 'string' && body.agent_outcome ? body.agent_outcome : null,
     business_disposition:
       typeof body.business_disposition === 'string' && body.business_disposition ? body.business_disposition : null,
     called_at: typeof body.ended_at === 'string' && body.ended_at ? body.ended_at : new Date().toISOString(),

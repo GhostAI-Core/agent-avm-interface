@@ -90,8 +90,12 @@ export const toneColors = {
  *
  * Keyed off callops' lookup *values* (campaign-statuses, call-outcomes, business-dispositions),
  * normalised to spaces, with a neutral default for anything unmapped — no positional/legacy-key
- * binding. The retired non-callops vocab (`no_speech`/`hangup`/`ni`/`dnq`/`busy_line`/`qualified`)
- * is intentionally gone; an unknown value just renders neutral rather than mislabelled.
+ * binding. `no_speech` and `hangup` are real, live outcomes (AMD-detected unavailable machine /
+ * mid-call disconnect) and are mapped here, not retired; only `ni`/`dnq`/`busy_line` and the
+ * outcome-column `qualified` are truly gone. An unknown value just renders neutral.
+ * `business_disposition`: `interested` and `single_opt_in` are real soft-yes values
+ * written by the two-step DTMF confirm flow; `qualified`/`not_interested` are reserved
+ * for a future manual override and not yet written by any code path.
  */
 export function statusChipTone(status: string): { bg: string; text: string; border: string } {
   const key = (status || '').trim().toLowerCase().replace(/[_-]+/g, ' ')
@@ -102,16 +106,28 @@ export function statusChipTone(status: string): { bg: string; text: string; bord
     'auto paused': { bg: 'rgba(109,194,255,0.18)', text: '#9DD4FF', border: 'rgba(109,194,255,0.38)' },
     stopped:   { bg: 'rgba(144,144,144,0.18)', text: '#C8C8C8', border: 'rgba(144,144,144,0.38)' },
     completed: { bg: 'rgba(144,144,144,0.18)', text: '#C8C8C8', border: 'rgba(144,144,144,0.38)' },
-    // call outcomes (telephony): connected, voicemail, no_answer, busy, failed, callback
+    // call outcomes (per callops /lookups/call-outcomes): connected, no_answer, failed,
+    // voicemail, hangup, error, no_speech, callback, opted_out, subscribed, lead
     connected: { bg: 'rgba(55,166,96,0.18)', text: '#60BC84', border: 'rgba(55,166,96,0.38)' },
     voicemail: { bg: 'rgba(109,194,255,0.18)', text: '#9DD4FF', border: 'rgba(109,194,255,0.38)' },
     'no answer': { bg: 'rgba(56,56,56,0.5)', text: '#C8C8C8', border: 'rgba(74,74,74,0.6)' },
+    'no speech': { bg: 'rgba(56,56,56,0.5)', text: '#C8C8C8', border: 'rgba(74,74,74,0.6)' },
     busy:      { bg: 'rgba(201,154,45,0.14)', text: '#C99A2D', border: 'rgba(201,154,45,0.35)' },
     callback:  { bg: 'rgba(109,194,255,0.18)', text: '#9DD4FF', border: 'rgba(109,194,255,0.38)' },
     failed:    { bg: 'rgba(224,82,79,0.18)', text: '#F08A88', border: 'rgba(224,82,79,0.38)' },
-    // business dispositions: subscribe, opt_out, callback, interested
+    error:     { bg: 'rgba(224,82,79,0.18)', text: '#F08A88', border: 'rgba(224,82,79,0.38)' },
+    hangup:    { bg: 'rgba(56,56,56,0.5)', text: '#C8C8C8', border: 'rgba(74,74,74,0.6)' },
+    transferred: { bg: 'rgba(109,194,255,0.18)', text: '#9DD4FF', border: 'rgba(109,194,255,0.38)' },
+    'opted out': { bg: 'rgba(224,82,79,0.18)', text: '#F08A88', border: 'rgba(224,82,79,0.38)' },
+    subscribed: { bg: 'rgba(55,166,96,0.22)', text: '#5BE8BE', border: 'rgba(91,232,190,0.38)' },
+    lead:      { bg: 'rgba(55,166,96,0.22)', text: '#5BE8BE', border: 'rgba(91,232,190,0.38)' },
+    // business dispositions (per callops /lookups/business-dispositions): subscribe, opt_out,
+    // lead, callback, single_opt_in, interested, qualified, not_interested
     subscribe: { bg: 'rgba(55,166,96,0.22)', text: '#5BE8BE', border: 'rgba(91,232,190,0.38)' },
-    interested:{ bg: 'rgba(201,154,45,0.18)', text: '#E0C078', border: 'rgba(201,154,45,0.38)' },
+    'single opt in': { bg: 'rgba(55,166,96,0.22)', text: '#5BE8BE', border: 'rgba(91,232,190,0.38)' },
+    interested: { bg: 'rgba(201,154,45,0.18)', text: '#E0C078', border: 'rgba(201,154,45,0.38)' },
+    qualified: { bg: 'rgba(55,166,96,0.22)', text: '#5BE8BE', border: 'rgba(91,232,190,0.38)' },
+    'not interested': { bg: 'rgba(224,82,79,0.18)', text: '#F08A88', border: 'rgba(224,82,79,0.38)' },
     'opt out': { bg: 'rgba(224,82,79,0.18)', text: '#F08A88', border: 'rgba(224,82,79,0.38)' },
   }
   return map[key] ?? { bg: 'rgba(144,144,144,0.18)', text: '#C8C8C8', border: 'rgba(144,144,144,0.38)' }

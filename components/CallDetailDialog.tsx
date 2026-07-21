@@ -17,7 +17,9 @@ import { maskPhone } from '@/lib/security'
 // (This is the group-6 wiring: the data lives in call_session_reports / call_model_usage, NOT the
 // legacy call_sessions columns.)
 
-const cleanAmd = (c: unknown) => (typeof c === 'string' ? c.replace(/^AMDCategory\./, '') : (c as string))
+const cleanAmd = (c: unknown) => (typeof c === 'string' ? c.replace(/^AMDCategory\./, '') : null)
+// Report/SIP fields come back as untyped JSON — coerce to a renderable primitive without `any`.
+const disp = (v: unknown): string | number | null => (typeof v === 'string' || typeof v === 'number' ? v : v == null ? null : String(v))
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   const empty = value === null || value === undefined || value === ''
@@ -34,10 +36,20 @@ export default function CallDetailDialog({ call, onClose }: { call: CallRecord |
   const [metrics, setMetrics] = useState<unknown[]>([])
   const [loading, setLoading] = useState(false)
 
+  // Reset for the newly-selected call during render (React's sanctioned "adjusting state
+  // when a prop changes" pattern), so the effect below only ever sets state inside its
+  // async .then() callback, not synchronously in the effect body.
+  const [renderedCallId, setRenderedCallId] = useState<CallRecord['id'] | null>(call?.id ?? null)
+  if ((call?.id ?? null) !== renderedCallId) {
+    setRenderedCallId(call?.id ?? null)
+    setReport(null)
+    setMetrics([])
+    setLoading(!!call)
+  }
+
   useEffect(() => {
     if (!call) return
     let cancelled = false
-    setLoading(true); setReport(null); setMetrics([])
     Promise.all([
       fetch(`/api/calls/${call.id}/call-report`).then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch(`/api/calls/${call.id}/telemetry`).then(r => (r.ok ? r.json() : null)).catch(() => null),
@@ -50,8 +62,8 @@ export default function CallDetailDialog({ call, onClose }: { call: CallRecord |
     return () => { cancelled = true }
   }, [call])
 
-  const r = (report ?? {}) as Record<string, any>
-  const sip = (r.sip_attributes ?? r.sip ?? {}) as Record<string, any>
+  const r = (report ?? {}) as Record<string, unknown>
+  const sip = (r.sip_attributes ?? r.sip ?? {}) as Record<string, unknown>
   const hasReport = report && Object.keys(r).length > 0
 
   return (
@@ -69,14 +81,14 @@ export default function CallDetailDialog({ call, onClose }: { call: CallRecord |
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5 }}>
                 <Field label="AMD" value={cleanAmd(r.amd_category)} />
                 <Field label="AMD time" value={r.amd_duration_ms != null ? `${(Number(r.amd_duration_ms) / 1000).toFixed(1)}s` : null} />
-                <Field label="Talk" value={r.talk_seconds != null ? `${r.talk_seconds}s` : null} />
-                <Field label="DTMF" value={r.dtmf_digits || null} />
-                <Field label="Matched key" value={r.matched_key || null} />
-                <Field label="Disconnect" value={r.disconnect_reason} />
-                <Field label="Transfer" value={r.transfer_target} />
-                <Field label="SIP status" value={sip['sip.callStatus']} />
-                <Field label="Trunk #" value={sip['sip.trunkPhoneNumber']} />
-                <Field label="Attempt" value={r.attempt} />
+                <Field label="Talk" value={r.talk_seconds != null ? `${disp(r.talk_seconds)}s` : null} />
+                <Field label="DTMF" value={disp(r.dtmf_digits) || null} />
+                <Field label="Matched key" value={disp(r.matched_key) || null} />
+                <Field label="Disconnect" value={disp(r.disconnect_reason)} />
+                <Field label="Transfer" value={disp(r.transfer_target)} />
+                <Field label="SIP status" value={disp(sip['sip.callStatus'])} />
+                <Field label="Trunk #" value={disp(sip['sip.trunkPhoneNumber'])} />
+                <Field label="Attempt" value={disp(r.attempt)} />
               </Box>
             </Box>
             <Box>

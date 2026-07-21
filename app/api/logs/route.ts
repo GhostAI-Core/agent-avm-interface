@@ -1,49 +1,83 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
+import { callopsGet, callopsItems, callopsErrorResponse } from '@/utils/callops'
 
 export const dynamic = 'force-dynamic'
 
-// Call history from Supabase `call_records` — the per-call rows CallOps writes.
-// We read them directly (service-role, server-side) rather than CallOps' `/companies/{id}/calls`
-// / `/campaigns/{id}/calls`, which are bearer-JWT-only and currently 401 — that left the whole
-// dashboard's call-driven insights (talk-time, busiest-hours, CPL, and every KPI sparkline) empty.
-// Same data, populated source, no CallOps-auth dependency (consistent with /api/reports).
+// Call history sourced from CallOps `GET /companies/{id}/calls` / `GET /campaigns/{id}/calls`
+// (0.6.0) -- previously read Supabase `call_records` directly because CallOps' bearer-JWT
+// routes 401'd; that's fixed, so we proxy through like every other migrated route. CallOps
+// already enriches each row with `duration_seconds` (call_sessions ended_at - started_at, the
+// true on-air/billed room duration) which we rename to `on_air_seconds` for compatibility with
+// existing widgets (lib/dashboardInsights.tsx, CampaignDetail.tsx, CostBreakdown.tsx).
+//
+// Two shapes of caller:
+//  - ?campaignId=X (campaign drill-down table): full history for that one campaign, unbounded
+//    by date -- operators expect to see everything for a campaign they're inspecting.
+//  - no campaignId (dashboard-wide feed for lib/dashboardInsights.tsx): fanned out over every
+//    company the user belongs to (like /api/campaigns and /api/reports) and bounded to the last
+//    `DASHBOARD_WINDOW_DAYS` days, since every widget that consumes this list only looks at the
+//    last 14 days anyway (see daySeries() in dashboardInsights.tsx) -- fetching a company's
+//    entire multi-year call history on every 15s poll would be needless read amplification.
 
-const COLS = 'id, campaign_id, phone, outcome, talk_seconds, cost, transferred, recording_url, ' +
-  'called_at, created_at, room, contact_id, business_disposition, agent_outcome'
+const PAGE_SIZE = 200
+const MAX_ROWS = 5000
+const DASHBOARD_WINDOW_DAYS = 45
+
+type CallItem = Record<string, unknown> & {
+  id: number
+  called_at?: string | null
+  created_at?: string | null
+  duration_seconds?: number | null
+}
+
+async function fetchAllCalls(path: string, token: string, extraParams: Record<string, string> = {}): Promise<CallItem[]> {
+  const out: CallItem[] = []
+  let page = 1
+  while (out.length < MAX_ROWS) {
+    const qs = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE), ...extraParams })
+    const res = await callopsGet<{ items?: CallItem[] }>(`${path}?${qs}`, token)
+    const batch = res.items ?? []
+    out.push(...batch)
+    if (batch.length < PAGE_SIZE) break
+    page++
+  }
+  return out.slice(0, MAX_ROWS)
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const campaignId = searchParams.get('campaignId')
 
-  const { user } = await getAuthUser()
-  if (!user) return unauthorized()
-  const admin = createAdminClient()
-  if (!admin) return NextResponse.json({ error: 'server not configured' }, { status: 503 })
+  const { token } = await getAccessToken()
+  if (!token) return unauthorized()
 
-  let q = admin.from('call_records').select(COLS).order('called_at', { ascending: false, nullsFirst: false }).limit(5000)
-  if (campaignId) q = q.eq('campaign_id', Number(campaignId))
-  const { data, error } = await q
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  try {
+    let items: CallItem[]
+    if (campaignId) {
+      items = await fetchAllCalls(`/campaigns/${campaignId}/calls`, token)
+    } else {
+      const fromDate = new Date(Date.now() - DASHBOARD_WINDOW_DAYS * 86400000).toISOString()
+      const companies = await callopsItems<{ id: number }>('/companies', token)
+      const perCompany = await Promise.all(
+        (companies ?? []).map((co) =>
+          fetchAllCalls(`/companies/${co.id}/calls`, token, { from_date: fromDate }).catch(() => [] as CallItem[]),
+        ),
+      )
+      items = perCompany.flat()
+    }
 
-  // On-air (session ended_at − started_at) — the true call time, ~5.5× talk. Keyed by
-  // call_record_id from call_sessions. Carriers/LiveKit bill on this, not just talk.
-  let sq = admin.from('call_sessions').select('call_record_id, started_at, ended_at')
-  if (campaignId) sq = sq.eq('campaign_id', Number(campaignId))
-  const { data: sessions } = await sq
-  const airByRec = new Map<number, number>()
-  for (const s of (sessions ?? []) as { call_record_id: number | null; started_at: string | null; ended_at: string | null }[]) {
-    if (s.call_record_id == null || !s.started_at || !s.ended_at) continue
-    const secs = (+new Date(s.ended_at) - +new Date(s.started_at)) / 1000
-    if (secs > 0 && secs < 3600) airByRec.set(s.call_record_id, Math.round(secs))
+    const logs = items
+      .map((row) => ({
+        ...row,
+        called_at: row.called_at ?? row.created_at,
+        on_air_seconds: row.duration_seconds ?? null,
+      }))
+      .sort((a, b) => String(b.called_at ?? '').localeCompare(String(a.called_at ?? '')))
+      .slice(0, MAX_ROWS)
+
+    return NextResponse.json({ logs })
+  } catch (e) {
+    return callopsErrorResponse(e)
   }
-
-  // daySeries groups on `called_at`; coalesce to created_at so date grouping never drops a row.
-  const logs = ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({
-    ...row,
-    called_at: row.called_at ?? row.created_at,
-    on_air_seconds: airByRec.get(row.id as number) ?? null,
-  }))
-  return NextResponse.json({ logs })
 }

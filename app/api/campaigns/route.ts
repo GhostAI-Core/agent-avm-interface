@@ -35,6 +35,7 @@ export async function POST(req: Request) {
     name, agent, company_id, sip_trunk_id, audio_path, voice_recording_url,
     dialing_speed, window_start, window_end, contacts,
     max_concurrent, max_retries, retry_cooldown_seconds,
+    product_id, product_version_id,
   } = body
 
   if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
@@ -81,6 +82,13 @@ export async function POST(req: Request) {
     // Dial mode: 'script' (Seeker/Grace consent-subscribe) | 'lead' (Lead Gen). Column exists;
     // CallOps ignores it until CampaignCreate accepts it (openspec: campaign-dial-mode).
     routing_mode: str(body.routing_mode),
+    // Product (script + consent-flow) pointer. When set, CallOps derives routing_mode,
+    // sts_product, agent, voice_recording_url, and voice_id from the product/version and
+    // those override the raw fields above -- see evra_callops app/api/campaigns.py
+    // _resolve_product_fields(). product_version_id pins an exact version; omit it to always
+    // track whichever version is current at save time.
+    product_id: product_id != null && product_id !== '' ? Number(product_id) : undefined,
+    product_version_id: product_version_id != null && product_version_id !== '' ? Number(product_version_id) : undefined,
     contacts: contactList,
   }
 

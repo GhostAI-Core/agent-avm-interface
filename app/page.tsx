@@ -11,6 +11,7 @@ import SaveTemplateDialog from '@/components/SaveTemplateDialog'
 import TutorialOverlay, { TOUR_STEPS } from '@/components/TutorialOverlay'
 import { useDashboardLayout } from '@/lib/useDashboardLayout'
 import CampaignModal from '@/components/CampaignModal'
+import ProductsView from '@/components/ProductsView'
 import AuthView from '@/components/AuthView'
 import SecurityView from '@/components/SecurityView'
 import SettingsView from '@/components/SettingsView'
@@ -29,7 +30,6 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import MuiIconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
-import OpenInFullIcon from '@mui/icons-material/OpenInFull'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import PauseIcon from '@mui/icons-material/Pause'
 import StopIcon from '@mui/icons-material/Stop'
@@ -59,7 +59,22 @@ import { AgentChip as TableAgentChip, StatusChip as TableStatusChip, ActionButto
 import BusinessIcon from '@mui/icons-material/Business'
 import CloseIcon from '@mui/icons-material/Close'
 import { colors, semantic, radius } from '@/lib/tokens'
-import type { Campaign, CampaignReport, Company, CampaignLiveStatus, CampaignSummary } from '@/types'
+import type { Campaign, CampaignReport, Company, CampaignLiveStatus, CampaignSummary, CallRecord, SecurityLog, Product } from '@/types'
+import type { DashIntent } from '@/lib/dashboardInsights'
+import { fetchProductsForCompany } from '@/lib/products'
+
+// Shown only when no real products exist yet for any company (e.g. pre-migration).
+const LEGACY_AGENT_OPTIONS = ['seeker', 'grace', 'sangoma'] as const
+
+/** Builds the `/api/reports` query string from the report filters. `filterAgent` is either
+ *  'product:<id>' (real product) or 'agent:<seeker|grace|sangoma>' (legacy fallback). */
+function reportsQueryParams(filterAgent: string, filterDate: string): URLSearchParams {
+  const p = new URLSearchParams()
+  if (filterAgent.startsWith('product:')) p.set('product_id', filterAgent.slice('product:'.length))
+  else if (filterAgent.startsWith('agent:')) p.set('agent', filterAgent.slice('agent:'.length))
+  if (filterDate) p.set('date', filterDate)
+  return p
+}
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Control Room',
   companies: 'Companies',
@@ -113,14 +128,16 @@ export default function Page() {
   const [campaigns,   setCampaigns]   = useState<Campaign[]>([])
   const [liveStatus,  setLiveStatus]  = useState<Record<number, CampaignLiveStatus>>({})
   const [reports,     setReports]     = useState<CampaignReport[]>([])
-  const [allCalls,    setAllCalls]    = useState<any[]>([])
-  const [allIntents,  setAllIntents]  = useState<any[]>([])
+  const [allCalls,    setAllCalls]    = useState<CallRecord[]>([])
+  const [allIntents,  setAllIntents]  = useState<DashIntent[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignReport | null>(null)
-  const [detailedLogs,     setDetailedLogs]     = useState<any[]>([])
+  const [detailedLogs,     setDetailedLogs]     = useState<CallRecord[]>([])
   const [campaignSummary,  setCampaignSummary]  = useState<CampaignSummary | null>(null)
-  const [activeCalls,      setActiveCalls]      = useState<any[]>([])
-  const [securityLogs,    setSecurityLogs]     = useState<any[]>([])
+  const [securityLogs,    setSecurityLogs]     = useState<SecurityLog[]>([])
+  // '' = all; 'product:<id>' filters by a real product, 'agent:<seeker|grace|sangoma>' is the
+  // legacy fallback for campaigns that predate the product model (see loadReportFilterOptions).
   const [filterAgent,      setFilterAgent]      = useState('')
+  const [reportProducts,   setReportProducts]   = useState<Product[]>([])
   const [filterDate,       setFilterDate]       = useState('')
   const [expandedChart,    setExpandedChart]    = useState<string | null>(null)
   const [expandCampaign,   setExpandCampaign]   = useState<string>('')  // '' = collective
@@ -144,11 +161,15 @@ export default function Page() {
   const companiesViewEff = isMobile ? 'cards' : companiesView
   const campaignsViewEff = isMobile ? 'cards' : campaignsView
 
+  // Mount-detection to avoid SSR/client render mismatches — `mounted` cannot be known
+  // during the render itself, so this synchronous setState-in-effect is unavoidable.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMounted(true) }, [])
 
   // List-view (cards|table) preferences — hydrate after mount to avoid SSR mismatch, then persist.
   useEffect(() => {
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       const co = window.localStorage.getItem('avm.view.companies'); if (co === 'cards' || co === 'table') setCompaniesView(co)
       const ca = window.localStorage.getItem('avm.view.campaigns'); if (ca === 'cards' || ca === 'table') setCampaignsView(ca)
     } catch { /* ignore */ }
@@ -156,17 +177,21 @@ export default function Page() {
   useEffect(() => { try { window.localStorage.setItem('avm.view.companies', companiesView) } catch { /* ignore */ } }, [companiesView])
   useEffect(() => { try { window.localStorage.setItem('avm.view.campaigns', campaignsView) } catch { /* ignore */ } }, [campaignsView])
 
-  // The tour owns which view is shown; switch to a step's view as it advances.
-  useEffect(() => {
-    if (tourStep === null) return
+  // The tour owns which view is shown; switch to a step's view as it advances. Adjusted
+  // at render-time (React's sanctioned pattern) rather than via a setState-in-effect.
+  const [viewSyncedTourStep, setViewSyncedTourStep] = useState<number | null>(null)
+  if (tourStep !== null && tourStep !== viewSyncedTourStep) {
+    setViewSyncedTourStep(tourStep)
     const v = TOUR_STEPS[tourStep]?.view
     if (v) setView(v)
-  }, [tourStep])
+  }
 
   // First-run: auto-open the guided tour once per browser. The ? button replays it anytime.
+  // Reads an external system (localStorage) to decide, so it stays an effect.
   useEffect(() => {
     if (!auth || !mounted) return
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (!window.localStorage.getItem('avm.tour.seen')) setTourStep(0)
     } catch { /* ignore */ }
   }, [auth, mounted])
@@ -253,9 +278,7 @@ export default function Page() {
 
   const fetchData = useCallback(async () => {
     try {
-      const p = new URLSearchParams()
-      if (filterAgent) p.set('agent', filterAgent)
-      if (filterDate) p.set('date', filterDate)
+      const p = reportsQueryParams(filterAgent, filterDate)
       const [jC, jR] = await Promise.all([getJson('/api/campaigns'), getJson(`/api/reports?${p}`)])
       if (jC) setCampaigns(jC.campaigns ?? [])
       if (jR) setReports(jR.reports ?? [])
@@ -337,6 +360,18 @@ export default function Page() {
     return () => { active = false }
   }, [auth, getJson, refreshLiveStatus])
 
+  // Products across every company, purely to populate the Reports "Agent" filter dropdown with
+  // real product names (not just the legacy seeker/grace/sangoma trio). Falls back to the legacy
+  // options below if this comes back empty (e.g. the products migration hasn't landed yet).
+  useEffect(() => {
+    if (!auth || !companiesList.length) return
+    let active = true
+    Promise.all(companiesList.map(c => fetchProductsForCompany(c.id))).then(lists => {
+      if (active) setReportProducts(lists.flat())
+    })
+    return () => { active = false }
+  }, [auth, companiesList])
+
   // Reports depend on the agent/date filters — fetched separately so changing a
   // filter doesn't re-pull everything else.
   useEffect(() => {
@@ -344,9 +379,7 @@ export default function Page() {
     let active = true
     ;(async () => {
       try {
-        const p = new URLSearchParams()
-        if (filterAgent) p.set('agent', filterAgent)
-        if (filterDate) p.set('date', filterDate)
+        const p = reportsQueryParams(filterAgent, filterDate)
         const jR = await getJson(`/api/reports?${p}`)
         if (active && jR) setReports(jR.reports ?? [])
       } catch (err) {
@@ -364,9 +397,7 @@ export default function Page() {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       try {
         const today = new Date().toISOString().slice(0, 10)
-        const p = new URLSearchParams()
-        if (filterAgent) p.set('agent', filterAgent)
-        if (filterDate) p.set('date', filterDate)
+        const p = reportsQueryParams(filterAgent, filterDate)
         const [jC, jR, jL, jI] = await Promise.all([
           getJson('/api/campaigns'),
           getJson(`/api/reports?${p}`),
@@ -392,8 +423,8 @@ export default function Page() {
 
   const handleExportCSV = () => {
     if (!reports.length) return
-    const keys = ['Campaign Name', 'Agent', ...REPORT_KEYS, 'Duration', 'CPL', 'Total Spent']
-    const csvRows = [keys.join(','), ...reports.map(r => [`"${r.campaign?.name || ''}"`, r.campaign?.agent || '', ...REPORT_KEYS.map(k => r[k]), r.duration, r.cpl, r.total_spent].join(','))]
+    const keys = ['Campaign Name', 'Product', ...REPORT_KEYS, 'Duration', 'CPL', 'Total Spent']
+    const csvRows = [keys.join(','), ...reports.map(r => [`"${r.campaign?.name || ''}"`, r.campaign?.product_name || r.campaign?.agent || '', ...REPORT_KEYS.map(k => r[k]), r.duration, r.cpl, r.total_spent].join(','))]
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' })
     const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `AVM_Report_${new Date().toISOString().split('T')[0]}.csv`; a.click()
   }
@@ -590,7 +621,7 @@ export default function Page() {
     { key: 'campaign', label: 'Campaign', width: '200px',
       render: r => (
         <div>
-          <TableAgentChip agent={r.campaign?.agent ?? ''} />
+          <TableAgentChip agent={r.campaign?.product_name ?? r.campaign?.agent ?? ''} />
           <div style={{ fontSize: 12, color: colors.fg2, marginTop: 4 }}>{r.campaign?.name}</div>
         </div>
       ) },
@@ -827,10 +858,12 @@ export default function Page() {
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>Campaign Report</Typography>
                 <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
                   <Select size="small" value={filterAgent} onChange={e => setFilterAgent(e.target.value)} displayEmpty sx={{ minWidth: 130 }}>
-                    <MenuItem value="">All Agents</MenuItem>
-                    <MenuItem value="seeker">Seeker</MenuItem>
-                    <MenuItem value="grace">Grace</MenuItem>
-                    <MenuItem value="sangoma">Sangoma</MenuItem>
+                    <MenuItem value="">All Products</MenuItem>
+                    {reportProducts.length > 0
+                      // Real products (backfill includes Seeker/Grace/Sangoma once the products
+                      // migration has run, so this supersedes the legacy list below entirely).
+                      ? reportProducts.map(p => <MenuItem key={p.id} value={`product:${p.id}`}>{p.name}</MenuItem>)
+                      : LEGACY_AGENT_OPTIONS.map(a => <MenuItem key={a} value={`agent:${a}`}>{a[0].toUpperCase() + a.slice(1)}</MenuItem>)}
                   </Select>
                   <TextField size="small" type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
                     slotProps={{ htmlInput: { style: { colorScheme: 'dark' } } }}
@@ -850,6 +883,8 @@ export default function Page() {
           )}
 
           {/* ── CONTACTS ── */}
+          {view === 'products' && <ProductsView />}
+
           {view === 'contacts' && <ContactsView />}
 
           {view === 'leads' && <LeadsView />}

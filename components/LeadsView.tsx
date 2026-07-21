@@ -33,7 +33,7 @@ export default function LeadsView() {
 
   useEffect(() => {
     let active = true
-    setLoading(true)
+    // loading already starts `true` via useState — no need to re-set it synchronously here.
     fetch('/api/leads')
       .then(r => (r.ok ? r.json() : { leads: [] }))
       .then(j => { if (active) { setLeads(j.leads ?? []); setCounts({ double_optin: j.double_optin ?? 0, single_optin: j.single_optin ?? 0 }) } })

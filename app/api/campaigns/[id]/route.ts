@@ -41,8 +41,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 // Edit campaign → CallOps PATCH /campaigns/{id} (bearer). Lifecycle `status` stays out
-// (owned by the control proxy). voice_id/company_id/start_date aren't in CampaignUpdate, so
-// they're dropped (voice_id gap flagged for Cale); `audio_path` maps to voice_recording_url.
+// (owned by the control proxy). company_id/start_date aren't in CampaignUpdate, so they're
+// dropped; `audio_path` maps to voice_recording_url. voice_id IS in CampaignUpdate and passed
+// through below -- the caller (CampaignActionDialog) just needs to actually send it.
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { token } = await getAccessToken()
@@ -52,7 +53,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const passthrough = ['name', 'agent', 'dialing_speed', 'time_window_start', 'time_window_end',
     'max_concurrent', 'max_retries', 'retry_cooldown_seconds', 'sip_trunk_id',
     'voice_recording_url', 'voice_path', 'transfer_key', 'transfer_target', 'network_provider',
-    'voice_id', 'routing_mode']
+    'voice_id', 'routing_mode', 'product_id', 'product_version_id']
   const payload: Record<string, unknown> = {}
   for (const k of passthrough) if (body[k] !== undefined) payload[k] = body[k]
   // The edit form may send the script URL as audio_path — feed the dispatcher-read column.

@@ -55,6 +55,14 @@ export default function TutorialOverlay({ step, steps, onNext, onBack, onSkip }:
   const [rect, setRect] = useState<Rect | null>(null)
   const [showHint, setShowHint] = useState(false)
 
+  // Reset the hint at render-time on step change (React's sanctioned pattern), so the effect
+  // below only ever sets state from its own timer callback, not synchronously in its body.
+  const [hintStep, setHintStep] = useState(step)
+  if (step !== hintStep) {
+    setHintStep(step)
+    setShowHint(false)
+  }
+
   const measure = () => {
     if (!current?.target) { setRect(null); return }
     const el = document.querySelector<HTMLElement>(`[data-tour="${current.target}"]`)
@@ -75,12 +83,14 @@ export default function TutorialOverlay({ step, steps, onNext, onBack, onSkip }:
 
   // Finger hint fades in after a 2s pause on each step; a quick clicker never sees it.
   useEffect(() => {
-    setShowHint(false)
     const t = setTimeout(() => setShowHint(true), 2000)
     return () => clearTimeout(t)
   }, [step])
 
   useLayoutEffect(() => {
+    // Measuring the DOM and syncing state before paint is the canonical use of
+    // useLayoutEffect (avoids a flash of the un-positioned spotlight/bubble).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     measure()
     window.addEventListener('resize', measure)
     window.addEventListener('scroll', measure, true)

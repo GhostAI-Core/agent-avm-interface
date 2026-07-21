@@ -119,12 +119,15 @@ export default function ContactsView() {
     return () => { active = false }
   }, [loadContacts])
 
-  // Initialise the network dropdown from the selected campaign's persisted gate (network_provider).
-  useEffect(() => {
-    const c = campaigns.find((x) => String(x.id) === campaignId)
-    setNetwork(c?.network_provider ?? '')
+  // Initialise the network dropdown from the selected campaign's persisted gate (network_provider)
+  // whenever the campaign scope changes. Adjusted during render (React's sanctioned pattern for
+  // resetting state on a prop/dependency change) rather than via a setState-in-effect.
+  const [networkInitFor, setNetworkInitFor] = useState<string | null>(null)
+  if (campaignId && campaignId !== networkInitFor) {
+    setNetworkInitFor(campaignId)
+    setNetwork(campaigns.find((x) => String(x.id) === campaignId)?.network_provider ?? '')
     setGateMsg(null)
-  }, [campaignId, campaigns])
+  }
 
   // Page resets live in the filter handlers below (not an effect) to avoid a cascading render.
   const pickCampaign = (v: string) => { setCampaignId(v); setPage(1) }

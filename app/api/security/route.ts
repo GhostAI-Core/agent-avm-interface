@@ -16,7 +16,8 @@ export async function GET() {
     
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ logs: data ?? [] })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Internal Server Error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

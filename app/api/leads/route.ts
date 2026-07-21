@@ -1,72 +1,104 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { createAdminClient } from '@/utils/supabase/admin'
-import { estimateCallCost } from '@/lib/callCost'
+import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
+import { callopsGet, callopsItems, callopsErrorResponse } from '@/utils/callops'
 
 export const dynamic = 'force-dynamic'
 
-// Lead-Gen reporting — every record where the contact pressed 1 at least once:
-//  - DOUBLE opt-in → call_records.outcome = 'lead'
-//  - SINGLE opt-in (pressed 1, listened, no second press) → business_disposition = 'single_opt_in'
-// Read from Supabase (the rows CallOps writes) + join call_sessions for on-air, so the dash has
-// the full per-record picture. Empty until lead-mode ships. Optional ?campaignId filter.
+// Lead-Gen reporting sourced from CallOps `GET /companies/{id}/leads` (0.6.0) -- every record
+// where the contact pressed 1 at least once: DOUBLE opt-in (`optin: 'double'`, outcome=lead) or
+// SINGLE opt-in (`optin: 'single'`, business_disposition=single_opt_in). `cost` is now the real
+// persisted per-call cost, not an estimate. Fans out over the user's companies (like
+// /api/campaigns and /api/reports) and merges, mirroring the previous Supabase-direct version.
+//
+// CallOps doesn't join campaign/contact names into the leads payload, so we resolve them
+// ourselves: campaign names via `/companies/{id}/campaigns` (cheap, one call per company), and
+// contact names best-effort via `/campaigns/{id}/contacts` for just the campaigns that appear in
+// the lead set (a lead is a small subset of a campaign's contacts, so a single page usually
+// covers it; a rare miss just shows a blank name, same graceful fallback the UI already had).
 
-type Rec = {
+const PAGE_SIZE = 200
+const MAX_ROWS = 5000
+
+type LeadItem = {
   id: number; phone: string | null; contact_id: number | null; campaign_id: number | null
   called_at: string | null; created_at: string | null; talk_seconds: number | null
-  outcome: string | null; business_disposition: string | null; agent_outcome: string | null; cost: number | null
+  outcome: string | null; business_disposition: string | null
+  cost: number | null; optin: 'double' | 'single'; duration_seconds?: number | null
+}
+
+async function fetchAllLeads(companyId: number, token: string, campaignId?: string | null) {
+  const items: LeadItem[] = []
+  let page = 1
+  let doubleOptin = 0
+  let singleOptin = 0
+  while (items.length < MAX_ROWS) {
+    const qs = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) })
+    if (campaignId) qs.set('campaign_id', campaignId)
+    const res = await callopsGet<{ items?: LeadItem[]; double_optin?: number; single_optin?: number }>(
+      `/companies/${companyId}/leads?${qs}`, token,
+    )
+    const batch = res.items ?? []
+    items.push(...batch)
+    doubleOptin = res.double_optin ?? doubleOptin
+    singleOptin = res.single_optin ?? singleOptin
+    if (batch.length < PAGE_SIZE) break
+    page++
+  }
+  return { items: items.slice(0, MAX_ROWS), doubleOptin, singleOptin }
 }
 
 export async function GET(req: NextRequest) {
-  const { user } = await getAuthUser()
-  if (!user) return unauthorized()
-  const admin = createAdminClient()
-  if (!admin) return NextResponse.json({ error: 'server not configured' }, { status: 503 })
-
+  const { token } = await getAccessToken()
+  if (!token) return unauthorized()
   const campaignId = new URL(req.url).searchParams.get('campaignId')
-  // Both opt-in tiers: outcome='lead' (double) OR business_disposition='single_opt_in' (single).
-  let q = admin.from('call_records')
-    .select('id, phone, contact_id, campaign_id, called_at, created_at, talk_seconds, outcome, business_disposition, agent_outcome, cost')
-    .or('outcome.eq.lead,business_disposition.eq.single_opt_in')
-    .order('called_at', { ascending: false, nullsFirst: false }).limit(5000)
-  if (campaignId) q = q.eq('campaign_id', Number(campaignId))
-  const { data, error } = await q
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  const recs = (data ?? []) as Rec[]
 
-  // On-air per record (session ended_at − started_at) + campaign/contact labels.
-  const [{ data: sessions }, { data: camps }, { data: contacts }] = await Promise.all([
-    admin.from('call_sessions').select('call_record_id, started_at, ended_at'),
-    admin.from('campaigns').select('id, name'),
-    recs.length ? admin.from('contacts').select('id, first_name, last_name').in('id', recs.map(r => r.contact_id).filter((v): v is number => v != null))
-      : Promise.resolve({ data: [] as { id: number; first_name: string | null; last_name: string | null }[] }),
-  ])
-  const air = new Map<number, number>()
-  for (const s of (sessions ?? []) as { call_record_id: number | null; started_at: string | null; ended_at: string | null }[]) {
-    if (s.call_record_id == null || !s.started_at || !s.ended_at) continue
-    const secs = (+new Date(s.ended_at) - +new Date(s.started_at)) / 1000
-    if (secs > 0 && secs < 3600) air.set(s.call_record_id, Math.round(secs))
+  try {
+    const companies = await callopsItems<{ id: number }>('/companies', token)
+    const perCompany = await Promise.all(
+      (companies ?? []).map((co) => fetchAllLeads(co.id, token, campaignId).catch(() => ({ items: [] as LeadItem[], doubleOptin: 0, singleOptin: 0 }))),
+    )
+    const recs = perCompany.flatMap((r) => r.items)
+    const doubleOptin = perCompany.reduce((s, r) => s + r.doubleOptin, 0)
+    const singleOptin = perCompany.reduce((s, r) => s + r.singleOptin, 0)
+
+    // Best-effort campaign + contact name enrichment.
+    const campaignIds = [...new Set(recs.map((r) => r.campaign_id).filter((v): v is number => v != null))]
+    const campNames = new Map<number, string>()
+    const contactNames = new Map<number, string>()
+    await Promise.all(campaignIds.map(async (cid) => {
+      try {
+        const detail = await callopsGet<{ campaign?: { name?: string } }>(`/campaigns/${cid}`, token)
+        if (detail.campaign?.name) campNames.set(cid, detail.campaign.name)
+      } catch { /* keep '—' fallback */ }
+      try {
+        const contactsRes = await callopsGet<{ items?: { id: number; first_name?: string | null; last_name?: string | null }[] }>(
+          `/campaigns/${cid}/contacts?page_size=200`, token,
+        )
+        for (const c of contactsRes.items ?? []) {
+          const name = [c.first_name, c.last_name].filter(Boolean).join(' ')
+          if (name) contactNames.set(c.id, name)
+        }
+      } catch { /* keep blank fallback */ }
+    }))
+
+    const leads = recs.map((r) => {
+      const talk = r.talk_seconds ?? 0
+      return {
+        phone: r.phone,
+        name: (r.contact_id != null ? contactNames.get(r.contact_id) : '') || '',
+        campaign_id: r.campaign_id,
+        campaign: (r.campaign_id != null ? campNames.get(r.campaign_id) : '') || '—',
+        optin: r.optin,
+        at: r.called_at ?? r.created_at,
+        talk_seconds: talk,
+        on_air_seconds: r.duration_seconds ?? null,
+        disposition: r.business_disposition ?? null,
+        cost: r.cost ?? 0,
+      }
+    }).sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? '')))
+
+    return NextResponse.json({ leads, total: leads.length, double_optin: doubleOptin, single_optin: singleOptin })
+  } catch (e) {
+    return callopsErrorResponse(e)
   }
-  const campName = new Map((camps ?? []).map((c: { id: number; name: string | null }) => [c.id, c.name]))
-  const name = new Map((contacts ?? []).map((c: { id: number; first_name: string | null; last_name: string | null }) => [c.id, [c.first_name, c.last_name].filter(Boolean).join(' ')]))
-
-  const leads = recs.map(r => {
-    const talk = r.talk_seconds ?? 0
-    const optin = r.outcome === 'lead' ? 'double' : 'single'
-    return {
-      phone: r.phone,
-      name: (r.contact_id != null ? name.get(r.contact_id) : '') || '',
-      campaign_id: r.campaign_id,
-      campaign: (r.campaign_id != null ? campName.get(r.campaign_id) : '') || '—',
-      optin,                                   // 'double' (lead) | 'single' (opt-in only)
-      at: r.called_at ?? r.created_at,
-      talk_seconds: talk,
-      on_air_seconds: air.get(r.id) ?? null,
-      disposition: r.business_disposition ?? null,
-      agent_outcome: r.agent_outcome ?? null,
-      cost: (typeof r.cost === 'number' && r.cost > 0) ? r.cost : estimateCallCost(talk, air.get(r.id) ?? talk),
-    }
-  })
-  const doubleN = leads.filter(l => l.optin === 'double').length
-  return NextResponse.json({ leads, total: leads.length, double_optin: doubleN, single_optin: leads.length - doubleN })
 }

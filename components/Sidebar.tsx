@@ -18,6 +18,7 @@ const NAV_GROUPS = [
       { id: 'dashboard', label: 'Control Room'     },
       { id: 'companies', label: 'Companies'       },
       { id: 'campaigns', label: 'Campaigns'       },
+      { id: 'products',  label: 'Products'       },
       { id: 'contacts',  label: 'Contacts'       },
       { id: 'leads',     label: 'Leads'          },
       { id: 'reports',   label: 'Campaign Report' },

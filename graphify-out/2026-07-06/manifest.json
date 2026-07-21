@@ -1,0 +1,1007 @@
+{
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/calls/result/route.ts": {
+    "mtime": 1782292378.0120342,
+    "ast_hash": "8f7edba885d806455279e2e696fb041d",
+    "semantic_hash": "8f7edba885d806455279e2e696fb041d"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/campaigns/[id]/[action]/route.ts": {
+    "mtime": 1782119469.6074271,
+    "ast_hash": "a05eb0d524048bbbbb52f66553089aee",
+    "semantic_hash": "a05eb0d524048bbbbb52f66553089aee"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/campaigns/[id]/route.ts": {
+    "mtime": 1782299536.8835742,
+    "ast_hash": "3103b18ddadc670cd32cb547dea30bbf",
+    "semantic_hash": "3103b18ddadc670cd32cb547dea30bbf"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/campaigns/route.ts": {
+    "mtime": 1782299536.883889,
+    "ast_hash": "bd432f186bd625413fce462840ba5241",
+    "semantic_hash": "bd432f186bd625413fce462840ba5241"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/companies/route.ts": {
+    "mtime": 1781701778.370318,
+    "ast_hash": "7060fe9c4cf9f0f955c9b97da9797c49",
+    "semantic_hash": "7060fe9c4cf9f0f955c9b97da9797c49"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/dashboard-templates/route.ts": {
+    "mtime": 1781271720.419257,
+    "ast_hash": "c45f333838da4d1a8214da761e46e6d7",
+    "semantic_hash": "c45f333838da4d1a8214da761e46e6d7"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/health/route.ts": {
+    "mtime": 1781086351.425991,
+    "ast_hash": "70136d40c1c2c7d6995e18e892d5c4d5",
+    "semantic_hash": "70136d40c1c2c7d6995e18e892d5c4d5"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/intents/route.ts": {
+    "mtime": 1781701778.3706107,
+    "ast_hash": "b4d12c6ff33be997facddca0ecc12f29",
+    "semantic_hash": "b4d12c6ff33be997facddca0ecc12f29"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/livekit/webhook/route.ts": {
+    "mtime": 1782299536.884057,
+    "ast_hash": "09fe92e32bbd23b242d360a8ea14f58a",
+    "semantic_hash": "09fe92e32bbd23b242d360a8ea14f58a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/logs/route.ts": {
+    "mtime": 1781701778.370828,
+    "ast_hash": "e47e2fc14759970a384916e04420d05a",
+    "semantic_hash": "e47e2fc14759970a384916e04420d05a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/reports/route.ts": {
+    "mtime": 1781701778.3713152,
+    "ast_hash": "cccb23fc51c04f9a3e36993c91215526",
+    "semantic_hash": "cccb23fc51c04f9a3e36993c91215526"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/security/route.ts": {
+    "mtime": 1781701778.3715231,
+    "ast_hash": "bb743e4ec96a2be87dda5762a9ba6d38",
+    "semantic_hash": "bb743e4ec96a2be87dda5762a9ba6d38"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/trunks/route.ts": {
+    "mtime": 1782292383.9062715,
+    "ast_hash": "07173bbd112c002604b8cf1a254f86e3",
+    "semantic_hash": "07173bbd112c002604b8cf1a254f86e3"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/tts/generate/route.ts": {
+    "mtime": 1781707447.5198524,
+    "ast_hash": "b26536f5c1950da69363d8bdc623a9b9",
+    "semantic_hash": "b26536f5c1950da69363d8bdc623a9b9"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/api/tts/save/route.ts": {
+    "mtime": 1781707447.5199733,
+    "ast_hash": "1ed1acbb82b71fa9fc0be4cb348d6fce",
+    "semantic_hash": "1ed1acbb82b71fa9fc0be4cb348d6fce"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/layout.tsx": {
+    "mtime": 1781086351.426491,
+    "ast_hash": "21d5fa05f114884f5286f76a7ef885db",
+    "semantic_hash": "21d5fa05f114884f5286f76a7ef885db"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/app/page.tsx": {
+    "mtime": 1782299536.8844316,
+    "ast_hash": "27d4160d9ccdd6a86b7cc0fa70d24f3f",
+    "semantic_hash": "27d4160d9ccdd6a86b7cc0fa70d24f3f"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/AuthView.tsx": {
+    "mtime": 1781086351.427059,
+    "ast_hash": "a4df25bfb756e19039e6d3999dacc6a7",
+    "semantic_hash": "a4df25bfb756e19039e6d3999dacc6a7"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/CallQuality.tsx": {
+    "mtime": 1781093017.5878322,
+    "ast_hash": "53c178971bbd5e29f153b81ce2c4e89e",
+    "semantic_hash": "53c178971bbd5e29f153b81ce2c4e89e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/CampaignActionDialog.tsx": {
+    "mtime": 1782299536.8846455,
+    "ast_hash": "58ee61200f224f2ec4e466ac2dc58ff8",
+    "semantic_hash": "58ee61200f224f2ec4e466ac2dc58ff8"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/CampaignDetail.tsx": {
+    "mtime": 1782299536.884883,
+    "ast_hash": "e4ad3b9af9e845cc4f09452b67cb5da4",
+    "semantic_hash": "e4ad3b9af9e845cc4f09452b67cb5da4"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/CampaignModal.tsx": {
+    "mtime": 1782299536.8852708,
+    "ast_hash": "8b337e9242e6e78a4602ce2f89150b2b",
+    "semantic_hash": "8b337e9242e6e78a4602ce2f89150b2b"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/Charts.tsx": {
+    "mtime": 1781086351.4275804,
+    "ast_hash": "8312aea2cfbcbb9dc531ddd45978565f",
+    "semantic_hash": "8312aea2cfbcbb9dc531ddd45978565f"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/FloatingNav.tsx": {
+    "mtime": 1782299536.8854308,
+    "ast_hash": "415c12d806f24a808fda6cd2aa5046c6",
+    "semantic_hash": "415c12d806f24a808fda6cd2aa5046c6"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/InsightCard.tsx": {
+    "mtime": 1781093017.5896018,
+    "ast_hash": "98c98ef2e39896b93aa8ba4c2bce0767",
+    "semantic_hash": "98c98ef2e39896b93aa8ba4c2bce0767"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/InsightCharts.tsx": {
+    "mtime": 1781093017.5898998,
+    "ast_hash": "ba0590686337c205ebc3c6160ecd6362",
+    "semantic_hash": "ba0590686337c205ebc3c6160ecd6362"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/InsightDashboard.tsx": {
+    "mtime": 1781271720.4203844,
+    "ast_hash": "3845c3aeeaf1a56624779779b33dc2e4",
+    "semantic_hash": "3845c3aeeaf1a56624779779b33dc2e4"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/KpiStrip.tsx": {
+    "mtime": 1781086351.4281428,
+    "ast_hash": "3279f0a6ccd2ac446fc61eb0ecf6199d",
+    "semantic_hash": "3279f0a6ccd2ac446fc61eb0ecf6199d"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/ProfileView.tsx": {
+    "mtime": 1781073210.7974508,
+    "ast_hash": "6782df302565add758455797c6276992",
+    "semantic_hash": "6782df302565add758455797c6276992"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/Providers.tsx": {
+    "mtime": 1781086351.4283366,
+    "ast_hash": "6a0544775e813ffe80fba3d78ffeb5c1",
+    "semantic_hash": "6a0544775e813ffe80fba3d78ffeb5c1"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/STSDashboard.tsx": {
+    "mtime": 1782299536.8855207,
+    "ast_hash": "b8e850b00d7a993cc72634092ddfadff",
+    "semantic_hash": "b8e850b00d7a993cc72634092ddfadff"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/SaveTemplateDialog.tsx": {
+    "mtime": 1781271720.4205666,
+    "ast_hash": "582b5c44f7f06229392db53ceaf9cd13",
+    "semantic_hash": "582b5c44f7f06229392db53ceaf9cd13"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/SecurityView.tsx": {
+    "mtime": 1781086351.4289932,
+    "ast_hash": "dbd9d538a7a48348fef7d4dfc74e1abe",
+    "semantic_hash": "dbd9d538a7a48348fef7d4dfc74e1abe"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/SettingsView.tsx": {
+    "mtime": 1781707447.5206542,
+    "ast_hash": "d1e5cbf21090c63181a5e1f84a06e7f3",
+    "semantic_hash": "d1e5cbf21090c63181a5e1f84a06e7f3"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/Sidebar.tsx": {
+    "mtime": 1782299536.8856554,
+    "ast_hash": "2e627f03e489d6e714b0243c7229ee1b",
+    "semantic_hash": "2e627f03e489d6e714b0243c7229ee1b"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/TelephonyView.tsx": {
+    "mtime": 1782299536.8863018,
+    "ast_hash": "3847110c0c6223754bcde3a935659b34",
+    "semantic_hash": "3847110c0c6223754bcde3a935659b34"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/TopBar.tsx": {
+    "mtime": 1781619631.0638814,
+    "ast_hash": "ef61ff1aca2ca87f2dea6d2f0dc2fc69",
+    "semantic_hash": "ef61ff1aca2ca87f2dea6d2f0dc2fc69"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/TutorialOverlay.tsx": {
+    "mtime": 1782299536.8865483,
+    "ast_hash": "fef5a944cf5dd5cac2b373092c343a0b",
+    "semantic_hash": "fef5a944cf5dd5cac2b373092c343a0b"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/VoiceGenerator.tsx": {
+    "mtime": 1781707447.5213027,
+    "ast_hash": "751c9cc09c0b5feb7ef166c019bd0cc4",
+    "semantic_hash": "751c9cc09c0b5feb7ef166c019bd0cc4"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/telephony/CrudSection.tsx": {
+    "mtime": 1782299536.8867056,
+    "ast_hash": "8d7149e297126641b892f93bcc1d0c2a",
+    "semantic_hash": "8d7149e297126641b892f93bcc1d0c2a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/telephony/EntityFormDialog.tsx": {
+    "mtime": 1782299536.8867917,
+    "ast_hash": "ef351c83ae4d4d081043d5a20b23e70e",
+    "semantic_hash": "ef351c83ae4d4d081043d5a20b23e70e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/ui/AgentChip.tsx": {
+    "mtime": 1781086351.430206,
+    "ast_hash": "121c15d0ecce232c86562628cff32edf",
+    "semantic_hash": "121c15d0ecce232c86562628cff32edf"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/ui/GlassCard.tsx": {
+    "mtime": 1781086351.4305441,
+    "ast_hash": "2cc0bbb97c698b68f916081f02eeae43",
+    "semantic_hash": "2cc0bbb97c698b68f916081f02eeae43"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/ui/StatusChip.tsx": {
+    "mtime": 1782119469.6083183,
+    "ast_hash": "055a9414d34c5d41c8a1fbe1bad9f8c2",
+    "semantic_hash": "055a9414d34c5d41c8a1fbe1bad9f8c2"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/components/ui/WizardChrome.tsx": {
+    "mtime": 1781707447.5216742,
+    "ast_hash": "eb2c548ccab482e24363b291a522c4bb",
+    "semantic_hash": "eb2c548ccab482e24363b291a522c4bb"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/openapi.json": {
+    "mtime": 1782119469.608575,
+    "ast_hash": "c559eac567d74b670db919ef7909d7f6",
+    "semantic_hash": "c559eac567d74b670db919ef7909d7f6"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/eslint.config.mjs": {
+    "mtime": 1781073210.798727,
+    "ast_hash": "dfa1f5f6a7037bf39dc510f30b180002",
+    "semantic_hash": "dfa1f5f6a7037bf39dc510f30b180002"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/ColorModeContext.ts": {
+    "mtime": 1782119469.608719,
+    "ast_hash": "a2a5841d39a89e584450036d9865d0f2",
+    "semantic_hash": "a2a5841d39a89e584450036d9865d0f2"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/async.ts": {
+    "mtime": 1781081208.213979,
+    "ast_hash": "37b3d601dff4f964980bb8a533ca3dbd",
+    "semantic_hash": "37b3d601dff4f964980bb8a533ca3dbd"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/auth-admin.ts": {
+    "mtime": 1781619631.066459,
+    "ast_hash": "cdbb448841dc303f313ef5cfe2d3771e",
+    "semantic_hash": "cdbb448841dc303f313ef5cfe2d3771e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/avm-script-storage.ts": {
+    "mtime": 1782299536.8878472,
+    "ast_hash": "aed46f8d464d51593c634ee98b2b0131",
+    "semantic_hash": "aed46f8d464d51593c634ee98b2b0131"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/chartTheme.ts": {
+    "mtime": 1781086351.4316564,
+    "ast_hash": "3ccc288b703856f38e7ca4a4191671e2",
+    "semantic_hash": "3ccc288b703856f38e7ca4a4191671e2"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/dashboardInsights.tsx": {
+    "mtime": 1781271720.42178,
+    "ast_hash": "d9aa6123d454c761436053816272f587",
+    "semantic_hash": "d9aa6123d454c761436053816272f587"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/inworld-voices.ts": {
+    "mtime": 1781707447.5224648,
+    "ast_hash": "f63d3f356e409ac95af808ffc2455f76",
+    "semantic_hash": "f63d3f356e409ac95af808ffc2455f76"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/livekit.ts": {
+    "mtime": 1782119469.6089368,
+    "ast_hash": "a5a9f09d3d1d15cb3342eb1a4b7fdae1",
+    "semantic_hash": "a5a9f09d3d1d15cb3342eb1a4b7fdae1"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/outbound-call.ts": {
+    "mtime": 1782119469.6090722,
+    "ast_hash": "f586a29a04fdcca7b3b72db44d3df73a",
+    "semantic_hash": "f586a29a04fdcca7b3b72db44d3df73a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/parseCsv.ts": {
+    "mtime": 1781271720.4221377,
+    "ast_hash": "43fcdaf69329b4c0f9444839b65f9da2",
+    "semantic_hash": "43fcdaf69329b4c0f9444839b65f9da2"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/phone.ts": {
+    "mtime": 1782119469.6091983,
+    "ast_hash": "d22680032de210e1a1aa3fc9e5cd8d97",
+    "semantic_hash": "d22680032de210e1a1aa3fc9e5cd8d97"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/roles.ts": {
+    "mtime": 1781080174.782969,
+    "ast_hash": "d1ea5f372f7b6993e21e2a52bfeea3f8",
+    "semantic_hash": "d1ea5f372f7b6993e21e2a52bfeea3f8"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/security.ts": {
+    "mtime": 1782119469.6093097,
+    "ast_hash": "911e24af91fa275337965034ee6dbaaf",
+    "semantic_hash": "911e24af91fa275337965034ee6dbaaf"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/supabase.ts": {
+    "mtime": 1781701778.374063,
+    "ast_hash": "326adbd415a04ad43e8143c25a3c65b8",
+    "semantic_hash": "326adbd415a04ad43e8143c25a3c65b8"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/telephony-mock.ts": {
+    "mtime": 1781707447.5226197,
+    "ast_hash": "71138eb4a1eb4ffdac435e14b9149e7c",
+    "semantic_hash": "71138eb4a1eb4ffdac435e14b9149e7c"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/theme.ts": {
+    "mtime": 1781086351.431906,
+    "ast_hash": "ac258fbd93440e3d318bee8b23d19984",
+    "semantic_hash": "ac258fbd93440e3d318bee8b23d19984"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/useDashboardLayout.ts": {
+    "mtime": 1781271720.4223213,
+    "ast_hash": "b9ace9b5572a4fb6473667c40f1b21cc",
+    "semantic_hash": "b9ace9b5572a4fb6473667c40f1b21cc"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/lib/voice.ts": {
+    "mtime": 1782299536.8879716,
+    "ast_hash": "fa120627ea5f0d05d5debe4e1cda2861",
+    "semantic_hash": "fa120627ea5f0d05d5debe4e1cda2861"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/next.config.ts": {
+    "mtime": 1781701723.5220838,
+    "ast_hash": "55dab6c7804a568f4c2240601117b192",
+    "semantic_hash": "55dab6c7804a568f4c2240601117b192"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/package.json": {
+    "mtime": 1782299536.8880875,
+    "ast_hash": "5d6c002a1fec35ceadbfcf0506eee386",
+    "semantic_hash": "5d6c002a1fec35ceadbfcf0506eee386"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/postcss.config.mjs": {
+    "mtime": 1781073210.7999947,
+    "ast_hash": "239f3ebf717465dc636818a1a619398d",
+    "semantic_hash": "239f3ebf717465dc636818a1a619398d"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/proxy.ts": {
+    "mtime": 1781075912.0630581,
+    "ast_hash": "efb14273ab88f74b945706ce3eea26ac",
+    "semantic_hash": "efb14273ab88f74b945706ce3eea26ac"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/schema.sql": {
+    "mtime": 1781707447.5352037,
+    "ast_hash": "6806142281d17a52e6662c4acc05e695",
+    "semantic_hash": "6806142281d17a52e6662c4acc05e695"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/scripts/callops-test.ts": {
+    "mtime": 1782119469.6102471,
+    "ast_hash": "a922e8bf5efd265910048812f123ecc0",
+    "semantic_hash": "a922e8bf5efd265910048812f123ecc0"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/scripts/dial-cli-shared.ts": {
+    "mtime": 1781701778.374813,
+    "ast_hash": "d3bb0fbf2c8187d5159dbb63220d610a",
+    "semantic_hash": "d3bb0fbf2c8187d5159dbb63220d610a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/scripts/dial-outbound.ts": {
+    "mtime": 1781701859.061256,
+    "ast_hash": "2a3492e0794f0e4ecd8719dee15c4c72",
+    "semantic_hash": "2a3492e0794f0e4ecd8719dee15c4c72"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/scripts/generate-voice-samples.ts": {
+    "mtime": 1781707447.53534,
+    "ast_hash": "d39b8b055003f093c353f2a4ee695433",
+    "semantic_hash": "d39b8b055003f093c353f2a4ee695433"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/scripts/preload-env.ts": {
+    "mtime": 1781701778.3752387,
+    "ast_hash": "26424fe8efdd76be3050b44265d4197a",
+    "semantic_hash": "26424fe8efdd76be3050b44265d4197a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260610000000_agent_avm_initial_schema.sql": {
+    "mtime": 1781076061.0564284,
+    "ast_hash": "e17855fcc49539ba53f6e80ec368ef7b",
+    "semantic_hash": "e17855fcc49539ba53f6e80ec368ef7b"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260610120000_profiles_on_signup.sql": {
+    "mtime": 1781079936.1813815,
+    "ast_hash": "8bd1a117cec013bd9ebd8ff28a3bf7a3",
+    "semantic_hash": "8bd1a117cec013bd9ebd8ff28a3bf7a3"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260610130000_call_reporting.sql": {
+    "mtime": 1781093017.591781,
+    "ast_hash": "3f722bc9115dcea27017e98772a5f9ce",
+    "semantic_hash": "3f722bc9115dcea27017e98772a5f9ce"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260610140000_companies.sql": {
+    "mtime": 1781093017.592,
+    "ast_hash": "144e27d95c6e4c29be3c07b69618db4d",
+    "semantic_hash": "144e27d95c6e4c29be3c07b69618db4d"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260610150000_campaign_archive.sql": {
+    "mtime": 1781093017.5921586,
+    "ast_hash": "b087c352baaa8311797d1dfb0d78d07b",
+    "semantic_hash": "b087c352baaa8311797d1dfb0d78d07b"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260611000000_optional_agent.sql": {
+    "mtime": 1781173638.5158005,
+    "ast_hash": "d248e3a80e10d876940c4d540f92d374",
+    "semantic_hash": "d248e3a80e10d876940c4d540f92d374"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260611100000_campaign_gateway.sql": {
+    "mtime": 1781271720.4235241,
+    "ast_hash": "1801c6e28386735ea4ecef88e7a84fac",
+    "semantic_hash": "1801c6e28386735ea4ecef88e7a84fac"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260611200000_dashboard_templates_and_company_contacts.sql": {
+    "mtime": 1781271720.4236197,
+    "ast_hash": "6bf1984d2d68feed1765c2ae1df0ca24",
+    "semantic_hash": "6bf1984d2d68feed1765c2ae1df0ca24"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260612120000_call_records_room.sql": {
+    "mtime": 1781271720.4237,
+    "ast_hash": "2a92c31e335596b79c9920b2143c79c0",
+    "semantic_hash": "2a92c31e335596b79c9920b2143c79c0"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260612130000_voice_recordings_storage.sql": {
+    "mtime": 1781271720.423791,
+    "ast_hash": "5b1472ac96b5be885bf838aaf05b9214",
+    "semantic_hash": "5b1472ac96b5be885bf838aaf05b9214"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260612140000_livekit_dialer_schema.sql": {
+    "mtime": 1781271720.4238815,
+    "ast_hash": "8394045bc84c4832890593ff55039c93",
+    "semantic_hash": "8394045bc84c4832890593ff55039c93"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260617120000_remove_routr.sql": {
+    "mtime": 1781701778.3753705,
+    "ast_hash": "6c488843cb965aa2fb7253c04393e5cc",
+    "semantic_hash": "6c488843cb965aa2fb7253c04393e5cc"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260618210000_campaign_stopped_status.sql": {
+    "mtime": 1782119469.6103396,
+    "ast_hash": "5d86619e8535b55e3f0baa6f75df0785",
+    "semantic_hash": "5d86619e8535b55e3f0baa6f75df0785"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260618220000_call_records_callops_outcomes.sql": {
+    "mtime": 1782119469.610422,
+    "ast_hash": "b1f2e02e333d39a8969f3229428d3a05",
+    "semantic_hash": "b1f2e02e333d39a8969f3229428d3a05"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260619060000_campaign_sip_trunk_id_varchar.sql": {
+    "mtime": 1782119469.610515,
+    "ast_hash": "66bd46f61a5dd2545c362f2bed2bbcef",
+    "semantic_hash": "66bd46f61a5dd2545c362f2bed2bbcef"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/migrations/20260619070000_campaign_sip_trunk_id_integer_fk.sql": {
+    "mtime": 1782119469.6105933,
+    "ast_hash": "3bd9a4653eaa23ce2ba97cf59e93d529",
+    "semantic_hash": "3bd9a4653eaa23ce2ba97cf59e93d529"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/tsconfig.json": {
+    "mtime": 1781073210.8010013,
+    "ast_hash": "02fc19ad21338c2ab820a70136310db4",
+    "semantic_hash": "02fc19ad21338c2ab820a70136310db4"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/types/index.ts": {
+    "mtime": 1782299536.8884552,
+    "ast_hash": "9224507b7b18d87ae038d451d6545c1a",
+    "semantic_hash": "9224507b7b18d87ae038d451d6545c1a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/types/telephony.ts": {
+    "mtime": 1781707447.5354545,
+    "ast_hash": "4603ea3ad463d2fcd068b1e1abec3f88",
+    "semantic_hash": "4603ea3ad463d2fcd068b1e1abec3f88"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/utils/supabase/admin.ts": {
+    "mtime": 1781271720.4244387,
+    "ast_hash": "5a64086663364bcba6a3ba217b2b99c0",
+    "semantic_hash": "5a64086663364bcba6a3ba217b2b99c0"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/utils/supabase/auth.ts": {
+    "mtime": 1781079936.181434,
+    "ast_hash": "69fae1c4da6e3608117b01e10f387f40",
+    "semantic_hash": "69fae1c4da6e3608117b01e10f387f40"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/utils/supabase/client.ts": {
+    "mtime": 1781271720.4246826,
+    "ast_hash": "45987f8236fbf2f4316ee66a883c3e91",
+    "semantic_hash": "45987f8236fbf2f4316ee66a883c3e91"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/utils/supabase/middleware.ts": {
+    "mtime": 1781081213.5851657,
+    "ast_hash": "37a4987135f20eb93086e43c3119d687",
+    "semantic_hash": "37a4987135f20eb93086e43c3119d687"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/utils/supabase/server.ts": {
+    "mtime": 1781081214.6199481,
+    "ast_hash": "efd8cc3ea59d68975a5f6f8c7a79d584",
+    "semantic_hash": "efd8cc3ea59d68975a5f6f8c7a79d584"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/.github/workflows/deploy-agent-avm.yml": {
+    "mtime": 1782299536.8825655,
+    "ast_hash": "ee0001e0df2e51e04682c5b3d3304bfb",
+    "semantic_hash": "ee0001e0df2e51e04682c5b3d3304bfb"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/CHANGELOG.md": {
+    "mtime": 1782299536.882861,
+    "ast_hash": "528abfbdf8defec357147fa8ed9d5dc7",
+    "semantic_hash": "528abfbdf8defec357147fa8ed9d5dc7"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/CLAUDE.md": {
+    "mtime": 1781073210.7942436,
+    "ast_hash": "8089c25c331b0278bac007ee88eea465",
+    "semantic_hash": "8089c25c331b0278bac007ee88eea465"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/README.md": {
+    "mtime": 1782299536.8833275,
+    "ast_hash": "63848e86bb91edcf8002a0ac10d8e69b",
+    "semantic_hash": "63848e86bb91edcf8002a0ac10d8e69b"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docker-compose.yml": {
+    "mtime": 1781701723.519913,
+    "ast_hash": "29a5ae182d17bea3e17f4d14f2e3cf2e",
+    "semantic_hash": "29a5ae182d17bea3e17f4d14f2e3cf2e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/README.md": {
+    "mtime": 1782299536.8871238,
+    "ast_hash": "f1960cf448f2e54e3902c6e95345a464",
+    "semantic_hash": "f1960cf448f2e54e3902c6e95345a464"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/app-api-reference.md": {
+    "mtime": 1782299536.887287,
+    "ast_hash": "b3fa8a774b63f843f7a913350af3c6c0",
+    "semantic_hash": "b3fa8a774b63f843f7a913350af3c6c0"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/livekit-outbound-integration.md": {
+    "mtime": 1782299536.8874407,
+    "ast_hash": "10645e77895764601099e08e64f57fac",
+    "semantic_hash": "10645e77895764601099e08e64f57fac"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/docs/voicelist.md": {
+    "mtime": 1781707447.5217645,
+    "ast_hash": "e64e58ed0687e602eebc46ef89af87a3",
+    "semantic_hash": "e64e58ed0687e602eebc46ef89af87a3"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/infrastructure/deploy/cursor-server-verify.md": {
+    "mtime": 1782299536.8875763,
+    "ast_hash": "8a6edf8566ab472621256e7aed9afc46",
+    "semantic_hash": "8a6edf8566ab472621256e7aed9afc46"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/infrastructure/deploy/runbook.md": {
+    "mtime": 1782299536.8877075,
+    "ast_hash": "7748224a501add3bfa23ca29039611a7",
+    "semantic_hash": "7748224a501add3bfa23ca29039611a7"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-connect-supabase-database/.openspec.yaml": {
+    "mtime": 1781074316.8232594,
+    "ast_hash": "5b16868bf1deabfa5fe7a41a32c6185c",
+    "semantic_hash": "5b16868bf1deabfa5fe7a41a32c6185c"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-connect-supabase-database/design.md": {
+    "mtime": 1781074393.8867712,
+    "ast_hash": "0baf5b5750a4965636535f35f2c6cca6",
+    "semantic_hash": "0baf5b5750a4965636535f35f2c6cca6"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-connect-supabase-database/proposal.md": {
+    "mtime": 1781074366.8077402,
+    "ast_hash": "147d660045eca6af05906f935e770ed4",
+    "semantic_hash": "147d660045eca6af05906f935e770ed4"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-connect-supabase-database/specs/supabase-database/spec.md": {
+    "mtime": 1781074402.597895,
+    "ast_hash": "d52a57178450de56012e435d9903b8f1",
+    "semantic_hash": "d52a57178450de56012e435d9903b8f1"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-connect-supabase-database/tasks.md": {
+    "mtime": 1781076197.268695,
+    "ast_hash": "c9f205a46526de6f8d646ac6e7bc87af",
+    "semantic_hash": "c9f205a46526de6f8d646ac6e7bc87af"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-chart-palette/.openspec.yaml": {
+    "mtime": 1781085326.9553354,
+    "ast_hash": "5b16868bf1deabfa5fe7a41a32c6185c",
+    "semantic_hash": "5b16868bf1deabfa5fe7a41a32c6185c"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-chart-palette/design.md": {
+    "mtime": 1781085387.2975614,
+    "ast_hash": "64b6ba9858ca17bd72fb021be4dcd848",
+    "semantic_hash": "64b6ba9858ca17bd72fb021be4dcd848"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-chart-palette/proposal.md": {
+    "mtime": 1781085363.9883456,
+    "ast_hash": "2931b53b063e186683670f5103d9f40c",
+    "semantic_hash": "2931b53b063e186683670f5103d9f40c"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-chart-palette/specs/chart-visual-system/spec.md": {
+    "mtime": 1781085400.2478235,
+    "ast_hash": "d94668192003f2c225b655f27fc6e357",
+    "semantic_hash": "d94668192003f2c225b655f27fc6e357"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-chart-palette/tasks.md": {
+    "mtime": 1781085639.2268944,
+    "ast_hash": "b081de692110ad10b200bc27d68d51af",
+    "semantic_hash": "b081de692110ad10b200bc27d68d51af"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-theme-update/.openspec.yaml": {
+    "mtime": 1781082015.1736715,
+    "ast_hash": "5b16868bf1deabfa5fe7a41a32c6185c",
+    "semantic_hash": "5b16868bf1deabfa5fe7a41a32c6185c"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-theme-update/design.md": {
+    "mtime": 1781082229.2893105,
+    "ast_hash": "ef9e095df8ba1253dbd08889c533c1ab",
+    "semantic_hash": "ef9e095df8ba1253dbd08889c533c1ab"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-theme-update/proposal.md": {
+    "mtime": 1781082144.7802968,
+    "ast_hash": "af22027b68c65d4222e9d00b85a6930d",
+    "semantic_hash": "af22027b68c65d4222e9d00b85a6930d"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-theme-update/specs/evra-component-reskin/spec.md": {
+    "mtime": 1781082272.2789137,
+    "ast_hash": "8e9da68dd37c3ad8d9f5657193a6445f",
+    "semantic_hash": "8e9da68dd37c3ad8d9f5657193a6445f"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-theme-update/specs/evra-design-tokens/spec.md": {
+    "mtime": 1781082243.0206747,
+    "ast_hash": "92eafd769f8811e5e4973e40e964595a",
+    "semantic_hash": "92eafd769f8811e5e4973e40e964595a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-theme-update/specs/evra-mui-theme/spec.md": {
+    "mtime": 1781082255.4772124,
+    "ast_hash": "f1b9da549fe857547e42ad8bad1b2263",
+    "semantic_hash": "f1b9da549fe857547e42ad8bad1b2263"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-10-evra-theme-update/tasks.md": {
+    "mtime": 1781083621.3141086,
+    "ast_hash": "a269b1db10913b1e06249a607c12a8f4",
+    "semantic_hash": "a269b1db10913b1e06249a607c12a8f4"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-17-remove-routr/.openspec.yaml": {
+    "mtime": 1781677961.283362,
+    "ast_hash": "bbc27e4b9d9d82db2a61a43236c8d23e",
+    "semantic_hash": "bbc27e4b9d9d82db2a61a43236c8d23e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-17-remove-routr/design.md": {
+    "mtime": 1781678054.0221756,
+    "ast_hash": "8a1928e2005e679475e3bec99d0851c1",
+    "semantic_hash": "8a1928e2005e679475e3bec99d0851c1"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-17-remove-routr/proposal.md": {
+    "mtime": 1781678024.4897335,
+    "ast_hash": "9268a6a9fa4f4c63dd50236014438339",
+    "semantic_hash": "9268a6a9fa4f4c63dd50236014438339"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-17-remove-routr/specs/legacy-outbound-calling/spec.md": {
+    "mtime": 1781678063.2141247,
+    "ast_hash": "ed73b3ddfcc0d62346c30c1994d2f8f9",
+    "semantic_hash": "ed73b3ddfcc0d62346c30c1994d2f8f9"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-17-remove-routr/specs/voip-provider-config/spec.md": {
+    "mtime": 1781678069.0275133,
+    "ast_hash": "bcacb1ec9d04067dff89891a24e4395e",
+    "semantic_hash": "bcacb1ec9d04067dff89891a24e4395e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/archive/2026-06-17-remove-routr/tasks.md": {
+    "mtime": 1781678491.4252756,
+    "ast_hash": "e4f49c15b3d21e5ad832d692814d69c6",
+    "semantic_hash": "e4f49c15b3d21e5ad832d692814d69c6"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/inworld-tts-voice-generation/.openspec.yaml": {
+    "mtime": 1781703584.99208,
+    "ast_hash": "bbc27e4b9d9d82db2a61a43236c8d23e",
+    "semantic_hash": "bbc27e4b9d9d82db2a61a43236c8d23e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/inworld-tts-voice-generation/design.md": {
+    "mtime": 1781703661.7282002,
+    "ast_hash": "ab2abf480230b53c0191db36c87d5e5e",
+    "semantic_hash": "ab2abf480230b53c0191db36c87d5e5e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/inworld-tts-voice-generation/proposal.md": {
+    "mtime": 1781703621.3160427,
+    "ast_hash": "a4ecf767a5c94212290149f4f0ff8014",
+    "semantic_hash": "a4ecf767a5c94212290149f4f0ff8014"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/inworld-tts-voice-generation/specs/campaign-voice-generation/spec.md": {
+    "mtime": 1781703692.2104664,
+    "ast_hash": "e19924c8d6fc6b1bc2f33d9a6f0be37e",
+    "semantic_hash": "e19924c8d6fc6b1bc2f33d9a6f0be37e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/inworld-tts-voice-generation/specs/inworld-tts-api/spec.md": {
+    "mtime": 1781703670.686643,
+    "ast_hash": "d63ccb37b675be2d9b3252fee672ed26",
+    "semantic_hash": "d63ccb37b675be2d9b3252fee672ed26"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/inworld-tts-voice-generation/tasks.md": {
+    "mtime": 1781704181.9886608,
+    "ast_hash": "c783aff95bc4da812bc12c315b878465",
+    "semantic_hash": "c783aff95bc4da812bc12c315b878465"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/livekit-outbound-dial-script/.openspec.yaml": {
+    "mtime": 1781267961.8646975,
+    "ast_hash": "50ed703e1935093bc941105e882d3d86",
+    "semantic_hash": "50ed703e1935093bc941105e882d3d86"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/livekit-outbound-dial-script/design.md": {
+    "mtime": 1781268015.4828992,
+    "ast_hash": "04dafdcd1ccb11571ac267b3fa78c47f",
+    "semantic_hash": "04dafdcd1ccb11571ac267b3fa78c47f"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/livekit-outbound-dial-script/proposal.md": {
+    "mtime": 1781268000.1685631,
+    "ast_hash": "6a68a8a589def36fd297aea33127c655",
+    "semantic_hash": "6a68a8a589def36fd297aea33127c655"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/livekit-outbound-dial-script/specs/dashboard-polling/spec.md": {
+    "mtime": 1781268028.7486904,
+    "ast_hash": "a6a26acd2147a415231b8dd20563e2bf",
+    "semantic_hash": "a6a26acd2147a415231b8dd20563e2bf"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/livekit-outbound-dial-script/specs/livekit-outbound-dial/spec.md": {
+    "mtime": 1781268026.066996,
+    "ast_hash": "85d566f2a12b8f56347a91a535c9ba63",
+    "semantic_hash": "85d566f2a12b8f56347a91a535c9ba63"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/livekit-outbound-dial-script/specs/supabase-database/spec.md": {
+    "mtime": 1781268031.3204746,
+    "ast_hash": "dc2cfdc770e3d6d2b389686a2e1f7ffd",
+    "semantic_hash": "dc2cfdc770e3d6d2b389686a2e1f7ffd"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/livekit-outbound-dial-script/tasks.md": {
+    "mtime": 1781596867.4304109,
+    "ast_hash": "9f66267bb2281582fa4bf6872c293765",
+    "semantic_hash": "9f66267bb2281582fa4bf6872c293765"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/production-server-deployment/.openspec.yaml": {
+    "mtime": 1781085785.7282526,
+    "ast_hash": "5b16868bf1deabfa5fe7a41a32c6185c",
+    "semantic_hash": "5b16868bf1deabfa5fe7a41a32c6185c"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/production-server-deployment/design.md": {
+    "mtime": 1781086603.9269483,
+    "ast_hash": "431de01b321ff497b5cdca55cbc48afd",
+    "semantic_hash": "431de01b321ff497b5cdca55cbc48afd"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/production-server-deployment/proposal.md": {
+    "mtime": 1781086604.0518196,
+    "ast_hash": "6e1ba90c73db396aba05347601c5455e",
+    "semantic_hash": "6e1ba90c73db396aba05347601c5455e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/production-server-deployment/specs/production-deployment/spec.md": {
+    "mtime": 1781085863.311948,
+    "ast_hash": "80ad6e65ac174f719d6676398813c63d",
+    "semantic_hash": "80ad6e65ac174f719d6676398813c63d"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/production-server-deployment/tasks.md": {
+    "mtime": 1781085964.6274278,
+    "ast_hash": "01e1638371504cf7291c421486be20cb",
+    "semantic_hash": "01e1638371504cf7291c421486be20cb"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-frontend-sync/.openspec.yaml": {
+    "mtime": 1781533157.536752,
+    "ast_hash": "0ac7f81219e0206f87bbee5da5020dcc",
+    "semantic_hash": "0ac7f81219e0206f87bbee5da5020dcc"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-frontend-sync/design.md": {
+    "mtime": 1781596867.4298246,
+    "ast_hash": "4de4dddaa8e3c5e64de816663f03369e",
+    "semantic_hash": "4de4dddaa8e3c5e64de816663f03369e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-frontend-sync/proposal.md": {
+    "mtime": 1781596867.4304028,
+    "ast_hash": "067bb43dba86de61315770a51d2a7754",
+    "semantic_hash": "067bb43dba86de61315770a51d2a7754"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-frontend-sync/specs/routr-outbound-routing/spec.md": {
+    "mtime": 1781596867.4303906,
+    "ast_hash": "aae13062d7e33164b55db8332f79906f",
+    "semantic_hash": "aae13062d7e33164b55db8332f79906f"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-frontend-sync/specs/routr-platform-settings/spec.md": {
+    "mtime": 1781596867.4501934,
+    "ast_hash": "9fca2aca31b86f396412856b3e561a11",
+    "semantic_hash": "9fca2aca31b86f396412856b3e561a11"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-frontend-sync/specs/routr-provider-sync/spec.md": {
+    "mtime": 1781596867.4298122,
+    "ast_hash": "16ae0dbf1327eb8f181ae9094607ed4c",
+    "semantic_hash": "16ae0dbf1327eb8f181ae9094607ed4c"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-frontend-sync/specs/supabase-database/spec.md": {
+    "mtime": 1781596867.4404254,
+    "ast_hash": "e0a47bd4b015338d28fd9bd170f93924",
+    "semantic_hash": "e0a47bd4b015338d28fd9bd170f93924"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-frontend-sync/specs/voip-provider-carrier-schema/spec.md": {
+    "mtime": 1781596867.4303813,
+    "ast_hash": "4bf8a6d270a1d4e7af5aa2431f446c5e",
+    "semantic_hash": "4bf8a6d270a1d4e7af5aa2431f446c5e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-frontend-sync/tasks.md": {
+    "mtime": 1781596867.4298315,
+    "ast_hash": "a078ff11572656f9ca35c6587c3f5d41",
+    "semantic_hash": "a078ff11572656f9ca35c6587c3f5d41"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-outbound-v1/.openspec.yaml": {
+    "mtime": 1781516499.553838,
+    "ast_hash": "0ac7f81219e0206f87bbee5da5020dcc",
+    "semantic_hash": "0ac7f81219e0206f87bbee5da5020dcc"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-outbound-v1/design.md": {
+    "mtime": 1781516587.434598,
+    "ast_hash": "ab1698d5d5b4427a77df349956eddc8a",
+    "semantic_hash": "ab1698d5d5b4427a77df349956eddc8a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-outbound-v1/proposal.md": {
+    "mtime": 1781516523.1910534,
+    "ast_hash": "30efc8f194b546d324aa3443b2d067ca",
+    "semantic_hash": "30efc8f194b546d324aa3443b2d067ca"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-outbound-v1/specs/routr-outbound-routing/spec.md": {
+    "mtime": 1781516603.9298105,
+    "ast_hash": "f2905888fe8df17278a644a460261dad",
+    "semantic_hash": "f2905888fe8df17278a644a460261dad"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/changes/routr-outbound-v1/tasks.md": {
+    "mtime": 1781517630.501715,
+    "ast_hash": "1698c9b55ae8437eff107d6e3685755e",
+    "semantic_hash": "1698c9b55ae8437eff107d6e3685755e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/config.yaml": {
+    "mtime": 1781073604.681938,
+    "ast_hash": "9e3e7672b387a282583011181ab35f9a",
+    "semantic_hash": "9e3e7672b387a282583011181ab35f9a"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/chart-visual-system/spec.md": {
+    "mtime": 1781173533.707702,
+    "ast_hash": "e9c0d60b03b02329c9246b5018da2cef",
+    "semantic_hash": "e9c0d60b03b02329c9246b5018da2cef"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/evra-component-reskin/spec.md": {
+    "mtime": 1781173533.707664,
+    "ast_hash": "e4cc007290a23f40e00f221ef828817b",
+    "semantic_hash": "e4cc007290a23f40e00f221ef828817b"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/evra-design-tokens/spec.md": {
+    "mtime": 1781173533.7076786,
+    "ast_hash": "7c47c61744fe06e6e68157397f3be1c3",
+    "semantic_hash": "7c47c61744fe06e6e68157397f3be1c3"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/evra-mui-theme/spec.md": {
+    "mtime": 1781173533.707677,
+    "ast_hash": "b2e1ec331353cdbf57eaaa3e3c480e44",
+    "semantic_hash": "b2e1ec331353cdbf57eaaa3e3c480e44"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/legacy-outbound-calling/spec.md": {
+    "mtime": 1781680292.008386,
+    "ast_hash": "af78d3be124504520deb21cdd96d3e6f",
+    "semantic_hash": "af78d3be124504520deb21cdd96d3e6f"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/supabase-database/spec.md": {
+    "mtime": 1781173533.7076879,
+    "ast_hash": "47b5546b3f9a6352e67864c7a5f3dee7",
+    "semantic_hash": "47b5546b3f9a6352e67864c7a5f3dee7"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/openspec/specs/voip-provider-config/spec.md": {
+    "mtime": 1781680295.1882725,
+    "ast_hash": "3d2f8ceee620fc8be6c9f21a5254ba74",
+    "semantic_hash": "3d2f8ceee620fc8be6c9f21a5254ba74"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/plans/issue-34-callops-integration.md": {
+    "mtime": 1782299536.8882358,
+    "ast_hash": "96a36a231776ae7932c35186f905a834",
+    "semantic_hash": "96a36a231776ae7932c35186f905a834"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/README.md": {
+    "mtime": 1781707447.5235076,
+    "ast_hash": "56b071b83bdf982f17709590e8728250",
+    "semantic_hash": "56b071b83bdf982f17709590e8728250"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/supabase/database-schema.md": {
+    "mtime": 1782294907.2081506,
+    "ast_hash": "42ea76dd08708a5b47a9da9b0179411f",
+    "semantic_hash": "42ea76dd08708a5b47a9da9b0179411f"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/evra.png": {
+    "mtime": 1781086351.4324045,
+    "ast_hash": "22c62aa3c2660bcf72d1927c4e3935bd",
+    "semantic_hash": "22c62aa3c2660bcf72d1927c4e3935bd"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/evra_trans.png": {
+    "mtime": 1781086351.432722,
+    "ast_hash": "48014969716d4de91bf0ca9729ab7062",
+    "semantic_hash": "48014969716d4de91bf0ca9729ab7062"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/file.svg": {
+    "mtime": 1781073210.8001714,
+    "ast_hash": "d09f95206c3fa0bb9bd9fefabfd0ea71",
+    "semantic_hash": "d09f95206c3fa0bb9bd9fefabfd0ea71"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/globe.svg": {
+    "mtime": 1781073210.8002481,
+    "ast_hash": "2aaafa6a49b6563925fe440891e32717",
+    "semantic_hash": "2aaafa6a49b6563925fe440891e32717"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/logo.png": {
+    "mtime": 1781073210.8005483,
+    "ast_hash": "555edeb32d2bffbaf62357d5ed7872c3",
+    "semantic_hash": "555edeb32d2bffbaf62357d5ed7872c3"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/next.svg": {
+    "mtime": 1781073210.8006556,
+    "ast_hash": "8e061864f388b47f33a1c3780831193e",
+    "semantic_hash": "8e061864f388b47f33a1c3780831193e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/vercel.svg": {
+    "mtime": 1781073210.8007226,
+    "ast_hash": "c0af2f507b369b085b35ef4bbe3bcf1e",
+    "semantic_hash": "c0af2f507b369b085b35ef4bbe3bcf1e"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/window.svg": {
+    "mtime": 1781073210.800806,
+    "ast_hash": "a2760511c65806022ad20adf74370ff3",
+    "semantic_hash": "a2760511c65806022ad20adf74370ff3"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/female_anele_african.mp3": {
+    "mtime": 1781707447.5240254,
+    "ast_hash": "72a8799bd4b4646a21b054741e323179",
+    "semantic_hash": "72a8799bd4b4646a21b054741e323179"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/female_catherine_white.mp3": {
+    "mtime": 1781707447.5245802,
+    "ast_hash": "827ef7f2307ba89970d3676f55eadacd",
+    "semantic_hash": "827ef7f2307ba89970d3676f55eadacd"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/female_fiona_white.mp3": {
+    "mtime": 1781707447.5251925,
+    "ast_hash": "4f3d7cc5136e3aa50e8229e54ae8554c",
+    "semantic_hash": "4f3d7cc5136e3aa50e8229e54ae8554c"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/female_jennifer_white_soft.mp3": {
+    "mtime": 1781707447.5261064,
+    "ast_hash": "5c1aa5278778d280086601970d81246f",
+    "semantic_hash": "5c1aa5278778d280086601970d81246f"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/female_jessica_white_soft.mp3": {
+    "mtime": 1781707447.5267348,
+    "ast_hash": "709a2ff4157e37446f12ad2b64407f3c",
+    "semantic_hash": "709a2ff4157e37446f12ad2b64407f3c"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/female_kudi_african.mp3": {
+    "mtime": 1781707447.527488,
+    "ast_hash": "27398c40b64f0d1f21b462261eced59b",
+    "semantic_hash": "27398c40b64f0d1f21b462261eced59b"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/female_mamohau_african.mp3": {
+    "mtime": 1781707447.5281537,
+    "ast_hash": "76867bb3f189eb618d8a5f1f4f5646be",
+    "semantic_hash": "76867bb3f189eb618d8a5f1f4f5646be"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/female_shannon_white.mp3": {
+    "mtime": 1781707447.5285366,
+    "ast_hash": "fe4be5d42ce11b5f0fd91ea7ee2cb0a3",
+    "semantic_hash": "fe4be5d42ce11b5f0fd91ea7ee2cb0a3"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/female_tumi_african.mp3": {
+    "mtime": 1781707447.529128,
+    "ast_hash": "99cc4a826a5415909decc5d0485ee997",
+    "semantic_hash": "99cc4a826a5415909decc5d0485ee997"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/male_abulele_african.mp3": {
+    "mtime": 1781707447.5297806,
+    "ast_hash": "496c2f08403d236e7f2de641567f62a2",
+    "semantic_hash": "496c2f08403d236e7f2de641567f62a2"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/male_alex_white.mp3": {
+    "mtime": 1781707447.530353,
+    "ast_hash": "2c04d8ae8ac74f9f285b355d9ef5f98b",
+    "semantic_hash": "2c04d8ae8ac74f9f285b355d9ef5f98b"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/male_ashley_white.mp3": {
+    "mtime": 1781707447.531104,
+    "ast_hash": "b0df0b75d4ecc13a520723deb5f794fb",
+    "semantic_hash": "b0df0b75d4ecc13a520723deb5f794fb"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/male_bongani_african.mp3": {
+    "mtime": 1781707447.532182,
+    "ast_hash": "fddd07fd5637c89c46a93ec0d2edcc21",
+    "semantic_hash": "fddd07fd5637c89c46a93ec0d2edcc21"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/male_frank_white.mp3": {
+    "mtime": 1781707447.5328014,
+    "ast_hash": "c6e5b6872ecb1d092dc09c3c5a2b8f42",
+    "semantic_hash": "c6e5b6872ecb1d092dc09c3c5a2b8f42"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/male_jacob_african.mp3": {
+    "mtime": 1781707447.5333967,
+    "ast_hash": "4ea934f06bc7e250826925481f357869",
+    "semantic_hash": "4ea934f06bc7e250826925481f357869"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/male_kew_african.mp3": {
+    "mtime": 1781707447.534087,
+    "ast_hash": "56f6a24d5367de28e997f3d64b069e36",
+    "semantic_hash": "56f6a24d5367de28e997f3d64b069e36"
+  },
+  "/Users/deepspec/Command_Center/Work/evra_call_center/agent-avm-interface/public/voice-samples/male_rob_white.mp3": {
+    "mtime": 1781707447.5348961,
+    "ast_hash": "3443c41a94495bdfe36c556c3858a86f",
+    "semantic_hash": "3443c41a94495bdfe36c556c3858a86f"
+  }
+}

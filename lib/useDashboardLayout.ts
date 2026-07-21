@@ -57,6 +57,10 @@ export function useDashboardLayout(): DashboardLayoutApi {
   const [layout, setLayout] = useState<Layout>(defaultLayout)
   const [templates, setTemplates] = useState<DashboardTemplate[]>([])
 
+  // Deliberate post-hydration sync, not a lint-flagged "derived state" smell: `layout` must
+  // start as `defaultLayout()` on both server and client render to avoid a hydration mismatch,
+  // then this effect reads localStorage (unavailable during SSR) once mounted.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setLayout(load()) }, [])
   useEffect(() => { try { window.localStorage.setItem(LS_KEY, JSON.stringify(layout)) } catch { /* ignore */ } }, [layout])
 
@@ -68,6 +72,9 @@ export function useDashboardLayout(): DashboardLayoutApi {
     } catch { /* keep existing */ }
   }, [])
 
+  // Fire-and-forget fetch on mount; reloadTemplates only sets state inside its own
+  // async try/catch after an await, never synchronously in this effect's body.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { reloadTemplates() }, [reloadTemplates])
 
   const hiddenSet = new Set(layout.hidden)

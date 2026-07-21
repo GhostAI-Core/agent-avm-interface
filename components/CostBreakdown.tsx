@@ -1,14 +1,16 @@
 'use client'
+import { useEffect, useState } from 'react'
 import Box from '@mui/material/Box'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { COST_MODEL, billedMinutes, estimateCallCost } from '@/lib/callCost'
 import { toneColors } from '@/lib/tokens'
 import type { CallRecord } from '@/types'
 
-// Detailed CPL / cost breakdown. The FORMULA + rates are static (lib/callCost COST_MODEL);
-// the numbers recompute live from per-call telemetry (talk_seconds). Labelled an ESTIMATE
-// because call_records.cost is always 0 (CallOps writes no real cost yet — Issue #11).
+// Detailed CPL / cost breakdown, computed from the REAL per-call `cost` CallOps persists at
+// call-outcome time (app/services/cost_estimator.py) -- no more client-side estimation from
+// talk_seconds (Issue #11 is fixed: call_records.cost is no longer always 0). The carrier rate
+// shown here is read live from /api/settings (admin-editable on the Settings page), so this
+// widget always reflects the currently configured price, not a frontend-hardcoded constant.
 
 const R = (n: number) => `R${n.toFixed(2)}`
 const cents = (n: number) => `${Math.round(n * 100)}c`
@@ -26,39 +28,40 @@ function Row({ label, value, sub, strong, tone }: { label: string; value: string
 }
 
 export default function CostBreakdown({ calls }: { calls: (CallRecord & { campaign_id: number })[] }) {
-  const m = COST_MODEL
+  const [ratePerMin, setRatePerMin] = useState<number | null>(null)
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (active && typeof j?.cost_per_minute_zar === 'number') setRatePerMin(j.cost_per_minute_zar) })
+      .catch(() => { /* leave rate display blank */ })
+    return () => { active = false }
+  }, [])
+
   const talking = calls.filter(c => Number(c.talk_seconds) > 0)
+  const talkMin = calls.reduce((s, c) => s + (Number(c.talk_seconds) || 0), 0) / 60
   const onAirOf = (c: CallRecord) => Math.max(Number(c.talk_seconds) || 0, Number(c.on_air_seconds) || 0)
-  // Carrier bills the answered leg (talk); LiveKit bills the whole session (on-air, all calls).
-  const talkMin = calls.reduce((s, c) => s + billedMinutes(Number(c.talk_seconds) || 0), 0)
-  const airMin = calls.reduce((s, c) => s + billedMinutes(onAirOf(c)), 0)
-  const carrier = talkMin * m.carrierPerMin
-  const livekit = airMin * m.livekitPerMin
-  const ai = talking.length * m.aiPerAnsweredCall
-  const allIn = calls.reduce((s, c) => s + estimateCallCost(Number(c.talk_seconds) || 0, onAirOf(c)), 0)
+  const airMin = calls.reduce((s, c) => s + onAirOf(c), 0) / 60
+  const allIn = calls.reduce((s, c) => s + (Number(c.cost) || 0), 0)
   // A conversion is a subscribe (consent campaigns) or a lead (lead-gen campaigns).
   const subs = calls.filter(c => c.outcome === 'subscribed' || c.outcome === 'lead').length
   const n = talking.length || 1
   const pctOf = (x: number) => allIn ? `${Math.round((x / allIn) * 100)}%` : '—'
-  const incLabel = m.billingIncrementSec === 1 ? 'per-second' : `${m.billingIncrementSec}s`
+  // Carrier-only attribution estimate (the persisted `allIn` total already includes it plus any
+  // per-answered-call AI fee; LiveKit is self-hosted / not metered per-call).
+  const carrierEstimate = ratePerMin != null ? talkMin * ratePerMin : null
 
   return (
     <Stack spacing={1.2} sx={{ fontSize: '0.8rem' }}>
       <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
         <Typography className="mono" sx={{ fontSize: '0.72rem', color: 'text.secondary', lineHeight: 1.5 }}>
-          cost = talk×carrier + on-air×LiveKit + AI/answered
+          Billed cost, persisted per call by CallOps
         </Typography>
         <Typography sx={{ fontSize: '0.65rem', color: 'text.disabled', mt: 0.3 }}>
-          Carrier bills the answered leg (talk); LiveKit bills the full session (on-air ≈ 5.5× talk).
-          Recomputes live from telemetry ({m.currency}, {incLabel}).
+          Carrier bills the answered leg (talk); LiveKit is self-hosted (not metered per-call).
+          {ratePerMin != null && ` Current rate: R${ratePerMin.toFixed(2)}/min.`}
         </Typography>
-      </Box>
-
-      <Box>
-        <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.3 }}>Rates (COST_MODEL)</Typography>
-        <Row label="Carrier · utility_connect" value={`${R(m.carrierPerMin)}/min`} />
-        <Row label="LiveKit · agent + SIP" value={`${R(m.livekitPerMin)}/min`} />
-        <Row label="AMD AI / answered call" value={`${R(m.aiPerAnsweredCall)}`} />
       </Box>
 
       <Box>
@@ -70,12 +73,10 @@ export default function CostBreakdown({ calls }: { calls: (CallRecord & { campai
       </Box>
 
       <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 0.5 }}>
-        <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.3 }}>Cost breakdown</Typography>
-        <Row label="Carrier (talk)" value={R(carrier)} sub={pctOf(carrier)} />
-        <Row label="LiveKit (on-air)" value={R(livekit)} sub={pctOf(livekit)} />
-        <Row label="AMD AI" value={R(ai)} sub={pctOf(ai)} />
-        <Row label="All-in" value={R(allIn)} strong tone="neg" />
-        <Row label="Per talking-call" value={`carrier ${cents(carrier / n)} · all-in ${cents(allIn / n)}`} />
+        <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.3 }}>Cost</Typography>
+        {carrierEstimate != null && <Row label="Carrier (talk × rate)" value={R(carrierEstimate)} sub={pctOf(carrierEstimate)} />}
+        <Row label="Total billed" value={R(allIn)} strong tone="neg" />
+        <Row label="Per talking-call" value={cents(allIn / n)} />
       </Box>
 
       <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 0.5 }}>
@@ -83,7 +84,7 @@ export default function CostBreakdown({ calls }: { calls: (CallRecord & { campai
       </Box>
 
       <Typography sx={{ fontSize: '0.63rem', color: 'text.disabled', lineHeight: 1.4 }}>
-        ⚠ Estimate — <code>call_records.cost</code> is 0 (CallOps Issue #11). Carrier rate is a wholesale proxy; if Utility Connect bills 60/60, cost ≈ 3× on these &lt;30s calls.
+        Rate is admin-editable on the Settings page — changes apply to calls priced after the change, not retroactively.
       </Typography>
     </Stack>
   )

@@ -30,22 +30,26 @@ async function load(type: string): Promise<LookupItem[]> {
 // Fetch a lookup list; tolerates in-flight/failed states without throwing so a
 // missing lookups endpoint degrades to empty dropdowns rather than crashing.
 export function useLookup(type: string): { items: LookupItem[]; loading: boolean; error: boolean } {
+  // Track `type` alongside its data so a change is caught during render (React's sanctioned
+  // "adjusting state when a prop changes" pattern) instead of a setState-in-effect cache sync.
+  const [renderedType, setRenderedType] = useState(type)
   const [items, setItems] = useState<LookupItem[]>(() => cache.get(type) ?? [])
-  const [loading, setLoading] = useState(!cache.has(type))
+  const [loading, setLoading] = useState(() => !cache.has(type))
   const [error, setError] = useState(false)
 
+  if (type !== renderedType) {
+    setRenderedType(type)
+    setItems(cache.get(type) ?? [])
+    setLoading(!cache.has(type))
+    setError(false)
+  }
+
   useEffect(() => {
+    if (cache.has(type)) return
     let active = true
-    if (cache.has(type)) {
-      setItems(cache.get(type)!)
-      setLoading(false)
-      return
-    }
-    setLoading(true)
     load(type)
-      .then((it) => { if (active) { setItems(it); setError(false) } })
-      .catch(() => { if (active) { setItems([]); setError(true) } })
-      .finally(() => { if (active) setLoading(false) })
+      .then((it) => { if (active) { setItems(it); setError(false); setLoading(false) } })
+      .catch(() => { if (active) { setItems([]); setError(true); setLoading(false) } })
     return () => { active = false }
   }, [type])
 

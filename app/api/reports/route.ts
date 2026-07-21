@@ -1,29 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
-import { createAdminClient } from '@/utils/supabase/admin'
-import { estimateCallCost } from '@/lib/callCost'
-import type { Agent, CampaignReport } from '@/types'
+import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
+import { callopsGet, callopsItems, callopsErrorResponse } from '@/utils/callops'
+import type { Agent, CampaignReport, Product } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
-// Campaign roll-up computed from the RAW per-call truth in Supabase `call_records`
-// (100% populated: outcome, talk_seconds, cost), NOT the CallOps `call_logs`/`campaign_report`
-// aggregates — those mis-divide the outcome vocab (they drop `subscribed`/`opted_out`, never
-// count `dialed`, and the two disagree). We map the six real outcomes into the report columns
-// ourselves so the numbers are correct and conversions (subscribed) finally surface.
+// Campaign roll-up sourced from CallOps `GET /companies/{id}/dashboard/campaign-performance`
+// (0.6.0) — the authoritative aggregate over `call_records`, including the real per-call `cost`
+// CallOps now persists at call-outcome time (see evra_callops app/services/cost_estimator.py).
+// `by_outcome` gives a raw tally of every outcome value, which we map into the report's six
+// dispositions the same way the previous Supabase-direct version did:
 //
-//   raw outcome   → report column
-//   connected     → connected
-//   subscribed    → qualified      (the UI's success/conversion bucket; drives CPL)
-//   opted_out     → opt_out        (compliance opt-out / DNC)
-//   no_answer     → no_answer
-//   voicemail     → voicemail
-//   failed        → failed
-//   dialed        = attempt count (rows), total_spent = Σ cost, cpl = spend / subscribed
-// Columns we never produce (no_speech/hangup/ni/callback/busy_line) stay 0 — honest, not faked.
+//   raw outcome   -> report column
+//   connected     -> connected
+//   subscribed    -> qualified      (the UI's success/conversion bucket; drives CPL)
+//   opted_out     -> opt_out        (compliance opt-out / DNC)
+//   no_answer     -> no_answer
+//   voicemail     -> voicemail
+//   failed        -> failed
+//   lead          -> lead
+//   dialed        = calls, total_spent = total_cost (real, not estimated)
+// Columns we never produce (no_speech/hangup/ni/dnq/callback/busy_line) stay 0 -- honest, not faked.
+//
+// CallOps lists per company, so -- like /api/campaigns and /api/leads -- we fan out over the
+// user's companies and merge.
 
-type CampMeta = { id: number; name: string | null; agent: string | null; agent_name: string | null; status: string | null }
-type RecRow = { id: number; campaign_id: number | null; outcome: string | null; talk_seconds: number | null; cost: number | null }
+type PerfItem = {
+  campaign_id: number
+  name: string | null
+  status: string | null
+  agent: string | null
+  agent_name: string | null
+  calls: number
+  average_talk_seconds: number
+  total_cost: number
+  by_outcome: Record<string, number>
+}
+
+// Minimal shape read off `/companies/{id}/campaigns` items, just to resolve product_id per
+// campaign_id -- campaign-performance doesn't carry it.
+type CampaignLite = { id: number; product_id?: number | null }
 
 const OUTCOME_COL: Record<string, keyof CampaignReport> = {
   connected: 'connected',
@@ -40,72 +56,74 @@ function fmtDuration(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-function blankReport(meta: CampMeta): CampaignReport & { _talkTotal: number; _talkCount: number } {
-  return {
-    id: meta.id,
-    campaign_id: meta.id,
-    campaign: { name: meta.name ?? '—', agent: (meta.agent ?? meta.agent_name ?? 'seeker') as Agent },
+function toReport(p: PerfItem, productId: number | null, productName: string | null): CampaignReport {
+  const row: CampaignReport = {
+    id: p.campaign_id,
+    campaign_id: p.campaign_id,
+    campaign: {
+      name: p.name ?? '—',
+      agent: (p.agent ?? p.agent_name ?? 'seeker') as Agent,
+      // Product (script + consent-flow) this campaign dials for -- supersedes `agent` as the
+      // filter/display key so brand-new products (not just seeker/grace/sangoma) show up too.
+      product_id: productId ?? undefined,
+      product_name: productName ?? undefined,
+    },
     phone_number: '',
-    status: meta.status ?? '',
-    dialed: 0, connected: 0, qualified: 0, voicemail: 0, no_speech: 0, hangup: 0,
+    status: p.status ?? '',
+    dialed: p.calls, connected: 0, qualified: 0, voicemail: 0, no_speech: 0, hangup: 0,
     ni: 0, dnq: 0, callback: 0, no_answer: 0, busy_line: 0, opt_out: 0, lead: 0, failed: 0,
-    duration: '0:00', cpl: 0, total_spent: 0,
-    _talkTotal: 0, _talkCount: 0,
+    duration: fmtDuration(p.average_talk_seconds), cpl: 0, total_spent: Math.round((p.total_cost ?? 0) * 100) / 100,
   }
+  for (const [outcome, count] of Object.entries(p.by_outcome ?? {})) {
+    const col = OUTCOME_COL[outcome]
+    if (col) (row[col] as number) = count
+  }
+  const conversions = row.qualified + row.lead
+  row.cpl = conversions ? row.total_spent / conversions : 0
+  return row
 }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const agent = searchParams.get('agent')
+  const agent = searchParams.get('agent') // legacy filter: seeker/grace/sangoma (campaigns.agent)
+  const productIdParam = searchParams.get('product_id')
+  const productIdFilter = productIdParam ? Number(productIdParam) : null
 
-  const { user } = await getAuthUser()
-  if (!user) return unauthorized()
-  const admin = createAdminClient()
-  if (!admin) return NextResponse.json({ error: 'server not configured' }, { status: 503 })
+  const { token } = await getAccessToken()
+  if (!token) return unauthorized()
 
-  // Campaign metadata (name/agent/status) + all per-call records.
-  const [{ data: camps }, { data: recs, error: recErr }, { data: sessions }] = await Promise.all([
-    admin.from('campaigns').select('id, name, agent, agent_name, status'),
-    admin.from('call_records').select('id, campaign_id, outcome, talk_seconds, cost'),
-    admin.from('call_sessions').select('call_record_id, started_at, ended_at'),
-  ])
-  if (recErr) return NextResponse.json({ error: recErr.message }, { status: 500 })
+  try {
+    const companies = await callopsItems<{ id: number }>('/companies', token)
+    const perCompany = await Promise.all(
+      (companies ?? []).map(async (co) => {
+        const [perf, campaignsList, products] = await Promise.all([
+          callopsGet<{ campaigns?: PerfItem[] }>(`/companies/${co.id}/dashboard/campaign-performance`, token)
+            .then((r) => r.campaigns ?? [])
+            .catch(() => [] as PerfItem[]),
+          // Resolve campaign_id -> product_id (campaign-performance doesn't carry it).
+          callopsItems<CampaignLite>(`/companies/${co.id}/campaigns?page_size=200`, token).catch(() => [] as CampaignLite[]),
+          // Resolve product_id -> name for the filter dropdown + report display.
+          callopsItems<Product>(`/companies/${co.id}/products`, token).catch(() => [] as Product[]),
+        ])
+        const productIdByCampaign = new Map(campaignsList.map((c) => [c.id, c.product_id ?? null]))
+        const productNameById = new Map(products.map((p) => [p.id, p.name]))
+        return perf.map((p) => {
+          const productId = productIdByCampaign.get(p.campaign_id) ?? null
+          const productName = productId != null ? productNameById.get(productId) ?? null : null
+          return toReport(p, productId, productName)
+        })
+      }),
+    )
 
-  // On-air per call (session ended_at − started_at) — LiveKit bills this, not talk.
-  const airByRec = new Map<number, number>()
-  for (const s of (sessions ?? []) as { call_record_id: number | null; started_at: string | null; ended_at: string | null }[]) {
-    if (s.call_record_id == null || !s.started_at || !s.ended_at) continue
-    const secs = (+new Date(s.ended_at) - +new Date(s.started_at)) / 1000
-    if (secs > 0 && secs < 3600) airByRec.set(s.call_record_id, secs)
+    const reports = perCompany.flat().filter((r) => r.dialed > 0) // only campaigns that actually placed calls
+
+    const filtered = productIdFilter != null
+      ? reports.filter((r) => r.campaign?.product_id === productIdFilter)
+      : agent
+        ? reports.filter((r) => r.campaign?.agent === agent)
+        : reports
+    return NextResponse.json({ reports: filtered })
+  } catch (e) {
+    return callopsErrorResponse(e)
   }
-
-  const byId = new Map<number, ReturnType<typeof blankReport>>()
-  for (const c of (camps ?? []) as CampMeta[]) byId.set(c.id, blankReport(c))
-
-  for (const r of (recs ?? []) as RecRow[]) {
-    if (r.campaign_id == null) continue
-    let row = byId.get(r.campaign_id)
-    // A record for a campaign we don't have metadata for still counts.
-    if (!row) { row = blankReport({ id: r.campaign_id, name: null, agent: null, agent_name: null, status: null }); byId.set(r.campaign_id, row) }
-    row.dialed += 1
-    const col = r.outcome ? OUTCOME_COL[r.outcome] : undefined
-    if (col) (row[col] as number) += 1
-    // `cost` is always 0 (CallOps doesn't bill yet) — ESTIMATE from talk + on-air instead.
-    const talk = typeof r.talk_seconds === 'number' ? r.talk_seconds : 0
-    const onAir = airByRec.get(r.id) ?? talk
-    row.total_spent += (typeof r.cost === 'number' && r.cost > 0) ? r.cost : estimateCallCost(talk, onAir)
-    if (talk > 0) { row._talkTotal += talk; row._talkCount += 1 }
-  }
-
-  const reports: CampaignReport[] = [...byId.values()]
-    .filter((row) => row.dialed > 0) // only campaigns that actually placed calls
-    .map(({ _talkTotal, _talkCount, ...row }) => ({
-      ...row,
-      duration: fmtDuration(_talkCount ? _talkTotal / _talkCount : 0),
-      // CPL = cost per acquisition; a conversion is a subscribe (consent) OR a lead (lead-gen).
-      cpl: (row.qualified + row.lead) ? row.total_spent / (row.qualified + row.lead) : 0,
-    }))
-
-  const filtered = agent ? reports.filter((r) => r.campaign?.agent === agent) : reports
-  return NextResponse.json({ reports: filtered })
 }

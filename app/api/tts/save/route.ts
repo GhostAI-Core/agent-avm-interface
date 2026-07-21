@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getAuthUser, unauthorized } from '@/utils/supabase/auth'
+import { getAccessToken, unauthorized } from '@/utils/supabase/auth'
 import { isValidVoiceId } from '@/lib/inworld-voices'
 import { isScriptStorageConfigured, uploadCampaignScript } from '@/lib/avm-script-storage'
+import { callopsPost } from '@/utils/callops'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -9,8 +10,8 @@ export const runtime = 'nodejs'
 const MAX_AUDIO_BYTES = 50 * 1024 * 1024
 
 export async function POST(req: Request) {
-  const { supabase, user } = await getAuthUser()
-  if (!user) return unauthorized()
+  const { token } = await getAccessToken()
+  if (!token) return unauthorized()
 
   if (!isScriptStorageConfigured()) {
     return NextResponse.json({ error: 'Script audio storage is not configured' }, { status: 503 })
@@ -66,10 +67,16 @@ export async function POST(req: Request) {
     // Persist the source text so the voice generator can offer this script for reuse later.
     // Best-effort: the audio is already saved, so a library-row failure must not fail the save.
     if (text) {
-      const { error: insErr } = await supabase
-        .from('voice_scripts')
-        .insert({ text, voice_id: voiceId ?? null, audio_url: publicUrl, campaign_name: campaignName })
-      if (insErr) console.error('voice_scripts insert failed (audio saved OK):', insErr)
+      try {
+        await callopsPost('/script-library', token, {
+          text,
+          voice_id: voiceId ?? undefined,
+          audio_url: publicUrl,
+          campaign_name: campaignName,
+        })
+      } catch (libErr) {
+        console.error('script-library save failed (audio saved OK):', libErr)
+      }
     }
 
     return NextResponse.json({

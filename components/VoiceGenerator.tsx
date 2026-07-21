@@ -34,6 +34,12 @@ interface Props {
   onVoiceRecordingUrlChange: (url: string | null) => void
   /** Surfaces the chosen Inworld voice id so the campaign can persist `voice_id` (callops confirm-audio match). */
   onVoiceIdChange?: (voiceId: string | null) => void
+  /** Preloads the editor with a previously-saved script's text (e.g. when reopening a campaign for editing). */
+  initialText?: string
+  /** Preloads the voice selection alongside `initialText`. */
+  initialVoiceId?: string | null
+  /** Surfaces the current script text on every change, so the parent can persist it as per-campaign history after save. */
+  onScriptTextChange?: (text: string) => void
   disabled?: boolean
 }
 
@@ -58,16 +64,20 @@ export default function VoiceGenerator({
   voiceRecordingUrl,
   onVoiceRecordingUrlChange,
   onVoiceIdChange,
+  initialText,
+  initialVoiceId,
+  onScriptTextChange,
   disabled,
 }: Props) {
   const defaultGender = genders()[0] ?? 'female'
   const defaultEthnicity = ethnicities(defaultGender)[0] ?? 'white'
   const defaultVoice = voices(defaultGender, defaultEthnicity)[0]
 
-  const [gender, setGender] = useState<VoiceGender>(defaultGender)
-  const [ethnicity, setEthnicity] = useState<VoiceEthnicity>(defaultEthnicity)
-  const [voiceId, setVoiceId] = useState(defaultVoice?.voiceId ?? '')
-  const [script, setScript] = useState('')
+  const initialVoice = initialVoiceId ? findVoice(initialVoiceId) : null
+  const [gender, setGender] = useState<VoiceGender>(initialVoice?.gender ?? defaultGender)
+  const [ethnicity, setEthnicity] = useState<VoiceEthnicity>(initialVoice?.ethnicity ?? defaultEthnicity)
+  const [voiceId, setVoiceId] = useState(initialVoice?.voiceId ?? defaultVoice?.voiceId ?? '')
+  const [script, setScript] = useState(initialText ?? '')
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -245,6 +255,7 @@ export default function VoiceGenerator({
   function applySavedScript(s: SavedVoiceScript) {
     clearGenerated()
     setScript(s.text)
+    onScriptTextChange?.(s.text)
     const v = s.voice_id ? findVoice(s.voice_id) : null
     if (v) {
       setGender(v.gender)
@@ -356,7 +367,7 @@ export default function VoiceGenerator({
         label="Script"
         placeholder="Enter the message to speak to leads…"
         value={script}
-        onChange={e => setScript(e.target.value)}
+        onChange={e => { setScript(e.target.value); onScriptTextChange?.(e.target.value) }}
         multiline
         minRows={3}
         maxRows={8}

@@ -89,6 +89,15 @@ export async function GET(req: NextRequest) {
   const productIdParam = searchParams.get('product_id')
   const productIdFilter = productIdParam ? Number(productIdParam) : null
 
+  // Scope-bar range (24h/7d/30d/custom). CallOps campaign-performance accepts from_date/to_date
+  // (UTC ISO) and scopes the rollup to that window; omitting both = all-time.
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
+  const rangeQs = new URLSearchParams()
+  if (from) rangeQs.set('from_date', from)
+  if (to) rangeQs.set('to_date', to)
+  const perfSuffix = rangeQs.toString() ? `?${rangeQs}` : ''
+
   const { token } = await getAccessToken()
   if (!token) return unauthorized()
 
@@ -97,7 +106,7 @@ export async function GET(req: NextRequest) {
     const perCompany = await Promise.all(
       (companies ?? []).map(async (co) => {
         const [perf, campaignsList, products] = await Promise.all([
-          callopsGet<{ campaigns?: PerfItem[] }>(`/companies/${co.id}/dashboard/campaign-performance`, token)
+          callopsGet<{ campaigns?: PerfItem[] }>(`/companies/${co.id}/dashboard/campaign-performance${perfSuffix}`, token)
             .then((r) => r.campaigns ?? [])
             .catch(() => [] as PerfItem[]),
           // Resolve campaign_id -> product_id (campaign-performance doesn't carry it).

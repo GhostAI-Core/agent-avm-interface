@@ -6,7 +6,7 @@ import { resolveUserRole, userMetaFromSession, type AppRole } from '@/lib/roles'
 import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
 import FloatingNav from '@/components/FloatingNav'
-import InsightDashboard from '@/components/InsightDashboard'
+import ControlRoom from '@/components/ControlRoom'
 import SaveTemplateDialog from '@/components/SaveTemplateDialog'
 import TutorialOverlay, { TOUR_STEPS } from '@/components/TutorialOverlay'
 import { useDashboardLayout } from '@/lib/useDashboardLayout'
@@ -42,6 +42,8 @@ import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import CardActions from '@mui/material/CardActions'
 import Divider from '@mui/material/Divider'
+import Popover from '@mui/material/Popover'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import ToggleButton from '@mui/material/ToggleButton'
@@ -66,13 +68,34 @@ import { fetchProductsForCompany } from '@/lib/products'
 // Shown only when no real products exist yet for any company (e.g. pre-migration).
 const LEGACY_AGENT_OPTIONS = ['seeker', 'grace', 'sangoma'] as const
 
+type RangePreset = '24h' | '7d' | '30d' | 'custom'
+
+/** Resolve the scope-bar range selection to concrete UTC ISO bounds. Presets are rolling
+ *  windows ending now; 'custom' uses the picker's From/To dates (start/end of day). CallOps
+ *  `campaign-performance` accepts `from_date`/`to_date` and scopes the rollup to that window. */
+function presetToRange(preset: RangePreset, customFrom: string, customTo: string): { from?: string; to?: string } {
+  if (preset === 'custom') {
+    return {
+      from: customFrom ? new Date(`${customFrom}T00:00:00`).toISOString() : undefined,
+      to: customTo ? new Date(`${customTo}T23:59:59`).toISOString() : undefined,
+    }
+  }
+  const days = preset === '24h' ? 1 : preset === '7d' ? 7 : 30
+  const now = Date.now()
+  return { from: new Date(now - days * 86400000).toISOString(), to: new Date(now).toISOString() }
+}
+
 /** Builds the `/api/reports` query string from the report filters. `filterAgent` is either
- *  'product:<id>' (real product) or 'agent:<seeker|grace|sangoma>' (legacy fallback). */
-function reportsQueryParams(filterAgent: string, filterDate: string): URLSearchParams {
+ *  'product:<id>' (real product) or 'agent:<seeker|grace|sangoma>' (legacy fallback). The
+ *  range preset/custom dates become `from`/`to`, forwarded by the proxy as `from_date`/`to_date`. */
+function reportsQueryParams(filterAgent: string, filterDate: string, preset: RangePreset, customFrom: string, customTo: string): URLSearchParams {
   const p = new URLSearchParams()
   if (filterAgent.startsWith('product:')) p.set('product_id', filterAgent.slice('product:'.length))
   else if (filterAgent.startsWith('agent:')) p.set('agent', filterAgent.slice('agent:'.length))
   if (filterDate) p.set('date', filterDate)
+  const { from, to } = presetToRange(preset, customFrom, customTo)
+  if (from) p.set('from', from)
+  if (to) p.set('to', to)
   return p
 }
 const VIEW_TITLES: Record<string, string> = {
@@ -139,6 +162,10 @@ export default function Page() {
   const [filterAgent,      setFilterAgent]      = useState('')
   const [reportProducts,   setReportProducts]   = useState<Product[]>([])
   const [filterDate,       setFilterDate]       = useState('')
+  const [rangePreset,      setRangePreset]      = useState<RangePreset>('24h')
+  const [customFrom,       setCustomFrom]       = useState('')
+  const [customTo,         setCustomTo]         = useState('')
+  const [rangeAnchor,      setRangeAnchor]      = useState<HTMLElement | null>(null)
   const [expandedChart,    setExpandedChart]    = useState<string | null>(null)
   const [expandCampaign,   setExpandCampaign]   = useState<string>('')  // '' = collective
   const [companyFilter,    setCompanyFilter]    = useState('')          // '' = all companies
@@ -278,14 +305,14 @@ export default function Page() {
 
   const fetchData = useCallback(async () => {
     try {
-      const p = reportsQueryParams(filterAgent, filterDate)
+      const p = reportsQueryParams(filterAgent, filterDate, rangePreset, customFrom, customTo)
       const [jC, jR] = await Promise.all([getJson('/api/campaigns'), getJson(`/api/reports?${p}`)])
       if (jC) setCampaigns(jC.campaigns ?? [])
       if (jR) setReports(jR.reports ?? [])
     } catch (err) {
       console.error('Refresh failed:', err)
     }
-  }, [filterAgent, filterDate, getJson])
+  }, [filterAgent, filterDate, rangePreset, customFrom, customTo, getJson])
 
   // Live dispatch stats straight from callops (active calls / queued / dialed / failed),
   // so the dashboard shows what's actually happening — not just the stored status. Only
@@ -379,7 +406,7 @@ export default function Page() {
     let active = true
     ;(async () => {
       try {
-        const p = reportsQueryParams(filterAgent, filterDate)
+        const p = reportsQueryParams(filterAgent, filterDate, rangePreset, customFrom, customTo)
         const jR = await getJson(`/api/reports?${p}`)
         if (active && jR) setReports(jR.reports ?? [])
       } catch (err) {
@@ -387,7 +414,7 @@ export default function Page() {
       }
     })()
     return () => { active = false }
-  }, [auth, filterAgent, filterDate, getJson])
+  }, [auth, filterAgent, filterDate, rangePreset, customFrom, customTo, getJson])
 
   // Periodic refresh so LiveKit dial / webhook updates appear without manual reload.
   useEffect(() => {
@@ -397,7 +424,7 @@ export default function Page() {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       try {
         const today = new Date().toISOString().slice(0, 10)
-        const p = reportsQueryParams(filterAgent, filterDate)
+        const p = reportsQueryParams(filterAgent, filterDate, rangePreset, customFrom, customTo)
         const [jC, jR, jL, jI] = await Promise.all([
           getJson('/api/campaigns'),
           getJson(`/api/reports?${p}`),
@@ -414,7 +441,7 @@ export default function Page() {
     }
     const id = setInterval(tick, ms)
     return () => clearInterval(id)
-  }, [auth, filterAgent, filterDate, getJson, refreshLiveStatus])
+  }, [auth, filterAgent, filterDate, rangePreset, customFrom, customTo, getJson, refreshLiveStatus])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -656,10 +683,70 @@ export default function Page() {
                   <Typography variant="caption" color="text.secondary">
                     {campaignFilter
                       ? `Single campaign${companyFilter ? ` · ${companyFilter}` : ''}`
-                      : companyFilter ? `Company overview · ${dashCampaigns.length} campaigns` : 'Company-wide overview'}
+                      : companyFilter ? `Company overview · ${dashCampaigns.length} campaigns` : `Company-wide overview · ${dashCampaigns.length} campaigns`}
                   </Typography>
                 </Box>
-                <Stack direction="row" data-tour="dash-scope" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                <Stack direction="row" data-tour="dash-scope" sx={{ gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={rangePreset === 'custom' ? null : rangePreset}
+                    onChange={(_e, v) => { if (v) setRangePreset(v) }}
+                    sx={{ '& .MuiToggleButton-root': { px: 1.5, py: 0.5, textTransform: 'none', fontWeight: 600 } }}
+                  >
+                    <ToggleButton value="24h">24h</ToggleButton>
+                    <ToggleButton value="7d">7d</ToggleButton>
+                    <ToggleButton value="30d">30d</ToggleButton>
+                  </ToggleButtonGroup>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={e => setRangeAnchor(e.currentTarget)}
+                    endIcon={<ExpandMoreIcon />}
+                    sx={{
+                      textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap',
+                      ...(rangePreset === 'custom'
+                        ? { color: colors.glow, borderColor: colors.glow, bgcolor: 'rgba(91,232,190,0.12)' }
+                        : { color: 'text.secondary', borderColor: 'divider' }),
+                    }}
+                  >
+                    {rangePreset === 'custom' && (customFrom || customTo)
+                      ? `${customFrom || '…'} → ${customTo || '…'}`
+                      : 'Custom range'}
+                  </Button>
+                  <Popover
+                    open={Boolean(rangeAnchor)}
+                    anchorEl={rangeAnchor}
+                    onClose={() => setRangeAnchor(null)}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                    slotProps={{ paper: { sx: { p: 2, mt: 0.5, minWidth: 240 } } }}
+                  >
+                    <Stack sx={{ gap: 1.5 }}>
+                      <TextField
+                        size="small" type="date" label="From" slotProps={{ inputLabel: { shrink: true } }}
+                        value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                      />
+                      <TextField
+                        size="small" type="date" label="To" slotProps={{ inputLabel: { shrink: true } }}
+                        value={customTo} onChange={e => setCustomTo(e.target.value)}
+                      />
+                      <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
+                        <Button
+                          size="small"
+                          onClick={() => { setCustomFrom(''); setCustomTo(''); setRangePreset('24h'); setRangeAnchor(null) }}
+                        >
+                          Clear
+                        </Button>
+                        <Button
+                          size="small" variant="contained"
+                          disabled={!customFrom && !customTo}
+                          onClick={() => { setRangePreset('custom'); setRangeAnchor(null) }}
+                        >
+                          Apply
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Popover>
                   <Select size="small" value={companyFilter} onChange={e => { setCompanyFilter(e.target.value); setCampaignFilter('') }} displayEmpty sx={{ minWidth: 180 }}>
                     <MenuItem value="">All Companies</MenuItem>
                     {companies.map(co => <MenuItem key={co} value={co}>{co}</MenuItem>)}
@@ -671,16 +758,11 @@ export default function Page() {
                 </Stack>
               </Stack>
 
-              <InsightDashboard dash={dash} onRequestSaveTemplate={() => setShowSaveTemplate(true)} ctx={{
-                reports: dashReports, calls: dashCalls, intents: dashIntents, campaigns: dashCampaigns,
-                actions: {
-                  onPlayPause: c => updateStatus(c.id, c.status === 'running' ? 'paused' : 'running'),
-                  onStop: c => updateStatus(c.id, 'stopped'),
-                  onEdit: c => setCampaignAction({ mode: 'edit', campaign: c }),
-                  onReuse: c => setCampaignAction({ mode: 'reuse', campaign: c }),
-                  onArchive: c => updateStatus(c.id, 'archived'),
-                },
-              }} />
+              <ControlRoom
+                ctx={{ reports: dashReports, calls: dashCalls, intents: dashIntents, campaigns: dashCampaigns }}
+                liveStatus={liveStatus}
+                onSelectCampaign={id => setCampaignFilter(String(id))}
+              />
             </>
           )}
 

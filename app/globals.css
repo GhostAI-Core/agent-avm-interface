@@ -53,19 +53,17 @@
 
   /* Typography — display set via next/font variable on html */
   --font-body:
+    var(--font-dm-sans),
     -apple-system,
     BlinkMacSystemFont,
-    'SF Pro Text',
-    'SF Pro Display',
-    'DM Sans',
     'Segoe UI',
     system-ui,
     sans-serif;
 
   --font-mono:
+    var(--font-jetbrains),
     ui-monospace,
     'SF Mono',
-    'JetBrains Mono',
     Menlo,
     Consolas,
     monospace;

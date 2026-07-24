@@ -406,19 +406,11 @@ function CampaignDrill({ camp, report, ls, onClose }: {
         </Typography>
 
         <SectionLabel text="Funnel" note="conversion by stage" />
-        <Stack direction="row" sx={{ gap: 3, alignItems: 'stretch', flexWrap: 'wrap', justifyContent: 'space-between', minHeight: 320 }}>
-          <Box sx={{ flex: '1 1 260px', minWidth: 220, display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}><Funnel stages={stages} hover={null} onHover={() => {}} /></Box>
-          <Stack sx={{ gap: 1.25, flex: '1 1 240px', minWidth: 200, justifyContent: 'center' }}>
-            {stages.map((s, i) => (
-              <Stack key={s.label} direction="row" sx={{ alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 10, height: 10, borderRadius: '2px', bgcolor: FUNNEL_FILL[i] }} />
-                <Typography sx={{ fontSize: '0.82rem', flex: 1 }}>{s.label}</Typography>
-                <Num sx={{ fontSize: '0.85rem', fontWeight: 700 }}>{fmtN(s.count)}</Num>
-                <Typography sx={{ fontSize: '0.72rem', color: colors.fg4, width: 46, textAlign: 'right' }}>{pct(s.count, i === 0 ? dialed : stages[0].count)}</Typography>
-              </Stack>
-            ))}
-          </Stack>
-        </Stack>
+        {/* The 3D cone carries its own numbered stages + count + conversion-% leaders, so no
+            separate legend list is needed here (that would duplicate every label). */}
+        <Box sx={{ display: 'flex', justifyContent: 'center', minHeight: 340 }}>
+          <Funnel stages={stages} hover={null} onHover={() => {}} />
+        </Box>
       </Box>
     </Dialog>
   )

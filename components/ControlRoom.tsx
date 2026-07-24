@@ -10,6 +10,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import AgentChip from '@/components/ui/AgentChip'
 import StatusChip from '@/components/ui/StatusChip'
 import { Sparkline } from '@/components/InsightCharts'
+import FunnelGraphFlow from '@/components/FunnelGraphFlow'
 import { maskPhone } from '@/lib/security'
 import { colors } from '@/lib/tokens'
 import type { InsightCtx } from '@/lib/dashboardInsights'
@@ -173,36 +174,129 @@ function MetricCard({ label, value, sub, series, accent, deltaSub }: {
 }
 
 // ── funnel ───────────────────────────────────────────────────────────────────────
+// Distinct solid green-schema shade per stage. Also drives legend swatches.
 const FUNNEL_FILL = ['#1F6F35', '#2E8B4E', '#3FA968', '#5BE8BE', '#8CF3D6']
+// Per-campaign colours for the Option 2 flow (funnel-graph-js), kept in the green schema.
+const FLOW_COLORS: string[] = ['#37A660', '#5BE8BE', '#6DC2FF', '#60BC84', '#C99A2D']
+const FLOW_OTHER: string = '#909090'
+function darken(hex: string, f = 0.6) {
+  const n = parseInt(hex.slice(1), 16)
+  return `rgb(${Math.round(((n >> 16) & 255) * f)}, ${Math.round(((n >> 8) & 255) * f)}, ${Math.round((n & 255) * f)})`
+}
+function lighten(hex: string, amt = 0.24) {
+  const n = parseInt(hex.slice(1), 16)
+  const r = Math.min(255, ((n >> 16) & 255) + 255 * amt)
+  const g = Math.min(255, ((n >> 8) & 255) + 255 * amt)
+  const b = Math.min(255, (n & 255) + 255 * amt)
+  return `rgb(${r | 0}, ${g | 0}, ${b | 0})`
+}
+
+// Numbered 3D funnel (client reference, dimensional): each stage is a shaded cone frustum — an
+// elliptical rim on top, cylindrical light-centre→dark-edge shading across the body, and a soft
+// drop shadow for depth. Index on the left, label + count + conversion % on a right leader,
+// tapering to a cone tip. Decorative gentle taper — the numbers carry the real magnitudes.
 function Funnel({ stages, hover, onHover }: {
   stages: { label: string; count: number }[]
   hover: number | null
   onHover: (i: number | null) => void
 }) {
-  const W = 280, segH = 52, H = stages.length * segH
-  const max = stages[0]?.count || 1
-  // sqrt scale: a linear width floors every small stage to the same sliver when the top
-  // stage dwarfs the rest (e.g. 214k dialed vs 11 leads). sqrt keeps each stage visibly
-  // distinct while still narrowing the funnel to a thin neck.
-  const wAt = (v: number) => Math.max(0.12, Math.sqrt(v / max)) * W
+  const W = 820, H = 560
+  const N = stages.length
+  const cx = 340
+  const startY = 56, segH = (H - 150) / N, GAP = 18, bandH = segH - GAP
+  const pointH = 54
+  const leaderX = 560
+  const top0 = 360
+  const step = 0.82
+  const wTop = (k: number) => top0 * Math.pow(step, k)
+  const dialed = stages[0]?.count || 1
+  const ryOf = (w: number) => Math.min(16, Math.max(6, (w / 2) * 0.16)) // perspective squash of the rim
+  const lastFill = FUNNEL_FILL[N - 1] || FUNNEL_FILL[FUNNEL_FILL.length - 1]
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: 320, display: 'block' }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
+      style={{ display: 'block', maxHeight: 500, margin: '0 auto' }}>
+      <defs>
+        <filter id="fnl-shadow" x="-20%" y="-20%" width="140%" height="150%">
+          <feDropShadow dx="0" dy="4" stdDeviation="5" floodColor="#000000" floodOpacity="0.45" />
+        </filter>
+        {FUNNEL_FILL.map((c, i) => (
+          // cylindrical shading: dark edge → light centre → dark edge, across the body
+          <linearGradient key={i} id={`fnl-body-${i}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor={darken(c, 0.62)} />
+            <stop offset="0.5" stopColor={lighten(c, 0.1)} />
+            <stop offset="1" stopColor={darken(c, 0.62)} />
+          </linearGradient>
+        ))}
+      </defs>
+      {/* bottom cone tip — drawn first so it sits behind the last frustum */}
+      {(() => {
+        const bW = wTop(N - 1) * 0.66, rxb = bW / 2
+        const yB = startY + (N - 1) * segH + bandH
+        const tip = `M ${cx - rxb} ${yB} A ${rxb} ${ryOf(bW)} 0 0 0 ${cx + rxb} ${yB} L ${cx} ${yB + pointH} Z`
+        return <path d={tip} fill={darken(lastFill, 0.78)} filter="url(#fnl-shadow)" opacity={hover === null ? 1 : 0.5} />
+      })()}
+      {/* frustum bodies painted BOTTOM→TOP so each wider upper cone overlaps the one below and its
+          shadow falls downward onto it (correct near/far layering — was reversed) */}
       {stages.map((s, i) => {
-        const topW = wAt(s.count)
-        const botW = wAt(stages[i + 1]?.count ?? s.count * 0.55)
-        const y = i * segH
-        const x1 = (W - topW) / 2, x2 = (W + topW) / 2, x3 = (W + botW) / 2, x4 = (W - botW) / 2
+        const tW = wTop(i)
+        const bW = i < N - 1 ? wTop(i + 1) : tW * 0.66
+        const yT = startY + i * segH, yB = yT + bandH
+        const rxt = tW / 2, rxb = bW / 2, ryT = ryOf(tW), ryB = ryOf(bW)
+        const fill = FUNNEL_FILL[i] || lastFill
         const dim = hover !== null && hover !== i
-        // Segments are flush (no gap) so the outline reads as one continuous, tapering funnel.
+        const body = `M ${cx - rxt} ${yT} L ${cx - rxb} ${yB} A ${rxb} ${ryB} 0 0 0 ${cx + rxb} ${yB} L ${cx + rxt} ${yT} A ${rxt} ${ryT} 0 0 1 ${cx - rxt} ${yT} Z`
         return (
           <g key={s.label} onMouseEnter={() => onHover(i)} onMouseLeave={() => onHover(null)}
-            style={{ cursor: 'pointer', opacity: dim ? 0.32 : 1, transition: 'opacity 120ms ease' }}>
-            <polygon points={`${x1},${y} ${x2},${y} ${x3},${y + segH} ${x4},${y + segH}`} fill={FUNNEL_FILL[i] || FUNNEL_FILL[FUNNEL_FILL.length - 1]} />
-            <text x={W / 2} y={y + segH / 2 + 4} textAnchor="middle" fontSize="12" fontWeight="700" fill={i >= 3 ? '#0E2014' : '#EAFBF3'} style={{ fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>{fmtN(s.count)}</text>
+            style={{ cursor: 'pointer', opacity: dim ? 0.35 : 1, transition: 'opacity 120ms ease' }}>
+            <path d={body} fill={`url(#fnl-body-${i})`} filter="url(#fnl-shadow)" />
+            <ellipse cx={cx} cy={yT} rx={rxt} ry={ryT} fill={lighten(fill, 0.2)} />
+          </g>
+        )
+      }).reverse()}
+      {/* labels drawn last so no cone body ever covers a number, count, or leader */}
+      {stages.map((s, i) => {
+        const tW = wTop(i), bW = i < N - 1 ? wTop(i + 1) : tW * 0.66
+        const yT = startY + i * segH, mid = yT + bandH / 2
+        const fill = FUNNEL_FILL[i] || lastFill
+        const dim = hover !== null && hover !== i
+        const rightMid = cx + (tW / 2 + bW / 2) / 2
+        const conv = i === 0 ? '100%' : `${((s.count / dialed) * 100).toFixed(1)}%`
+        return (
+          <g key={s.label} style={{ opacity: dim ? 0.35 : 1, transition: 'opacity 120ms ease', pointerEvents: 'none' }}>
+            <text x={110} y={mid + bandH * 0.18 + 12} textAnchor="end" fontSize="34" fontWeight="800" fill={fill} style={{ fontFamily: 'var(--font-mono)' }}>{String(i + 1).padStart(2, '0')}</text>
+            {/* nudged below geometric mid so the count reads centred in the cone's VISIBLE area
+                (the rim + the overlap from the cone above eat the top of each band) */}
+            <text x={cx} y={mid + bandH * 0.18} textAnchor="middle" fontSize="17" fontWeight="800" fill={i >= 3 ? '#0E2014' : '#F2FFFA'} style={{ fontFamily: 'var(--font-mono)' }}>{fmtN(s.count)}</text>
+            <line x1={rightMid} y1={mid} x2={leaderX - 8} y2={mid} stroke={fill} strokeWidth={1.5} strokeOpacity={0.7} />
+            <text x={leaderX} y={mid - 3} textAnchor="start" fontSize="15" fontWeight="700" fill={fill}>{s.label}</text>
+            <text x={leaderX} y={mid + 15} textAnchor="start" fontSize="12.5" fill={colors.fg3}>{conv} of dialed</text>
           </g>
         )
       })}
     </svg>
+  )
+}
+
+// Segmented control to flip between the two funnel designs (Option 1 / Option 2).
+function FunnelStyleToggle({ value, onChange }: { value: 'cone' | 'flow'; onChange: (v: 'cone' | 'flow') => void }) {
+  const opts: { key: 'cone' | 'flow'; label: string }[] = [
+    { key: 'cone', label: '3D Funnel' }, { key: 'flow', label: 'Flow' },
+  ]
+  return (
+    <Stack direction="row" sx={{ bgcolor: colors.bg3, borderRadius: '6px', p: '2px', gap: '2px' }}>
+      {opts.map(o => {
+        const on = value === o.key
+        return (
+          <Box key={o.key} component="button" onClick={() => onChange(o.key)}
+            sx={{
+              px: 1.25, py: 0.4, borderRadius: '4px', border: 'none', cursor: 'pointer',
+              fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.03em',
+              bgcolor: on ? colors.green : 'transparent', color: on ? colors.greenInk : colors.fg3,
+              transition: 'background-color .12s, color .12s',
+            }}>{o.label}</Box>
+        )
+      })}
+    </Stack>
   )
 }
 
@@ -312,9 +406,9 @@ function CampaignDrill({ camp, report, ls, onClose }: {
         </Typography>
 
         <SectionLabel text="Funnel" note="conversion by stage" />
-        <Stack direction="row" sx={{ gap: 3, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-          <Box sx={{ flex: '1 1 260px', minWidth: 220, display: 'flex', justifyContent: 'center' }}><Funnel stages={stages} hover={null} onHover={() => {}} /></Box>
-          <Stack sx={{ gap: 1.25, flex: '1 1 240px', minWidth: 200 }}>
+        <Stack direction="row" sx={{ gap: 3, alignItems: 'stretch', flexWrap: 'wrap', justifyContent: 'space-between', minHeight: 320 }}>
+          <Box sx={{ flex: '1 1 260px', minWidth: 220, display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}><Funnel stages={stages} hover={null} onHover={() => {}} /></Box>
+          <Stack sx={{ gap: 1.25, flex: '1 1 240px', minWidth: 200, justifyContent: 'center' }}>
             {stages.map((s, i) => (
               <Stack key={s.label} direction="row" sx={{ alignItems: 'center', gap: 1 }}>
                 <Box sx={{ width: 10, height: 10, borderRadius: '2px', bgcolor: FUNNEL_FILL[i] }} />
@@ -340,6 +434,8 @@ export default function ControlRoom({ ctx, liveStatus }: {
   const { reports, calls, campaigns } = ctx
   const [hoverStage, setHoverStage] = useState<number | null>(null)
   const [drillId, setDrillId] = useState<number | null>(null)
+  // Two funnel designs for the client to choose between (toggle in the panel header).
+  const [funnelStyle, setFunnelStyle] = useState<'cone' | 'flow'>('cone')
 
   const m = useMemo(() => {
     const dialed = sumR(reports, 'dialed'), connected = sumR(reports, 'connected'), qualified = sumR(reports, 'qualified')
@@ -402,11 +498,33 @@ export default function ControlRoom({ ctx, liveStatus }: {
     { label: 'Dialed', count: m.dialed }, { label: 'Connected', count: m.connected },
     { label: 'Engaged', count: m.engaged }, { label: 'Qualified', count: m.qualified }, { label: 'Opt-in / Lead', count: m.lead },
   ]
-  const funnelLegend = [
-    { label: 'Dialed', count: m.dialed, of: m.dialed }, { label: 'Connected', count: m.connected, of: m.dialed },
-    { label: 'Engaged', count: m.engaged, of: m.connected }, { label: 'Qualified', count: m.qualified, of: m.connected },
-    { label: 'Opt-in / Lead', count: m.lead, of: m.qualified },
-  ]
+
+  // Option 2 (flow) — data shaped for funnel-graph-js: stages become labels, campaigns become
+  // subLabels (top 3 by dialed + an "Other" roll-up), values[stage] = [per campaign]. Each
+  // campaign gets a 2-stop gradient in the green schema. Memoised so the lib only redraws on change.
+  const flowData = useMemo(() => {
+    const stageLabels = ['Dialed', 'Connected', 'Engaged', 'Qualified', 'Opt-in / Lead']
+    const stageVals = (r?: CampaignReport): number[] => {
+      const c = r?.connected ?? 0, h = r?.hangup ?? 0
+      return [r?.dialed ?? 0, c, Math.max(r?.qualified ?? 0, c - h), r?.qualified ?? 0, r?.lead ?? 0]
+    }
+    const ranked = [...reports].sort((a, b) => (b.dialed || 0) - (a.dialed || 0))
+    const series = ranked.slice(0, 3).map((r, i) => ({
+      name: (r.campaign?.name || `Campaign ${r.campaign_id}`).slice(0, 20),
+      vals: stageVals(r), color: FLOW_COLORS[i % FLOW_COLORS.length],
+    }))
+    const rest = ranked.slice(3)
+    if (rest.length) {
+      const summed = rest.reduce<number[]>((acc, r) => stageVals(r).map((v, i) => (acc[i] || 0) + v), [])
+      series.push({ name: `Other (${rest.length})`, vals: summed, color: FLOW_OTHER })
+    }
+    return {
+      labels: stageLabels,
+      subLabels: series.map(s => s.name),
+      colors: series.map(s => [s.color, lighten(s.color, 0.18)]),
+      values: stageLabels.map((_, k) => series.map(s => s.vals[k] || 0)),
+    }
+  }, [reports])
 
   const donutSegs = [
     { label: 'Connected', value: m.connected, color: colors.green },
@@ -481,25 +599,19 @@ export default function ControlRoom({ ctx, liveStatus }: {
       <SectionCard label="Funnel & Outcomes">
         <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap', alignItems: 'stretch' }}>
           <Panel sx={{ flex: '2 1 520px', minWidth: 320 }}>
-            <SectionLabel text="Dialling Funnel" note="hover a stage" />
-            <Stack direction="row" sx={{ gap: 3, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-              <Box sx={{ flex: '1 1 300px', minWidth: 240, display: 'flex', justifyContent: 'center' }}><Funnel stages={funnelStages} hover={hoverStage} onHover={setHoverStage} /></Box>
-              <Stack sx={{ gap: 1.25, flex: '1 1 260px', minWidth: 220 }}>
-                {funnelLegend.map((f, i) => {
-                  const on = hoverStage === i
-                  const dim = hoverStage !== null && !on
-                  return (
-                    <Stack key={f.label} direction="row" onMouseEnter={() => setHoverStage(i)} onMouseLeave={() => setHoverStage(null)}
-                      sx={{ alignItems: 'center', gap: 1, cursor: 'pointer', borderRadius: 1, px: 0.5, mx: -0.5, py: 0.25, bgcolor: on ? colors.bg1 : 'transparent', opacity: dim ? 0.4 : 1, transition: 'opacity 120ms ease, background-color 120ms ease' }}>
-                      <Box sx={{ width: 10, height: 10, borderRadius: '2px', bgcolor: FUNNEL_FILL[i] }} />
-                      <Typography sx={{ fontSize: '0.82rem', flex: 1, fontWeight: on ? 700 : 400 }}>{f.label}</Typography>
-                      <Num sx={{ fontSize: '0.85rem', fontWeight: 700 }}>{fmtN(f.count)}</Num>
-                      <Typography sx={{ fontSize: '0.72rem', color: colors.fg4, width: 46, textAlign: 'right' }}>{pct(f.count, f.of)}</Typography>
-                    </Stack>
-                  )
-                })}
-              </Stack>
+            <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <SectionLabel text="Dialling Funnel" note={funnelStyle === 'cone' ? 'hover a stage' : 'by campaign'} />
+              <FunnelStyleToggle value={funnelStyle} onChange={setFunnelStyle} />
             </Stack>
+            {funnelStyle === 'cone' ? (
+              <Box sx={{ minHeight: 360, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Funnel stages={funnelStages} hover={hoverStage} onHover={setHoverStage} />
+              </Box>
+            ) : (
+              <Box sx={{ minHeight: 360, display: 'flex', alignItems: 'center' }}>
+                <FunnelGraphFlow data={flowData} />
+              </Box>
+            )}
           </Panel>
           <Stack sx={{ flex: '1 1 320px', minWidth: 280, gap: 2 }}>
             <Panel>

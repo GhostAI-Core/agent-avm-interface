@@ -196,3 +196,10 @@ body {
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--evra-bg-3); border-radius: 4px; }
+
+/* funnel-graph-js (Option 2 flow) — recolour labels/legend to the EVRA green schema */
+.fg-ours .svg-funnel-js__label .label__title { color: #60BC84; font-weight: 700; }
+.fg-ours .svg-funnel-js__label .label__value { color: #FFFFFF; }
+.fg-ours .svg-funnel-js__label .label__percentage { color: #5BE8BE; }
+.fg-ours .svg-funnel-js__subLabels { margin-top: 8px; }
+.fg-ours .svg-funnel-js__subLabel { color: #C8C8C8; font-size: 0.8rem; }

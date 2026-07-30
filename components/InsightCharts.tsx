@@ -73,15 +73,34 @@ const SPARK_OPTS = {
   responsive: true,
   maintainAspectRatio: false,
   plugins: { legend: { display: false }, tooltip: { enabled: false } },
-  scales: { x: { display: false }, y: { display: false, beginAtZero: true } },
+  // beginAtZero flattened every series against a 0 baseline so the line read as near-straight.
+  // Auto-scaling to the data's own min/max (with a little grace) lets the real day-to-day
+  // movement use the full height of the box, so the trend actually shows.
+  scales: { x: { display: false }, y: { display: false, grace: '12%' } },
   elements: { point: { radius: 0 } },
 } as const
 
 /** Tiny inline line — KPI movement at a glance. */
 export function Sparkline({ data, color = chartColors.qualified }: { data: number[]; color?: string }) {
+  const last = data.length - 1
   return (
     <Line
-      data={{ labels: data.map((_, i) => i), datasets: [{ data, borderColor: color, backgroundColor: 'rgba(91,232,190,0.14)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0 }] }}
+      data={{
+        labels: data.map((_, i) => i),
+        datasets: [{
+          data,
+          borderColor: color,
+          backgroundColor: 'rgba(91,232,190,0.14)',
+          fill: true,
+          // monotone follows the real ups/downs without the overshoot wobble a fixed tension adds
+          cubicInterpolationMode: 'monotone' as const,
+          borderWidth: 2,
+          // mark only the latest point so the current value reads as "now" on the trend
+          pointRadius: data.map((_, i) => (i === last ? 2.4 : 0)),
+          pointBackgroundColor: color,
+          pointBorderWidth: 0,
+        }],
+      }}
       options={SPARK_OPTS}
     />
   )

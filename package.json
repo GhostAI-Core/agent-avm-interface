@@ -12,6 +12,7 @@
     "callops": "npx tsx scripts/callops-test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.114.0",
     "@aws-sdk/client-s3": "^3.1070.0",
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
@@ -21,7 +22,9 @@
     "@mui/material-nextjs": "^9.0.1",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
+    "@xyflow/react": "^12.11.2",
     "chart.js": "^4.5.1",
+    "funnel-graph-js": "^1.4.2",
     "livekit-server-sdk": "^2.15.4",
     "next": "16.2.4",
     "react": "19.2.4",

@@ -13,7 +13,7 @@ This document describes how the **Agent AVM Interface** frontend is structured: 
 - Review per-campaign reports and call-level logs
 - Analyze call quality via intent waterfalls
 - Manage companies and contacts
-- Configure voice recordings (upload or AI-generated TTS)
+- Configure products, versioned scripts, and voice recordings (upload or AI-generated TTS)
 - Audit security events
 
 The UI is branded **EVRA** (green-on-dark theme) and targets call-center engineers and administrators.
@@ -51,7 +51,7 @@ components/
   FloatingNav.tsx     # Mobile-only radial quick-nav FAB
   AuthView.tsx        # Login screen (unauthenticated)
   InsightDashboard.tsx # Control Room widget grid
-  CampaignModal.tsx   # 3-step new-campaign wizard
+  CampaignModal.tsx   # 5-step new-campaign wizard
   ... (view components, ui primitives, telephony subfolder)
 lib/
   theme.ts            # MUI theme from design tokens
@@ -109,6 +109,7 @@ The app uses **client-side view switching**, not URL-based routing. A single str
 | `sts` | STS Dashboard | `STSDashboard` (placeholder) |
 | `companies` | Companies | Inline JSX in `page.tsx` |
 | `campaigns` | Campaigns | Inline JSX in `page.tsx` |
+| `products` | Products | `ProductsView` |
 | `reports` | Campaign Report | Inline table or `CampaignDetail` |
 | `quality` | Call Quality | `CallQuality` |
 | `telephony` | Telephony | `TelephonyView` |
@@ -153,7 +154,7 @@ Almost all shared application state lives in `Page()` inside `app/page.tsx`. Chi
 | `allIntents` | intent stat rows | Intent waterfall data (today) |
 | `companiesList` | `Company[]` | Company records with contacts |
 | `securityLogs` | audit rows | Security events |
-| `filterAgent`, `filterDate` | strings | Report view filters |
+| `filterAgent`, `filterDate` | strings | Report view filters; `filterAgent` may encode `product:<id>` or legacy `agent:<name>` |
 | `companyFilter`, `campaignFilter` | strings | Control Room scope (`''` = all) |
 | `selectedCampaign` | `CampaignReport \| null` | Drill-down in reports view |
 | `detailedLogs` | call rows | Per-campaign call list for `CampaignDetail` |
@@ -212,7 +213,10 @@ All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Ever
 | `/api/campaigns/{id}` | PUT | CampaignActionDialog (edit voice) | updated campaign |
 | `/api/campaigns/{id}/{action}` | POST | page.tsx (`start`/`pause`/`stop`) | callops result |
 | `/api/campaigns/{id}/status` | GET | page.tsx live polling | `CampaignLiveStatus` |
-| `/api/reports` | GET | page.tsx | `{ reports }` — query: `agent`, `date` |
+| `/api/products` | GET, POST | ProductsView, product pickers | company-scoped products |
+| `/api/products/{id}/versions` | GET, POST | ProductsView, product pickers | product script versions |
+| `/api/products/{id}/versions/{versionId}/activate` | POST | ProductsView | activated version |
+| `/api/reports` | GET | page.tsx | `{ reports }` — query: `product_id` or legacy `agent`; `date` currently inert |
 | `/api/logs` | GET | page.tsx, CampaignDetail flow | `{ logs }` — query: `campaignId` |
 | `/api/intents` | GET | page.tsx, CallQuality | `{ intents, connectedTotal }` |
 | `/api/companies` | GET, POST | page.tsx | `{ companies }` |
@@ -221,6 +225,8 @@ All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Ever
 | `/api/dashboard-templates` | GET, POST, DELETE | useDashboardLayout | saved layouts |
 | `/api/tts/generate` | POST | VoiceGenerator | base64 audio |
 | `/api/tts/save` | POST | VoiceGenerator | public URL for recording |
+| `/api/voice-scripts` | GET, POST | VoiceGenerator | global script-library reuse rows |
+| `/api/script-audio` | GET, POST | CampaignModal, CampaignActionDialog | per-campaign script/audio history |
 
 Voice file uploads for new campaigns go **directly to Supabase Storage** (`voice-recordings` bucket) from the browser, then the storage path is sent to `POST /api/campaigns` as `voice_path`.
 
@@ -271,16 +277,27 @@ Also inline in `page.tsx`.
 - **"+ New Campaign"** opens `CampaignModal`.
 - Card/table toggle persisted in `localStorage` (`avm.view.campaigns`).
 
-### 7.5 Campaign Report — `reports` view
+### 7.5 Products — `products` view
+
+`ProductsView` manages company-scoped products and script versions:
+
+- Company selector loads `GET /api/products?company_id=...`
+- Product create/edit supports `integration_type` (`sts_subscription` or `lead_gen`), `sts_product_key`, and active/inactive state
+- "Manage script" embeds `VoiceGenerator`; saved audio creates a `product_script_versions` row and can become the product's current version
+- Version history supports activate/rollback through `/api/products/{id}/versions/{versionId}/activate`
+
+`lib/products.ts` provides shared fetch helpers for `ProductsView`, `CampaignModal`, `CampaignActionDialog`, and reports filters.
+
+### 7.6 Campaign Report — `reports` view
 
 Two sub-states:
 
-1. **List** (`!selectedCampaign`): sortable table of all `reports` with agent/date filters and CSV export (`handleExportCSV`).
+1. **List** (`!selectedCampaign`): sortable table of all `reports` with product/legacy-agent and date filters plus CSV export (`handleExportCSV`).
 2. **Detail** (`selectedCampaign` set): `CampaignDetail` with per-call rows from `GET /api/logs?campaignId=…`.
 
 Clicking a report row calls `viewDetailedLogs(report)`.
 
-### 7.6 Call Quality — `quality` view
+### 7.7 Call Quality — `quality` view
 
 `CallQuality` component:
 
@@ -291,15 +308,15 @@ Clicking a report row calls `viewDetailedLogs(report)`.
 
 Same calculation logic is duplicated in the `call-quality` insight widget inside `dashboardInsights.tsx`.
 
-### 7.7 Security Audit — `security` view
+### 7.8 Security Audit — `security` view
 
 `SecurityView` — read-only table of `securityLogs` passed from parent. Event types styled with MUI Chips (`login`, `unauthorized_access`, etc.).
 
-### 7.8 STS Dashboard — `sts` view
+### 7.9 STS Dashboard — `sts` view
 
 `STSDashboard` — placeholder ("No subscription data available yet").
 
-### 7.9 Telephony — `telephony` view
+### 7.10 Telephony — `telephony` view
 
 `TelephonyView` — **mock/local-only** LiveKit telephony admin UI.
 
@@ -310,11 +327,11 @@ Same calculation logic is duplicated in the `call-quality` insight widget inside
 
 Note: Telephony appears in `Sidebar` but **not** in `FloatingNav`.
 
-### 7.10 Settings — `settings` view
+### 7.11 Settings — `settings` view
 
 `SettingsView` — informational panel. Explains that outbound calling uses `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` env var or per-campaign `sip_trunk_id`. Shows admin-only warning for non-admins; no editable settings yet.
 
-### 7.11 Profile — `profile` view
+### 7.12 Profile — `profile` view
 
 `ProfileView`:
 
@@ -398,7 +415,7 @@ interface InsightCtx {
 
 | Component | Trigger | Purpose |
 |-----------|---------|---------|
-| `CampaignModal` | "+ New Campaign" | 3-step wizard: Campaign → Schedule → Voice & Contacts |
+| `CampaignModal` | "+ New Campaign" | 5-step wizard: Basics → Trunk → Voice → Contacts → Schedule |
 | `CampaignActionDialog` | Edit / Reuse on campaign | Edit MP4 URL or clone campaign with new CSV |
 | `SaveTemplateDialog` | "Save layout template" on dashboard | Names and saves current insight layout |
 | `TutorialOverlay` | First visit or "Replay tour" / `?` button | Spotlight guided tour (`TOUR_STEPS`) |
@@ -407,16 +424,21 @@ interface InsightCtx {
 
 ### 9.1 CampaignModal flow (detail)
 
-**Step 1 — Campaign**: name, agent (seeker/grace/auto), SIP trunk picker (`GET /api/trunks`).
+**Step 1 — Basics**: campaign name, company, optional product picker. Selecting a product pre-fills script text/audio/voice/duration from the product's current version.
 
-**Step 2 — Schedule**: dialing speed, time window, max concurrent, retries, transfer key/target.
+**Step 2 — Trunk**: SIP trunk picker (`GET /api/trunks`) and optional network filter (`campaigns.network_provider`).
 
-**Step 3 — Voice & Contacts**:
+**Step 3 — Voice**:
 
 - Voice mode toggle: **Upload** (MP4 to Supabase Storage) or **Generate** (`VoiceGenerator` → TTS APIs)
+
+**Step 4 — Contacts**:
+
 - CSV contact list parsed by `lib/parseCsv.ts` (requires `phone` column)
 
-Submit → `POST /api/campaigns` with contacts array and optional `voice_path` or `voice_recording_url`.
+**Step 5 — Schedule**: dialing speed, time window, max concurrent, retries, transfer key/target, and ETA derived with `lib/scheduleEstimate.ts`.
+
+Submit → `POST /api/campaigns` with contacts array, optional `product_id`, and optional `voice_path` or `voice_recording_url`.
 
 ### 9.2 VoiceGenerator (`components/VoiceGenerator.tsx`)
 
@@ -425,7 +447,7 @@ Embedded in `CampaignModal` step 3 when voice mode is "generate".
 1. User picks Inworld voice (gender, ethnicity, voice ID) from `lib/inworld-voices.ts`
 2. User enters script text
 3. **Preview**: `POST /api/tts/generate` → plays base64 audio in browser
-4. **Save**: `POST /api/tts/save` → returns public URL stored as `voice_recording_url` on campaign
+4. **Save**: `POST /api/tts/save` → returns public URL stored as `voice_recording_url` on campaign/product script version; script metadata is best-effort saved to CallOps `script_library`
 
 ---
 
@@ -469,7 +491,9 @@ Key entities the frontend works with:
 |------|-------------|
 | `Agent` | `'seeker' \| 'grace' \| 'sangoma'` — voice persona label |
 | `CampaignStatus` | `draft`, `running`, `paused`, `stopped`, `completed`, `archived`, `deleted` |
-| `Campaign` | Campaign config: name, agent, status, dialing_speed, time window, sip_trunk_id, voice URLs, company |
+| `Campaign` | Campaign config: name, legacy agent label, status, dialing speed, time window, sip trunk id, voice URLs, product ids, network gate, company |
+| `Product` | Company-scoped script/consent-flow identity with current script version |
+| `ProductScriptVersion` | Versioned script text/audio/voice/duration for a product |
 | `CampaignLiveStatus` | Real-time stats from callops: active_calls, queued, dialed, failed, etc. |
 | `CampaignReport` | Aggregated metrics per campaign: dialed, connected, qualified, outcomes, CPL, spend |
 | `CallRecord` | Individual call: phone, outcome, talk_seconds, cost, transferred, recording_url |

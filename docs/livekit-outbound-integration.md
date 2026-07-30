@@ -1,6 +1,6 @@
 # Callops and LiveKit Outbound Integration
 
-This guide explains how outbound calling is wired today: the dashboard proxies campaign controls to **evra-callops**, callops dispatches through **LiveKit SIP**, and Supabase remains the dashboard read model.
+This guide explains how outbound calling is wired today: the dashboard proxies operational reads/writes to **evra-callops**, CallOps dispatches through **LiveKit SIP**, and Supabase is the shared persistence layer behind CallOps plus narrow dashboard-only exceptions.
 
 ---
 
@@ -33,7 +33,7 @@ Two outbound paths exist:
 | Path | Use |
 |------|-----|
 | **Production UI path** | Operator controls campaign lifecycle through callops proxy routes. |
-| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial` and the legacy authenticated `POST /api/campaigns/:id/dial` route; not used by production campaign controls. |
+| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial`; not used by production campaign controls. |
 
 There is no `/api/simulate` fallback in the current codebase.
 
@@ -55,26 +55,26 @@ There is no `/api/simulate` fallback in the current codebase.
 
 | File | Role |
 |------|------|
-| `app/api/trunks/route.ts` | SIP trunk catalog for the campaign wizard; optionally cross-checks callops `/livekit/trunks`; proxies trunk create to callops. |
+| `app/api/trunks/route.ts` | SIP trunk catalog for the campaign wizard via `GET /companies/{id}/sip-trunks`; proxies trunk create to callops. |
 | `app/api/trunks/[trunk_id]/route.ts` | Proxies LiveKit trunk PATCH/DELETE to callops by `ST_...` trunk id. |
 | `app/api/trunks/test-call/route.ts` | Proxies one-off SIP test calls to callops `/livekit/test-call`. |
 | `app/api/livekit/webhook/route.ts` | Signature-validated LiveKit webhook fallback updates to `call_records`. |
-| `app/api/campaigns/[id]/dial/route.ts` | Legacy direct LiveKit diagnostic batch dial route with local compliance gate. |
 | `lib/outbound-call.ts` | Direct LiveKit SDK helpers used by the diagnostic CLI. |
 | `lib/livekit.ts` | Server-only exports for LiveKit helpers and webhook receiver. |
 | `lib/phone.ts` | `normalizePhone()` for contact imports before dialing. |
 | `lib/voice.ts` | Resolves uploaded or generated campaign voice URLs. |
 | `utils/supabase/admin.ts` | Service-role client for webhook writes and server-side signing. |
 
-### Dashboard read model
+### Dashboard operational data
 
-| Route | Reads |
+| Route | Upstream |
 |-------|-------|
-| `GET /api/campaigns` | `campaigns` joined to `companies` |
-| `GET /api/logs` | `call_records` |
-| `GET /api/reports` | `call_logs` joined to `campaigns` |
-| `GET /api/intents` | `intent_stats`; `call_records` denominator for campaign-specific views |
-| `GET /api/trunks` | `sip_trunks`; optional callops live-trunk cross-check |
+| `GET /api/campaigns` | CallOps company fan-out: `/companies/{id}/campaigns` |
+| `GET /api/logs` | CallOps `/companies/{id}/calls` or `/campaigns/{id}/calls` |
+| `GET /api/reports` | CallOps `/companies/{id}/dashboard/campaign-performance` plus campaign/product enrichment |
+| `GET /api/intents` | CallOps intent-stats endpoints |
+| `GET /api/trunks` | CallOps `/companies/{id}/sip-trunks` |
+| `GET /api/products*` | CallOps product and product-version endpoints |
 
 ---
 
@@ -142,15 +142,20 @@ Copy `.env.local.example` for development or `.env.example` for production. Neve
 
 | Table | Important fields |
 |-------|------------------|
-| `campaigns` | `status`, `time_window_start`, `time_window_end`, `max_concurrent`, `max_retries`, `retry_cooldown_seconds`, `auto_paused`, `sip_trunk_id`, `agent_name`, `voice_path`, `voice_recording_url` |
-| `contacts` | `status`, `retry_count`, `last_attempted_at` |
+| `campaigns` | `status`, `time_window_start`, `time_window_end`, `max_concurrent`, `max_retries`, `retry_cooldown_seconds`, `auto_paused`, `sip_trunk_id`, `agent_name`, `voice_path`, `voice_recording_url`, `voice_id`, `product_id`, `product_version_id`, `network_provider` |
+| `contacts` | `status`, `network_provider`, `retry_count`, `last_attempted_at` |
+| `products` / `product_script_versions` | Product identity, integration type, STS key, script text/audio/voice/duration |
 | `sip_trunks` | `id`, `name`, `from_number`, `livekit_trunk_id` |
 | `call_records` | `campaign_id`, `contact_id`, `phone`, `room`, `outcome`, `talk_seconds`, `cost`, `transferred`, `recording_url` |
 | `intent_stats` | Daily intent waterfall counts |
 
-The campaign wizard stores `campaigns.sip_trunk_id` as the integer `sip_trunks.id`. callops resolves that row to the LiveKit trunk id (`ST_...`). `GET /api/trunks` returns only live-backed trunks when callops can cross-check `/livekit/trunks`; otherwise it returns the full Supabase catalog. Telephony admin writes use `POST /api/trunks`, `PATCH /api/trunks/{ST_...}`, `DELETE /api/trunks/{ST_...}`, and `POST /api/trunks/test-call`, each proxying server-side with `X-Webhook-Secret`.
+The campaign wizard stores `campaigns.sip_trunk_id` as the integer `sip_trunks.id`. CallOps resolves that row to the LiveKit trunk id (`ST_...`). `GET /api/trunks` fans out over the user's companies through CallOps and deduplicates by trunk id. Telephony admin writes use `POST /api/trunks`, `PATCH /api/trunks/{ST_...}`, `DELETE /api/trunks/{ST_...}`, and `POST /api/trunks/test-call`, each proxying server-side with `X-Webhook-Secret`.
 
 Campaign create sets `agent_name` to `outbound-recorder`, the deployed LiveKit worker name used by callops.
+
+### Network filter / dial gate
+
+Operators can set `campaigns.network_provider` from the campaign create/edit dialogs or Contacts view. The Contacts view also shows `GET /campaigns/{id}/contacts/network-breakdown` chips so operators can see the whole campaign's carrier mix. CallOps enforces the gate at enqueue time: when a campaign network is set, only contacts with matching stored `contacts.network_provider` are queued.
 
 ---
 
@@ -180,7 +185,7 @@ Typical body:
 }
 ```
 
-The local `POST /api/calls/result` route is deprecated and intentionally performs no writes. It returns `{ "ok": true, "deprecated": true }` for transitional agents.
+The local `POST /api/calls/result` route is a secondary reconciliation path authenticated with `X-Webhook-Secret`. It inserts a `call_records` row only when the primary CallOps `/calls/outcome` write is missing, and never updates rows CallOps already wrote.
 
 Outcome values used by callops include `answered`, `no_answer`, `busy`, `failed`, `transferred`, and `voicemail`. Legacy dashboard rows may also contain IVR-specific values such as `qualified`, `no_speech`, `hangup`, `ni`, `dnq`, and `callback`.
 
@@ -259,7 +264,7 @@ LIMIT 10;
 | Play/Pause/Stop changes only local status | `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` missing outside production | Route returns `{ mode: 'local' }`; set callops env before production |
 | Play/Pause/Stop returns 503 in production | `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` missing | Set callops env; production refuses local lifecycle writes |
 | Live stats do not show on campaign cards | callops unconfigured/unreachable or campaign not `running`/`paused` | `npm run callops -- status <campaignId>` |
-| Campaign wizard shows no trunks | Empty `sip_trunks` table or callops cross-check filters all rows | `GET /api/trunks`; verify `sip_trunks.livekit_trunk_id` exists in LiveKit |
+| Campaign wizard shows no trunks | CallOps returns no company-scoped SIP trunks or the user has no company scope | `GET /api/trunks`; verify CallOps `/companies/{id}/sip-trunks` |
 | Telephony admin write/test-call returns 503 | callops admin proxy env missing | Set `CALLOPS_URL` and `CALLOPS_WEBHOOK_SECRET` |
 | Agent never joins a call | callops worker name/trunk config mismatch | Campaign create sets `agent_name = outbound-recorder`; verify callops worker registration |
 | Webhook updates missing | LiveKit webhook not configured, invalid LiveKit secrets, or service-role key missing | Server logs and `/api/livekit/webhook` responses |

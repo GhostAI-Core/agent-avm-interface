@@ -20,7 +20,8 @@ operational data.
 API. The frontend MUST NOT read/write operational tables (campaigns, contacts, call_records,
 call_logs, sip_trunks, companies) directly from Supabase. Supabase is **auth/session only** on
 the client. All operational data flows through Next.js API routes → `utils/callops.ts` (bearer
-client) → CallOps. This is the M2 cutover that is currently in progress.
+client) → CallOps. Direct Supabase access should be limited to auth, templates/security, storage,
+webhook fallback writes, and reconciliation paths.
 
 **Data flow:** Browser → Next.js API route (`/app/api/*`) → `utils/callops.ts`
 (`Authorization: Bearer <user Supabase ES256 token>`) → CallOps → shared Supabase.
@@ -87,19 +88,22 @@ integration against CallOps. Everything below the lib layer is manual-only today
 | CSV with no `phone` header → "No valid rows" (no request) | ⬜ | |
 | Row actions Retry / Archive / DNC POST + reload | ⬜ | Verify status flips; DNC sets compliance flag in CallOps |
 | Action/list error surfaces in an Alert, not a crash | ⬜ | |
+| Network dropdown initializes from `campaign.network_provider` and `PUT /api/campaigns/{id}` persists changes | ⬜ | Select MTN/Vodacom/Cell C; reload campaign |
+| Network filter passes `network_provider` to CallOps and page resets on change | ⬜ | Compare URL/query and visible rows |
+| Network breakdown chips render whole-campaign counts independent of status/search/network filters | ⬜ | Verify against CallOps `/contacts/network-breakdown` |
 
 ### 3.5 Dashboard analytics (M2-3) — **rewired this session** (source-swap, FE contract preserved)
 `/api/reports` ← CallOps `campaign-performance`; `/api/intents` ← CallOps `intent-stats`. No
-Supabase operational reads remain. Cost/CPL/spend + legacy outcome columns read **0** (no CallOps
-source). KPI/charts/CallQuality unchanged in code.
+Supabase operational reads remain. Reports map CallOps `by_outcome` into legacy dashboard columns
+and use CallOps `total_cost` for spend/CPL. KPI/charts/CallQuality unchanged in code.
 | Check | Status | How (clauto) |
 |---|---|---|
-| Reports table populates from CallOps (Dialed/Connected/Failed real; legacy cols 0) | ⬜ | Open Campaign Report |
-| KPI cards: Dialed/Connected/Avg-Talk real; Qualified/CPL/Spend show 0 | ⬜ | Control Room |
+| Reports table populates from CallOps (Dialed/Connected/Failed/Lead/Opt-out mapped from `by_outcome`) | ⬜ | Open Campaign Report |
+| KPI cards: Dialed/Connected/Avg-Talk/Spend/CPL reflect CallOps data | ⬜ | Control Room |
 | OutcomeDonut / Campaign comparison render without crash | ⬜ | |
 | Call Quality waterfall ← `/campaigns/{id}/intent-stats` (`% of Connected`) | ⬜ | Call Quality view |
 | **Opt-out excluded from `connected`** (CallOps contract) | ✅ backend; ⬜ confirm | |
-| Agent filter still works; date filter is inert (campaign-performance is all-time) | ⬜ | known limitation |
+| Product filter (`product_id`) works; legacy `agent` fallback still works for old states; date filter is inert (campaign-performance is all-time) | ⬜ | known limitation |
 | **Deferred**: prune the now-zero Spend/CPL/legacy widgets (cosmetic, not compliance) | ⬜ | |
 
 ### 3.6 Call history & detail (M2-5)
@@ -135,6 +139,7 @@ SIP Trunks tab is now CallOps-backed; other Telephony tabs remain mock (no CallO
 | `lib/compliance/gate.ts` rollover classifier | ✅ unit-tested |
 | `lib/sts/outcomes.ts` + `client.ts` vocab alignment | ✅ unit-tested |
 | Live suppression gate (owned by CallOps, not dashboard) | ➖ CallOps-side; FE has zero control ([[fe-zero-control]]) |
+| Campaign network gate (`campaigns.network_provider`) | ⬜ | Dashboard sets the value; CallOps owns enqueue enforcement |
 
 ### 3.10 Other views (pre-M2, Supabase-direct — to be audited in task 8.1)
 | View | Status | Note |

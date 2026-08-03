@@ -7,9 +7,9 @@
 
 ## The spine
 
-Every component reads/writes **Supabase** as the source of truth and references a single deterministic
-join key per attempt: the room name **`call-{contactId}-{attempt}`**. That key ties together Postgres
-message queues, LiveKit websockets, and carrier telemetry, so a crashed worker never loses call state.
+CallOps owns the operational writes to **Supabase** and references a single deterministic join key per
+attempt: the room name **`call-{contactId}-{attempt}`**. That key ties together queue state, LiveKit
+websockets, and carrier telemetry, so a crashed worker never loses call state.
 
 ## Sequence
 
@@ -23,7 +23,8 @@ sequenceDiagram
     participant PSTN as Carrier / callee
 
     Op->>UI: pick company, upload contacts CSV, generate pitch
-    UI->>DB: TTS (Inworld) → avm_scripts bucket; write contacts; status=running
+    UI->>CO: create/update campaign + contacts through Next.js CallOps proxy
+    UI->>DB: TTS (Inworld) → avm_scripts bucket / script-audio metadata
     UI->>CO: POST /campaigns/{id}/start (X-Webhook-Secret)
     Note over UI,CO: ⚠️ real trigger is this HTTP call + the status write —<br/>not a pure DB-mutation trigger (video over-idealized)
     CO->>DB: Campaign Watcher (~5s poll) sees running; queue pending/retry (pgmq)
@@ -45,7 +46,7 @@ sequenceDiagram
         CO->>DB: normalize outcome (answered→connected); insert call_records
         CO->>DB: opt-out → suppression_list; retryable → retry+cooldown back to queue
     end
-    UI->>DB: poll call_logs (~15s) → live charts
+    UI->>CO: poll dashboard/report/status proxy routes (~15s) → live charts
 ```
 
 ## Where our work plugs in

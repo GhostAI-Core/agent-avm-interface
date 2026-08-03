@@ -33,9 +33,9 @@ Two outbound paths exist:
 | Path | Use |
 |------|-----|
 | **Production UI path** | Operator controls campaign lifecycle through callops proxy routes. |
-| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial` and the legacy authenticated `POST /api/campaigns/:id/dial` route; not used by production campaign controls. |
+| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial`; not used by production campaign controls. |
 
-There is no `/api/simulate` fallback in the current codebase.
+There is no `/api/simulate` fallback or authenticated `POST /api/campaigns/:id/dial` route in the current codebase.
 
 ---
 
@@ -59,7 +59,6 @@ There is no `/api/simulate` fallback in the current codebase.
 | `app/api/trunks/[trunk_id]/route.ts` | Proxies LiveKit trunk PATCH/DELETE to callops by `ST_...` trunk id. |
 | `app/api/trunks/test-call/route.ts` | Proxies one-off SIP test calls to callops `/livekit/test-call`. |
 | `app/api/livekit/webhook/route.ts` | Signature-validated LiveKit webhook fallback updates to `call_records`. |
-| `app/api/campaigns/[id]/dial/route.ts` | Legacy direct LiveKit diagnostic batch dial route with local compliance gate. |
 | `lib/outbound-call.ts` | Direct LiveKit SDK helpers used by the diagnostic CLI. |
 | `lib/livekit.ts` | Server-only exports for LiveKit helpers and webhook receiver. |
 | `lib/phone.ts` | `normalizePhone()` for contact imports before dialing. |
@@ -70,9 +69,9 @@ There is no `/api/simulate` fallback in the current codebase.
 
 | Route | Reads |
 |-------|-------|
-| `GET /api/campaigns` | `campaigns` joined to `companies` |
+| `GET /api/campaigns` | CallOps company/campaign fan-out |
 | `GET /api/logs` | `call_records` |
-| `GET /api/reports` | `call_logs` joined to `campaigns` |
+| `GET /api/reports` | CallOps campaign-performance rollups |
 | `GET /api/intents` | `intent_stats`; `call_records` denominator for campaign-specific views |
 | `GET /api/trunks` | `sip_trunks`; optional callops live-trunk cross-check |
 

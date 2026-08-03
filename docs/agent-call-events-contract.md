@@ -1,17 +1,21 @@
-# Agent ↔ App contract — call_events pipeline & in-call behavior
+# Agent ↔ CallOps contract — call outcome pipeline & in-call behavior
 
 **For:** the LiveKit outbound agent worker (Seeker/Grace path).
-**Owner of this doc:** control-plane (agent-avm-interface). **Date:** 2026-06-18.
+**Owner of this doc:** control-plane (agent-avm-interface). **Date:** 2026-08-03.
 
-The agent does the in-call work and **dumps raw events into Supabase `call_events`**. A DB trigger
-(`process_call_event`) maps each row into `call_records` / `intent_stats`, which the dashboards read.
-The agent does **not** need to call any HTTP endpoint for results — just insert rows.
+CallOps is now the production owner of dispatch and outcome ingestion. New LiveKit agents should
+post final call outcomes and telemetry to CallOps (for example `POST $CALLOPS_URL/calls/outcome`);
+CallOps writes `call_records`, intent/telemetry data, product consent, and contact state. The
+dashboard reads that data through Next.js API routes.
+
+The older raw Supabase `call_events` insert path below is retained as legacy context only. Do not
+build new agent integrations against direct Supabase writes from this app.
 
 ---
 
 ## 1. What the agent reads (per-call config)
 
-Two equivalent sources — use whichever is easier:
+Use CallOps dispatch metadata as the production source of per-call config:
 
 - **Dispatch metadata** (attached at dial time). JSON includes:
   ```json
@@ -23,8 +27,9 @@ Two equivalent sources — use whichever is easier:
     "transferKey": "...", "transferTarget": "..."
   }
   ```
-- **Supabase `campaigns` row** (by `campaignId` parsed from the room name `avm_<campaignId>_<contactId>_<rand>`):
-  columns `answer_delay_sec`, `amd_enabled`, `voicemail_action`, `silence_timeout_sec`.
+Older workers sometimes read the Supabase `campaigns` row by `campaignId` parsed from the room name
+(`avm_<campaignId>_<contactId>_<rand>`). Treat that as a legacy fallback; CallOps should provide the
+runtime configuration needed by the worker.
 
 ## 2. In-call behavior the agent must enforce (touch points 3–6)
 
@@ -37,7 +42,10 @@ Two equivalent sources — use whichever is easier:
 When the agent terminates, **it hangs up itself** (it's in the room) and records the reason via a
 `call_events` row (below). The control plane does not need to issue the hangup.
 
-## 3. What the agent writes — `call_events`
+## 3. Legacy raw event path — `call_events`
+
+Production agents should prefer CallOps HTTP ingestion. If you are maintaining an older worker that
+still inserts into Supabase directly, the historical shape was:
 
 Insert one row per event. Only `room` and `event_type` are required; put everything else in `payload`.
 `campaign_id` / `contact_id` come from the room name; `processed` is set by the trigger — leave it `false`.
@@ -63,8 +71,9 @@ Unknown `event_type`s are accepted and kept **raw** (not mapped) — safe to dum
 
 ## 4. Notes
 
-- The dial route pre-creates a `pending` `call_records` row keyed by `room`; the trigger upserts, so
-  the agent dumping before/after that is fine in either order.
+- The app no longer has an authenticated `/api/campaigns/{id}/dial` route. CallOps owns room creation,
+  contact claim/retry state, and primary outcome writes.
 - `room` is unique in `call_records` — always send the exact room name you joined.
-- The legacy HTTP path (`POST /api/calls/result` with `x-agent-secret`) still works if you prefer it,
-  but the `call_events` dump is the primary path going forward.
+- `POST /api/calls/result` on this app is a secret-protected reconciliation fallback for CallOps. It
+  checks whether the `call_records.room` row already exists and only inserts a missing record. It is
+  not the primary agent API.

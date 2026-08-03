@@ -8,8 +8,8 @@ This document describes the Next.js Route Handlers under `app/api/`, how they re
 
 | Layer | What it is | Role |
 |-------|------------|------|
-| `app/api/` (this repo) | Next.js Route Handlers | Dashboard CRUD, auth-gated read model, lifecycle proxy to callops, telephony trunk proxies, TTS/script reuse, STS relay, LiveKit webhook |
-| `docs/openapi.json` | OpenAPI 3.1 for **evra-callops** | Campaign dispatcher, queue stats, call outcome/telemetry ingestion, LiveKit admin API |
+| `app/api/` (this repo) | Next.js Route Handlers | Dashboard facade, user-token CallOps proxies, lifecycle proxy, telephony trunk proxies, TTS/script reuse, STS relay, LiveKit webhook, flow-builder generation |
+| `docs/openapi.json` | OpenAPI 3.1 for **evra-callops** | Campaign dispatcher, queue stats, contacts/products/leads/trunks, call outcome/telemetry ingestion, LiveKit admin API |
 | Supabase | PostgreSQL + Auth + Storage | Source of truth for campaigns, contacts, call records, intents, audit logs |
 
 This app is no longer the production dialer. `app/api/campaigns/[id]/[action]/route.ts` proxies lifecycle actions to evra-callops, and callops owns dispatch, pacing, retries, LiveKit SIP calls, and agent outcome ingestion.
@@ -19,13 +19,15 @@ Browser
   │ authenticated fetch
   ▼
 app/api/*
-  ├─ Supabase session routes: campaigns, companies, logs, reports, intents, templates, trunks, scripts
+  ├─ CallOps bearer-token proxies: campaigns, companies, contacts, products, leads, reports, settings, SIP trunks
   ├─ POST /api/campaigns/{id}/start|pause|stop ──X-Webhook-Secret──► evra-callops
   ├─ GET  /api/campaigns/{id}/status            ──X-Webhook-Secret──► evra-callops
   ├─ /api/trunks/*                              ──X-Webhook-Secret──► callops LiveKit admin
+  ├─ /api/sip-trunks/*                          ──Authorization: Bearer user-token──► evra-callops
   ├─ POST /api/sts/mark                         ──optional x-relay-secret──► STS SDP
+  ├─ POST /api/flow-builder/generate            ──server-side Anthropic SDK──► Claude flow generation
   ├─ POST /api/livekit/webhook ◄──────────── signed LiveKit room events
-  └─ POST /api/calls/result ── deprecated no-op; use callops /calls/outcome
+  └─ POST /api/calls/result ◄─────────────── X-Webhook-Secret reconciliation from callops
 ```
 
 ---
@@ -34,13 +36,14 @@ app/api/*
 
 | Auth type | Header / mechanism | Routes |
 |-----------|--------------------|--------|
-| Supabase session | Cookie from `createServerClient`; validated via `getAuthUser()` | Dashboard CRUD/read routes, lifecycle proxy, trunk catalog/admin proxies, script library |
-| `X-Webhook-Secret` | Sent server-side from this app to `CALLOPS_URL` | callops lifecycle/status/trunk admin/test-call cross-checks |
+| Supabase session | Cookie from `createServerClient`; validated via `getAuthUser()` | Lifecycle/status proxy, Supabase-backed dashboard templates/scripts/security, LiveKit webhook helpers |
+| User bearer token | Supabase access token from `getAccessToken()` forwarded as `Authorization: Bearer ...` | CallOps-backed campaigns, companies, contacts, products, leads, reports, settings, SIP trunk, per-call detail, script-audio routes |
+| `X-Webhook-Secret` | Sent server-side from this app to `CALLOPS_URL`, or checked on inbound reconciliation | Lifecycle/status/trunk legacy proxies; inbound `POST /api/calls/result` |
 | `x-relay-secret` | Optional shared secret checked when `STS_RELAY_SECRET` is set | `POST /api/sts/mark` |
 | LiveKit webhook JWT | `Authorization` header; validated by `WebhookReceiver` | `POST /api/livekit/webhook` |
-| None | Public | `GET /api/health`, deprecated `POST /api/calls/result` no-op; `POST /api/sts/mark` only when `STS_RELAY_SECRET` is unset |
+| None | Public | `GET /api/health`; `POST /api/sts/mark` only when `STS_RELAY_SECRET` is unset; `POST /api/flow-builder/generate` currently does not validate a Supabase session |
 
-The browser never receives `CALLOPS_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, LiveKit API secrets, Inworld credentials, or STS relay/GUID secrets.
+The browser never receives `CALLOPS_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, LiveKit API secrets, Inworld credentials, Anthropic credentials, or STS relay/GUID secrets.
 
 ---
 
@@ -61,42 +64,58 @@ All paths are prefixed with `/api` by Next.js App Router convention.
 
 | | |
 |---|---|
-| Auth | Supabase user |
-| Purpose | List active campaigns for the dashboard |
-| Response | `{ campaigns: Campaign[] }`; joins `companies.name` as flattened `company` |
-| Filters | Excludes `deleted` and `archived` |
-| Supabase tables | `campaigns`, `companies` |
+| Auth | User bearer token |
+| Purpose | List campaigns across the user's CallOps companies |
+| Response | `{ campaigns: Campaign[] }`; each row is flattened with the company name as `company` |
+| Upstream | `GET $CALLOPS_URL/companies`, then `GET $CALLOPS_URL/companies/{id}/campaigns` for each company |
+| Supabase tables | None directly |
 
 ### `POST /api/campaigns`
 
 | | |
 |---|---|
-| Auth | Supabase user |
-| Purpose | Create a campaign and optional contacts |
-| Body | `{ name, company_id, agent?, dialing_speed?, window_start?, window_end?, start_date?, end_date?, audio_path?, transfer_key?, transfer_target?, max_concurrent?, max_retries?, retry_cooldown_seconds?, sip_trunk_id?, contacts?[] }` |
-| Response | `{ campaign }` with status **201** |
-| Validation | `name` and `company_id` required; contacts with invalid phone numbers are dropped after `normalizePhone()` |
-| Supabase tables | `campaigns`, `contacts`, `campaign_contacts` |
+| Auth | User bearer token |
+| Purpose | Create a campaign and optional contacts through CallOps |
+| Body | `{ name, company_id, agent?, dialing_speed?, window_start?, window_end?, audio_path?, voice_recording_url?, transfer_key?, transfer_target?, max_concurrent?, max_retries?, retry_cooldown_seconds?, sip_trunk_id?, network_provider?, voice_id?, routing_mode?, product_id?, product_version_id?, contacts?[] }` |
+| Response | CallOps create response with status **201**; currently `{ campaign, contacts_imported?, contacts_rejected? }` |
+| Validation | `name` and `company_id` required; contacts must have `phone` before forwarding |
+| Upstream | `POST $CALLOPS_URL/companies/{company_id}/campaigns` with user bearer token |
+| Supabase tables | None directly; CallOps owns campaign/contact writes |
 
 Create-time details:
 
 | Field | Behavior |
 |-------|----------|
 | `agent_name` | Always stored as `outbound-recorder`, the deployed LiveKit worker callops dispatches |
-| `sip_trunk_id` | Integer FK to `sip_trunks.id`; callops resolves it to `sip_trunks.livekit_trunk_id` |
+| `sip_trunk_id` | Forwarded as a number when present; CallOps resolves trunk details |
 | `max_concurrent`, `max_retries`, `retry_cooldown_seconds` | Coerced to integers with defaults `5`, `2`, `3600` |
 | `window_start`, `window_end` | Stored as `time_window_start`, `time_window_end` |
-| `contacts` | Canonical contacts are reused by phone and linked through `campaign_contacts`; `contacts.campaign_id` is also set to the new campaign because callops currently enumerates contacts from that column |
+| `audio_path` / `voice_recording_url` | `audio_path` from the UI maps to `voice_recording_url` because the dispatcher reads that field |
+| `product_id`, `product_version_id` | Optional product pointer; CallOps derives product fields when supported and can pin an exact script version |
+| `contacts` | Forwarded to CallOps; CallOps owns E.164 normalization, dedupe, campaign linking, and rejection reporting |
+
+### `GET /api/campaigns/[id]`
+
+| | |
+|---|---|
+| Auth | Supabase user |
+| Purpose | Fetch CallOps campaign detail/summary for a single campaign |
+| Response | `{ summary, campaign }`; `{ mode: 'unconfigured', summary: null }` when CallOps env is missing |
+| Upstream | `GET $CALLOPS_URL/campaigns/{id}` with `X-Webhook-Secret` |
+| Supabase tables | None directly |
+
+The `summary` block supplies aggregates such as `connected`, `opt_out`, and `calls_total` that the frontend cannot always derive from list data.
 
 ### `PUT /api/campaigns/[id]`
 
 | | |
 |---|---|
-| Auth | Supabase user |
-| Purpose | Partial campaign update for non-lifecycle fields |
-| Allowed fields | `name`, `company_id`, `dialing_speed`, `time_window_start`, `time_window_end`, `voice_recording_url`, `audio_path`, `sip_trunk_id`, `start_date`, `end_date`, `agent`, `max_concurrent`, `max_retries`, `retry_cooldown_seconds` |
+| Auth | User bearer token |
+| Purpose | Partial campaign update for non-lifecycle fields through CallOps |
+| Allowed fields | `name`, `agent`, `dialing_speed`, `time_window_start`, `time_window_end`, `max_concurrent`, `max_retries`, `retry_cooldown_seconds`, `sip_trunk_id`, `voice_recording_url`, `voice_path`, `audio_path`, `transfer_key`, `transfer_target`, `network_provider`, `voice_id`, `routing_mode`, `product_id`, `product_version_id` |
 | Response | `{ campaign }` |
-| Supabase tables | `campaigns` |
+| Upstream | `PATCH $CALLOPS_URL/campaigns/{id}` with user bearer token |
+| Supabase tables | None directly |
 
 Lifecycle controls must use `/start`, `/pause`, and `/stop` so callops can own dispatch state. Direct `PUT { status }` is intentionally rejected by the field allow-list.
 
@@ -104,11 +123,11 @@ Lifecycle controls must use `/start`, `/pause`, and `/stop` so callops can own d
 
 | | |
 |---|---|
-| Auth | Supabase user |
-| Purpose | Soft delete |
-| Behavior | Sets `status = 'deleted'` |
+| Auth | User bearer token |
+| Purpose | Soft archive |
+| Behavior | Calls CallOps archive; no hard delete in this app |
 | Response | `{ success: true }` |
-| Supabase tables | `campaigns` |
+| Upstream | `POST $CALLOPS_URL/campaigns/{id}/archive` with user bearer token |
 
 ### `POST /api/campaigns/[id]/start|pause|stop`
 
@@ -145,16 +164,40 @@ If callops returns a client error, this app preserves the upstream 4xx status an
 
 The UI polls this route for running/paused campaigns and expects counters such as `active_calls`, `queued`, `pending`, `in_progress`, `dialed`, `failed`, `retry`, `completed_today`, and optional `auto_paused`.
 
-### `POST /api/campaigns/[id]/dial`
+### `GET /api/campaigns/[id]/contacts`
 
 | | |
 |---|---|
-| Auth | Supabase user |
-| Purpose | Legacy in-app LiveKit batch dial path for diagnostics/pre-callops workflows |
-| Response | `{ mode: 'unconfigured' }` when LiveKit/trunk env is missing, otherwise `{ mode: 'live', dispatched, attempted, blocked, blockedReasons, errors }` |
-| Supabase tables | `campaigns`, `campaign_contacts`, `contacts`, `suppression_list`, `dial_number_state`, `product_consent`, `compliance_events`, `call_records`, `security_logs` |
+| Auth | User bearer token |
+| Purpose | List contacts for one campaign and return whole-campaign network counts |
+| Query | `status?`, `network?`, `search?`/`phone?`, `page?`, `page_size?` (capped at 200) |
+| Response | `{ items, page, page_size, total, breakdown }` |
+| Upstream | `GET $CALLOPS_URL/campaigns/{id}/contacts`, plus best-effort `GET /campaigns/{id}/contacts/network-breakdown` |
 
-The production dashboard lifecycle does not call this route; operators should use `/start`, `/pause`, and `/stop`, which proxy to callops. This route still exists for bounded direct LiveKit diagnostics and runs the local compliance gate before dispatching up to 25 pending contacts.
+`network` is translated to CallOps `network_provider`. The `breakdown` is independent of the visible filters so operators can see the campaign's network mix before setting a dial gate.
+
+### `POST /api/campaigns/[id]/contacts/import`
+
+| | |
+|---|---|
+| Auth | User bearer token |
+| Purpose | Bulk import contacts into a campaign |
+| Body | `{ contacts: [{ phone, first_name?, last_name?, external_id? }], dedupe?, source? }` |
+| Response | CallOps import summary |
+| Upstream | `POST $CALLOPS_URL/campaigns/{id}/contacts/import` |
+
+The browser parses CSV rows before calling this route. CallOps owns dedupe, E.164 normalization, campaign linking, and rejection reporting.
+
+### `POST /api/contacts/[id]/archive|retry|do-not-call`
+
+| | |
+|---|---|
+| Auth | User bearer token |
+| Purpose | Per-contact row actions from ContactsView |
+| Response | CallOps action result, or `{ ok: true }` when upstream returns no body |
+| Upstream | `POST $CALLOPS_URL/contacts/{id}/{action}` |
+
+The action segment is allowlisted before proxying; arbitrary contact paths are rejected with **400**.
 
 ### `GET /api/trunks`
 
@@ -217,16 +260,33 @@ The route forwards only recognized, non-empty fields. An empty patch returns **4
 
 A failed call attempt can still return HTTP 200 with `{ ok: false, ... }`; non-2xx responses mean request validation or upstream failure.
 
+### `/api/companies/[id]/sip-trunks` and `/api/sip-trunks/[id]`
+
+These routes back the live **Outbound Trunks** tab in `TelephonyView`. They are distinct from the older `/api/trunks` compatibility routes above.
+
+| Route | Auth | Purpose | Upstream |
+|-------|------|---------|----------|
+| `GET /api/companies/[id]/sip-trunks` | User bearer token | List company trunks with `page`, `page_size`, `sort`, `search` passthrough | `GET /companies/{id}/sip-trunks` |
+| `POST /api/companies/[id]/sip-trunks` | User bearer token | Create a company-scoped SIP trunk | `POST /companies/{id}/sip-trunks` |
+| `GET /api/sip-trunks/[id]` | User bearer token | Fetch one trunk; credentials are not returned by CallOps | `GET /sip-trunks/{id}` |
+| `PATCH /api/sip-trunks/[id]` | User bearer token | Partially update supplied trunk fields | `PATCH /sip-trunks/{id}` |
+| `GET /api/sip-trunks/[id]/health` | User bearer token | Fetch trunk health/live status | `GET /sip-trunks/{id}/health` |
+| `POST /api/sip-trunks/[id]/test-call` | User bearer token | Place a trunk-specific test call; requires `{ phone }` | `POST /sip-trunks/{id}/test-call` |
+| `POST /api/sip-trunks/[id]/archive` | User bearer token | Archive one trunk | `POST /sip-trunks/{id}/archive` |
+
+As with CallOps trunk creation, authentication secrets are not returned to the browser. A failed test call can still be a successful HTTP response with an `ok: false` payload.
+
 ### `POST /api/calls/result`
 
 | | |
 |---|---|
-| Auth | None |
-| Purpose | Deprecated transition endpoint |
-| Behavior | Logs a warning, performs no writes, returns `{ ok: true, deprecated: true }` |
-| Replacement | LiveKit agents should POST outcomes to `POST $CALLOPS_URL/calls/outcome` |
+| Auth | Inbound `X-Webhook-Secret` matching `CALLOPS_WEBHOOK_SECRET` |
+| Purpose | Secondary reconciliation backfill for call outcomes already handled by CallOps |
+| Body | CallOps/agent outcome shape: `{ contact_id?, campaign_id, room_name, outcome, phone?, talk_seconds?, transferred?, business_disposition?, ended_at? }` |
+| Response | `{ ok: true, action: 'inserted' \| 'exists' \| 'skipped' }` or validation/auth errors |
+| Supabase tables | `call_records` via service-role client |
 
-This route is intentionally a no-op so not-yet-updated agents stop cleanly during the cutover. Do not build new integrations against it.
+CallOps remains the primary writer. This route checks for an existing `call_records.room` and inserts only when the primary write is missing. It returns `skipped` when `CALLOPS_WEBHOOK_SECRET` or `SUPABASE_SERVICE_ROLE_KEY` is unavailable, and it maps legacy raw outcomes (`answered`, `ivr`, `opt_out`, `subscribe`) to the stored dashboard vocabulary before backfilling.
 
 ### `POST /api/sts/mark`
 
@@ -260,6 +320,17 @@ Handled events:
 
 The webhook updates rows by `call_records.room`. Under the callops model, callops is expected to create or maintain those rows.
 
+### `/api/calls/[id]` detail routes
+
+| Route | Auth | Purpose | Upstream |
+|-------|------|---------|----------|
+| `GET /api/calls/[id]` | User bearer token | Fetch a single call detail envelope (`{ call, contact, campaign }`) | `GET /calls/{id}` |
+| `GET /api/calls/[id]/telemetry` | User bearer token | Fetch model-usage telemetry (`{ telemetry: [...] }`) | `GET /calls/{id}/telemetry` |
+| `GET /api/calls/[id]/call-report` | User bearer token | Fetch telephony narrative: AMD, SIP, DTMF, playback, transfer, disconnect/talk data | `GET /calls/{id}/call-report` |
+| `GET /api/calls/[id]/recording` | User bearer token | Fetch a signed recording URL (`{ recording_url, expires_at }`) | `GET /calls/{id}/recording` |
+
+These routes pass CallOps errors through the shared `callopsErrorResponse()` normalizer. A missing recording can pass through as 404 so the UI can show an unavailable state rather than a crash.
+
 ### `GET /api/logs`
 
 | | |
@@ -273,10 +344,12 @@ The webhook updates rows by `call_records.room`. Under the callops model, callop
 
 | | |
 |---|---|
-| Auth | Supabase user |
-| Query | `agent?`, `date?` |
-| Response | `{ reports: CallLog[] }` with joined `campaign(name, agent)` |
-| Supabase tables | `call_logs`, `campaigns` |
+| Auth | User bearer token |
+| Query | `agent?` (legacy), `product_id?`, `from?`, `to?`; `date?` is accepted by the frontend builder but current CallOps range scoping uses `from`/`to` |
+| Response | `{ reports: CampaignReport[] }` with campaign/product display fields |
+| Upstream | For each company: `GET /companies/{id}/dashboard/campaign-performance`, `GET /companies/{id}/campaigns`, `GET /companies/{id}/products` |
+
+The route maps CallOps `by_outcome` into the dashboard report columns: `subscribed -> qualified`, `lead -> lead`, `opted_out -> opt_out`, plus `connected`, `no_answer`, `voicemail`, and `failed`. `dialed` is CallOps `calls`, and `total_spent` is CallOps `total_cost`.
 
 ### `GET /api/intents`
 
@@ -291,18 +364,64 @@ The webhook updates rows by `call_records.room`. Under the callops model, callop
 
 | | |
 |---|---|
-| Auth | Supabase user |
+| Auth | User bearer token |
 | Response | `{ companies: { id, name, contact_name, contact_email, contact_phone }[] }` |
-| Supabase tables | `companies` |
+| Upstream | `GET $CALLOPS_URL/companies` |
 
 ### `POST /api/companies`
 
 | | |
 |---|---|
-| Auth | Supabase user |
+| Auth | User bearer token |
 | Body | `{ name, contact_name?, contact_email?, contact_phone? }` |
 | Response | `{ company }` with status **201** |
-| Supabase tables | `companies` |
+| Upstream | `POST $CALLOPS_URL/companies` |
+
+### `/api/products`
+
+| Route | Auth | Purpose | Upstream |
+|-------|------|---------|----------|
+| `GET /api/products?company_id=...` | User bearer token | List products for one company | `GET /companies/{company_id}/products` |
+| `POST /api/products` | User bearer token | Create a company product; `company_id` and `name` required | `POST /companies/{company_id}/products` |
+| `GET /api/products/[id]` | User bearer token | Fetch one product | `GET /products/{id}` |
+| `PATCH /api/products/[id]` | User bearer token | Partially update one product | `PATCH /products/{id}` |
+| `GET /api/products/[id]/versions` | User bearer token | List script versions | `GET /products/{id}/versions` |
+| `POST /api/products/[id]/versions` | User bearer token | Create a script version; defaults `set_current` to true | `POST /products/{id}/versions` |
+| `POST /api/products/[id]/versions/[versionId]/activate` | User bearer token | Promote/roll back the active product script version | `POST /products/{id}/versions/{versionId}/activate` |
+
+Products are company-scoped CallOps entities. `integration_type` distinguishes Lead Gen from STS Subscription products, and `sts_product_key` is only meaningful for STS Subscription.
+
+### `GET /api/leads`
+
+| | |
+|---|---|
+| Auth | User bearer token |
+| Query | `campaignId?` |
+| Purpose | List Lead-Gen contacts who pressed 1, including single and double opt-ins |
+| Response | `{ leads, total, double_optin, single_optin }` |
+| Upstream | For each company: `GET /companies/{id}/leads`; best-effort enrichment from `GET /campaigns/{id}` and `GET /campaigns/{id}/contacts` |
+
+Rows are sorted newest-first. `cost` is the persisted per-call cost from CallOps, not a frontend estimate.
+
+### `GET /api/lookups/[type]`
+
+| | |
+|---|---|
+| Auth | User bearer token |
+| Purpose | Fetch allowlisted lookup values from CallOps |
+| Allowlist | `call-outcomes`, `agent-outcomes`, `business-dispositions`, `contact-statuses`, `campaign-statuses`, `calling-windows`, `timezones` |
+| Upstream | `GET $CALLOPS_URL/lookups/{type}` |
+
+Unknown lookup types are rejected locally with **400** before proxying.
+
+### `/api/settings`
+
+| Route | Auth | Purpose | Upstream |
+|-------|------|---------|----------|
+| `GET /api/settings` | User bearer token | Read global platform settings, currently carrier cost-per-minute | `GET /system-settings` |
+| `PATCH /api/settings` | User bearer token | Update `cost_per_minute_zar`; must be a positive number | `PATCH /system-settings` |
+
+CallOps enforces read/write authorization for settings.
 
 ### `GET /api/security`
 
@@ -346,6 +465,15 @@ The GET route degrades to `{ templates: [] }` if the table is missing.
 
 When `text` is provided, the route best-effort inserts a `voice_scripts` row so the voice generator can offer the script for reuse. Audio upload success is not rolled back if that library insert fails.
 
+### `/api/script-audio`
+
+| Route | Auth | Purpose | Upstream |
+|-------|------|---------|----------|
+| `GET /api/script-audio?campaign_id=...` | User bearer token | Fetch the latest campaign-scoped script/audio history row | `GET /script-audio?campaign_id=...&page_size=1` |
+| `POST /api/script-audio` | User bearer token | Record saved script audio/text metadata for one campaign | `POST /script-audio` |
+
+`POST` requires `campaign_id` and `audio_url`; optional fields are `text`, `voice`, and `duration_seconds`. This history is separate from the global reuse library at `/api/voice-scripts`.
+
 ### `GET /api/scripts`
 
 | | |
@@ -364,34 +492,46 @@ When `text` is provided, the route best-effort inserts a `voice_scripts` row so 
 | Response | `{ scripts: [{ id, text, voice_id, audio_url, campaign_name, created_at }] }` |
 | Supabase tables | `voice_scripts`; newest 50 rows |
 
+### `POST /api/flow-builder/generate`
+
+| | |
+|---|---|
+| Auth | None in this route today |
+| Purpose | Convert a natural-language campaign flow prompt into React Flow-compatible nodes and edges |
+| Body | `{ prompt: string }` |
+| Response | `{ nodes, edges }` suitable for the flow-builder preview |
+| Env | `ANTHROPIC_API_KEY` |
+| Model/tooling | Anthropic SDK, model `claude-opus-4-8`, forced `build_flow` tool |
+
+The system prompt is generated from `components/flow-builder/nodeSpecs.ts`, so Claude can only choose registered `specKey`s and listed fields. The route filters returned nodes to valid specs and filters edges to known node IDs; the client then lays out the graph and shows a read-only proof-check preview before applying it to the canvas. It does not persist or execute the flow.
+
 ---
 
 ## Routes Documented Elsewhere But Not Implemented Here
 
 | Route | Status |
 |-------|--------|
-| `GET /api/campaigns/:id` | Not implemented; only `PUT` and `DELETE` exist for this path |
-| `/api/providers` | Not implemented; Settings is informational and telephony admin UI uses local mock data |
+| `POST /api/campaigns/:id/dial` | Removed; production lifecycle uses `POST /api/campaigns/:id/start|pause|stop`, and direct LiveKit diagnostics use scripts |
+| `/api/providers` | Not implemented; Telephony uses CallOps SIP-trunk routes for trunks and local mock data for non-trunk tabs |
 | `POST /api/security` | Not implemented |
 | `POST /api/simulate` | Not implemented |
 
-The direct LiveKit CLI (`npm run dial`) still exists for diagnostics through `scripts/dial-outbound.ts`. A legacy authenticated `POST /api/campaigns/:id/dial` route also remains for bounded diagnostics, but it is not the production UI lifecycle path.
+The direct LiveKit CLI (`npm run dial`) still exists for diagnostics through `scripts/dial-outbound.ts`; it is not the production UI lifecycle path.
 
 ---
 
 ## Supabase Schema Reference
 
-Tables touched by `app/api/`:
+Operational campaign data is now normally read/written through CallOps using the user's Supabase bearer token. The tables below are either touched directly by `app/api/` fallback/reconciliation routes, or are the underlying CallOps-owned tables that the dashboard shapes around.
 
 ```text
-companies ──────────< campaigns ──────────< campaign_contacts >────────── contacts
+companies ──────────< campaigns ──────────< contacts
                          │
                          ├──< call_records
-                         ├──< call_logs
                          └──< intent_stats
 
-voice_scripts
-sip_trunks              dashboard_templates     security_logs
+products ───────────< product_script_versions
+voice_scripts          dashboard_templates     security_logs
 profiles               storage.buckets: voice-recordings, avm-scripts
 ```
 
@@ -402,11 +542,13 @@ profiles               storage.buckets: voice-recordings, avm-scripts
 | `id`, `name`, `agent`, `status` | Campaign list/create/update, callops lifecycle status |
 | `dialing_speed`, `time_window_start`, `time_window_end` | Create/update; scheduling inputs for callops |
 | `max_retries`, `retry_cooldown_seconds`, `max_concurrent`, `auto_paused` | Create/update/read; callops owns runtime behavior |
-| `sip_trunk_id` | Integer FK to `sip_trunks.id`; selected by the campaign wizard |
+| `sip_trunk_id` | Selected by the campaign wizard / CallOps trunk model |
 | `agent_name` | Set to `outbound-recorder` on create |
 | `voice_recording_url`, `voice_path`, `audio_path` | Campaign voice prompt/script references |
 | `transfer_key`, `transfer_target` | Campaign create metadata |
 | `company_id` | List join and dashboard filters |
+| `network_provider` | Contacts view network gate; CallOps skips contacts outside the selected network |
+| `product_id`, `product_version_id` | Product/script selection; product version may be pinned |
 
 `CampaignStatus` values in TypeScript are `draft`, `running`, `paused`, `stopped`, `completed`, `archived`, `deleted`.
 
@@ -414,23 +556,23 @@ profiles               storage.buckets: voice-recordings, avm-scripts
 
 | Column | Used by |
 |--------|---------|
-| `campaign_id`, `phone`, `first_name`, `last_name` | Campaign create and callops dispatch |
+| `campaign_id`, `phone`, `first_name`, `last_name`, `network_provider` | Campaign contacts, filtering, network-gated dispatch |
 | `status` | Queue lifecycle: `pending`, `in_progress`, `dialed`, `failed`, `retry` |
 | `retry_count`, `last_attempted_at` | Runtime retry state owned by callops |
 
-`campaign_contacts` is the per-campaign membership/status join for reused contacts. Current callops enumeration also depends on `contacts.campaign_id`, so campaign create points linked contacts at the newly created campaign for callops visibility.
+Contact dedupe, normalization, status transitions, and DNC/archive/retry actions are owned by CallOps for the active UI paths.
 
 ### `call_records` (relevant columns)
 
 | Column | Set/read by |
 |--------|-------------|
-| `campaign_id`, `contact_id`, `phone`, `room` | callops and diagnostic dial path |
-| `outcome` | callops outcome ingestion; LiveKit webhook fallback for `connected`/`no_answer` |
-| `talk_seconds`, `transferred`, `cost` | callops outcome ingestion; webhook fallback for talk time |
+| `campaign_id`, `contact_id`, `phone`, `room` | callops and reconciliation fallback |
+| `outcome`, `business_disposition` | callops outcome ingestion; `/api/calls/result` reconciliation fallback |
+| `talk_seconds`, `transferred`, `cost` | callops outcome ingestion; webhook/reconciliation fallback for selected fields |
 | `recording_url`, `egress_id` | LiveKit/callops recording flow |
 | `called_at` | Dashboard sorting/filtering |
 
-Known outcome values include legacy IVR values (`connected`, `qualified`, `voicemail`, `no_speech`, `hangup`, `ni`, `dnq`, `callback`, `no_answer`, `busy`, `failed`) and callops values added by migration (`answered`, `transferred`).
+Known displayed outcome buckets include `connected`, `qualified`/`subscribed`, `lead`, `opt_out`/`opted_out`, `voicemail`, `no_answer`, and `failed`. Legacy columns such as `no_speech`, `hangup`, `ni`, `dnq`, `callback`, and `busy_line` remain in TypeScript/report shapes but may be zero when CallOps does not emit them.
 
 ---
 
@@ -444,14 +586,22 @@ Known outcome values include legacy IVR values (`connected`, `qualified`, `voice
 | `POST /campaigns/{id}/pause` | `POST /api/campaigns/[id]/pause` proxy |
 | `POST /campaigns/{id}/stop` | `POST /api/campaigns/[id]/stop` proxy |
 | `GET /campaigns/{id}/status` | `GET /api/campaigns/[id]/status` proxy and UI live stats |
-| `POST /calls/outcome` | Agent replacement for deprecated `/api/calls/result` |
+| `GET /companies`, `/companies/{id}/campaigns` | `GET /api/companies`, `GET /api/campaigns` fan-out |
+| `POST /companies/{id}/campaigns`, `PATCH /campaigns/{id}`, `POST /campaigns/{id}/archive` | Campaign create/edit/archive routes |
+| `GET /campaigns/{id}/contacts`, `POST /campaigns/{id}/contacts/import`, `POST /contacts/{id}/{action}` | Contacts view and CSV import |
+| `/companies/{id}/products`, `/products/{id}/versions` | Products view and product script version manager |
+| `/companies/{id}/leads` | `GET /api/leads` |
+| `/companies/{id}/dashboard/campaign-performance` | `GET /api/reports` |
+| `POST /calls/outcome` | Primary CallOps/agent outcome ingestion; `/api/calls/result` is a secondary reconciliation safety net |
+| `/calls/{id}`, `/calls/{id}/telemetry`, `/calls/{id}/call-report`, `/calls/{id}/recording` | Per-call detail dialog routes |
 | `GET /livekit/trunks` | Optional cross-check in `GET /api/trunks` |
 | `POST /livekit/trunks` | `POST /api/trunks` browser-facing proxy |
 | `PATCH /livekit/trunks/{trunk_id}` | `PATCH /api/trunks/[trunk_id]` browser-facing proxy |
 | `DELETE /livekit/trunks/{trunk_id}` | `DELETE /api/trunks/[trunk_id]` browser-facing proxy |
 | `POST /livekit/test-call` | `POST /api/trunks/test-call` browser-facing proxy and `npm run callops -- test-call ...` diagnostic CLI |
+| `/companies/{id}/sip-trunks`, `/sip-trunks/{id}` | Telephony Outbound Trunks tab routes |
 
-OpenAPI endpoints for telemetry, dispatch jobs, and rooms are not surfaced directly by this app today.
+Dispatch jobs and room-admin endpoints are not surfaced directly by this app today.
 
 ---
 
@@ -460,14 +610,16 @@ OpenAPI endpoints for telemetry, dispatch jobs, and rooms are not surfaced direc
 | Variable | Routes affected |
 |----------|-----------------|
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | All authenticated Supabase routes |
-| `SUPABASE_SERVICE_ROLE_KEY` | `/api/livekit/webhook`, diagnostic scripts, voice signing |
-| `CALLOPS_URL`, `CALLOPS_WEBHOOK_SECRET` | `/api/campaigns/[id]/start|pause|stop|status`, `/api/trunks`, `/api/trunks/[trunk_id]`, `/api/trunks/test-call` |
+| `SUPABASE_SERVICE_ROLE_KEY` | `/api/livekit/webhook`, `/api/calls/result`, diagnostic scripts, voice signing |
+| `CALLOPS_URL` | All CallOps bearer-token proxies plus lifecycle/trunk legacy proxies |
+| `CALLOPS_WEBHOOK_SECRET` | `/api/campaigns/[id]/start|pause|stop|status`, `/api/campaigns/[id]` summary, `/api/trunks`, `/api/trunks/[trunk_id]`, `/api/trunks/test-call`, inbound `/api/calls/result` |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | `/api/livekit/webhook`, direct diagnostic CLI |
 | `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`, `LIVEKIT_AGENT_NAME` | Direct diagnostic CLI |
 | `LIVEKIT_RECORD_*` | Direct diagnostic CLI egress path |
 | `INWORLD_API_KEY` | `/api/tts/generate` |
 | `AVM_SCRIPT_AUDIO_STORAGE_*` | `/api/tts/save`, `/api/scripts` |
 | `STS_RELAY_SECRET`, `STS_SDP_BASE_URL`, `STS_GUID_<PRODUCT>` | `/api/sts/mark` |
+| `ANTHROPIC_API_KEY` | `/api/flow-builder/generate` |
 
 ---
 
@@ -476,14 +628,27 @@ OpenAPI endpoints for telemetry, dispatch jobs, and rooms are not surfaced direc
 | Path | Role |
 |------|------|
 | `app/api/campaigns/[id]/[action]/route.ts` | callops lifecycle/status proxy |
-| `app/api/campaigns/[id]/dial/route.ts` | legacy direct LiveKit diagnostic batch dial route |
+| `app/api/campaigns/route.ts` | CallOps-backed campaign list/create facade |
+| `app/api/campaigns/[id]/route.ts` | single campaign summary, update, archive facade |
+| `app/api/campaigns/[id]/contacts/route.ts` | CallOps-backed campaign contacts + network breakdown |
+| `app/api/campaigns/[id]/contacts/import/route.ts` | CallOps-backed campaign contact import |
+| `app/api/contacts/[id]/[action]/route.ts` | allowlisted contact action proxy |
+| `app/api/products/**/route.ts` | product and product script version proxies |
+| `app/api/leads/route.ts` | CallOps-backed lead report facade |
+| `app/api/settings/route.ts` | CallOps-backed system settings facade |
+| `app/api/lookups/[type]/route.ts` | allowlisted CallOps lookup proxy |
 | `app/api/trunks/route.ts` | SIP trunk catalog and create proxy for campaign wizard/telephony admin |
 | `app/api/trunks/[trunk_id]/route.ts` | LiveKit trunk update/delete proxy through callops |
 | `app/api/trunks/test-call/route.ts` | one-off SIP test-call proxy through callops |
+| `app/api/companies/[id]/sip-trunks/route.ts` | company-scoped SIP trunk list/create proxy |
+| `app/api/sip-trunks/[id]/**/route.ts` | SIP trunk detail/update/health/test/archive proxies |
+| `app/api/calls/[id]/**/route.ts` | per-call detail, telemetry, call-report, and recording proxies |
+| `app/api/script-audio/route.ts` | campaign-scoped script/audio history proxy |
 | `app/api/scripts/route.ts` | saved script audio object listing |
 | `app/api/voice-scripts/route.ts` | saved script text/audio reuse library |
 | `app/api/sts/mark/route.ts` | STS subscribe/opt-out relay |
-| `app/api/calls/result/route.ts` | deprecated no-op result endpoint |
+| `app/api/flow-builder/generate/route.ts` | Anthropic-backed flow-builder generation endpoint |
+| `app/api/calls/result/route.ts` | secret-protected call outcome reconciliation fallback |
 | `app/api/livekit/webhook/route.ts` | signed LiveKit webhook fallback updates |
 | `scripts/callops-test.ts` | callops smoke/integration test harness |
 | `scripts/dial-outbound.ts` | direct LiveKit diagnostic dial script |

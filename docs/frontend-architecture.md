@@ -24,10 +24,11 @@ The UI is branded **EVRA** (green-on-dark theme) and targets call-center enginee
 
 | Layer | Technology | Notes |
 |-------|------------|-------|
-| Framework | **Next.js 16** (App Router) | Single-page shell at `app/page.tsx`; no multi-route page tree beyond root |
+| Framework | **Next.js 16** (App Router) | Authenticated shell at `app/page.tsx`; standalone `/flow-builder` POC route |
 | UI library | **MUI v9** (`@mui/material`) | Components, theming, layout |
 | Styling | **Emotion** (via MUI) + **Tailwind CSS v4** | MUI `sx` props for component styling; global CSS variables in `app/globals.css` |
-| Charts | **Chart.js** + **react-chartjs-2** | Dashboard charts in `components/Charts.tsx` and `components/InsightCharts.tsx` |
+| Charts | **Chart.js** + **react-chartjs-2** + **funnel-graph-js** | Legacy insight charts plus the Control Room funnel flow option |
+| Flow canvas | **@xyflow/react** | Standalone campaign flow-builder POC at `/flow-builder` |
 | Auth & data | **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) | Browser client for login; server client for API routes |
 | Language | **TypeScript** | Shared types in `types/index.ts` and `types/telephony.ts` |
 
@@ -43,6 +44,7 @@ There is **no** global state library (Redux, Zustand, etc.). State lives in Reac
 app/
   layout.tsx          # Root HTML shell, font, Providers wrapper
   page.tsx            # Entire authenticated app (single client component)
+  flow-builder/page.tsx # Standalone visual flow-builder POC
   globals.css         # CSS variables, utility classes
 components/
   Providers.tsx       # MUI ThemeProvider + CssBaseline
@@ -50,8 +52,9 @@ components/
   TopBar.tsx          # Sticky header with title, live indicator, logout
   FloatingNav.tsx     # Mobile-only radial quick-nav FAB
   AuthView.tsx        # Login screen (unauthenticated)
-  InsightDashboard.tsx # Control Room widget grid
+  ControlRoom.tsx     # Live operations dashboard mounted by page.tsx
   CampaignModal.tsx   # 3-step new-campaign wizard
+  flow-builder/       # React Flow canvas, custom nodes, node spec registry
   ... (view components, ui primitives, telephony subfolder)
 lib/
   theme.ts            # MUI theme from design tokens
@@ -103,12 +106,14 @@ The app uses **client-side view switching**, not URL-based routing. A single str
 
 ### 4.1 View IDs and titles
 
-| `view` value | Screen title | Primary component |
+| `view` value | Navigation label | Primary component |
 |--------------|--------------|-------------------|
-| `dashboard` | Control Room | `InsightDashboard` + scope filters |
-| `sts` | STS Dashboard | `STSDashboard` (placeholder) |
+| `dashboard` | Control Room | `ControlRoom` + scope filters |
 | `companies` | Companies | Inline JSX in `page.tsx` |
 | `campaigns` | Campaigns | Inline JSX in `page.tsx` |
+| `products` | Products | `ProductsView` |
+| `contacts` | Contacts | `ContactsView` |
+| `leads` | Leads | `LeadsView` |
 | `reports` | Campaign Report | Inline table or `CampaignDetail` |
 | `quality` | Call Quality | `CallQuality` |
 | `telephony` | Telephony | `TelephonyView` |
@@ -119,8 +124,9 @@ The app uses **client-side view switching**, not URL-based routing. A single str
 Navigation is triggered by:
 
 - **`Sidebar`** — permanent drawer on `lg+`, temporary drawer on smaller screens. Groups: Campaigns, Telephony, Operations, Platform.
-- **`FloatingNav`** — mobile-only (`xs`–`md`) radial menu fixed bottom-right. Does not include Telephony or Profile entries.
+- **`FloatingNav`** — mobile-only (`xs`–`md`) radial menu fixed bottom-right. Includes the high-frequency operator views; it does not include Products, Contacts, Telephony, or Profile.
 - **Deep links within views** — e.g. clicking a company/campaign card calls `openInControlRoom(company, campaignId?)` which sets filters and switches to `dashboard`.
+- **Standalone route** — `/flow-builder` is not part of the authenticated `view` switcher; it mounts its own full-height React Flow demo canvas.
 
 ### 4.2 Responsive layout
 
@@ -188,7 +194,7 @@ When `companyFilter` or `campaignFilter` is set, derived arrays feed the Control
 - `dashCalls` — call logs filtered likewise
 - `dashIntents` — intent stats filtered likewise
 
-These are passed to `InsightDashboard` as `ctx`.
+These are passed to `ControlRoom` as `ctx`.
 
 ### 5.4 Campaign lifecycle actions
 
@@ -203,7 +209,7 @@ After any status change, `fetchData()` refreshes campaigns and reports.
 
 ## 6. API surface (frontend consumer)
 
-All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Every route (except webhooks/health) checks Supabase auth via `getAuthUser()`.
+All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. User-facing routes check Supabase auth either by validating the session with `getAuthUser()` or by forwarding the user's bearer token from `getAccessToken()` to CallOps.
 
 | Endpoint | Method | Used by | Returns |
 |----------|--------|---------|---------|
@@ -212,15 +218,30 @@ All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Ever
 | `/api/campaigns/{id}` | PUT | CampaignActionDialog (edit voice) | updated campaign |
 | `/api/campaigns/{id}/{action}` | POST | page.tsx (`start`/`pause`/`stop`) | callops result |
 | `/api/campaigns/{id}/status` | GET | page.tsx live polling | `CampaignLiveStatus` |
+| `/api/campaigns/{id}/contacts` | GET | ContactsView | paged contact rows + network breakdown |
+| `/api/campaigns/{id}/contacts/import` | POST | ContactsView CSV import | CallOps import summary |
+| `/api/contacts/{id}/{action}` | POST | ContactsView row actions | action result |
+| `/api/products` | GET, POST | ProductsView | company-scoped products |
+| `/api/products/{id}` | GET, PATCH | ProductsView | product detail/update |
+| `/api/products/{id}/versions` | GET, POST | ProductsView script manager | product script versions |
+| `/api/products/{id}/versions/{versionId}/activate` | POST | ProductsView script manager | activated version |
+| `/api/leads` | GET | LeadsView | lead rows + opt-in counts |
 | `/api/reports` | GET | page.tsx | `{ reports }` — query: `agent`, `date` |
 | `/api/logs` | GET | page.tsx, CampaignDetail flow | `{ logs }` — query: `campaignId` |
 | `/api/intents` | GET | page.tsx, CallQuality | `{ intents, connectedTotal }` |
 | `/api/companies` | GET, POST | page.tsx | `{ companies }` |
 | `/api/security` | GET | page.tsx | `{ logs }` |
 | `/api/trunks` | GET | CampaignModal | `{ trunks }` — SIP trunk picker |
+| `/api/companies/{id}/sip-trunks` | GET, POST | TelephonyView | company-scoped SIP trunks |
+| `/api/sip-trunks/{id}` | GET, PATCH | TelephonyView | trunk detail/update |
+| `/api/sip-trunks/{id}/health` | GET | TelephonyView | trunk health |
+| `/api/sip-trunks/{id}/test-call` | POST | TelephonyView | test call result |
+| `/api/sip-trunks/{id}/archive` | POST | TelephonyView | archived trunk |
 | `/api/dashboard-templates` | GET, POST, DELETE | useDashboardLayout | saved layouts |
 | `/api/tts/generate` | POST | VoiceGenerator | base64 audio |
 | `/api/tts/save` | POST | VoiceGenerator | public URL for recording |
+| `/api/script-audio` | GET, POST | Campaign edit / script history | campaign-scoped script audio |
+| `/api/flow-builder/generate` | POST | `/flow-builder` | generated flow nodes/edges preview |
 
 Voice file uploads for new campaigns go **directly to Supabase Storage** (`voice-recordings` bucket) from the browser, then the storage path is sent to `POST /api/campaigns` as `voice_path`.
 
@@ -245,12 +266,13 @@ The primary operational screen.
 - Company `<Select>` — `companyFilter`
 - Campaign `<Select>` — `campaignFilter` (scoped to selected company)
 
-**Body** — `InsightDashboard`:
+**Body** — `ControlRoom`:
 
-- Receives `dash` from `useDashboardLayout()` hook
-- Receives `ctx` with scoped `reports`, `calls`, `intents`, `campaigns`, and `actions` (play/pause/stop/edit/reuse/archive callbacks)
+- Receives `ctx` with scoped `reports`, `calls`, `intents`, and `campaigns`
+- Receives `liveStatus` for active-call, queue, dialed, and failed counters
+- Renders the fixed operations layout in `components/ControlRoom.tsx`
 
-See [Section 8](#8-control-room-insight-system) for the insight widget architecture.
+See [Section 8](#8-control-room-analytics-and-flow-builder-systems) for the analytics layout and the standalone flow-builder POC.
 
 ### 7.3 Companies — `companies` view
 
@@ -271,7 +293,35 @@ Also inline in `page.tsx`.
 - **"+ New Campaign"** opens `CampaignModal`.
 - Card/table toggle persisted in `localStorage` (`avm.view.campaigns`).
 
-### 7.5 Campaign Report — `reports` view
+### 7.5 Products — `products` view
+
+`ProductsView` manages the data-driven replacement for the hardcoded `campaigns.agent` pairing.
+
+- Loads companies from `GET /api/companies`, then products for the selected company from `GET /api/products?company_id=...`.
+- Creates products with `POST /api/products`; `sts_subscription` products require an `sts_product_key`.
+- Toggles product active state with `PATCH /api/products/{id}`.
+- Opens a script manager that uses `VoiceGenerator` plus `GET/POST /api/products/{id}/versions` and `POST /api/products/{id}/versions/{versionId}/activate`.
+
+### 7.6 Contacts — `contacts` view
+
+`ContactsView` is campaign-scoped.
+
+- Loads the campaign selector from `GET /api/campaigns`.
+- Reads paged contacts from `GET /api/campaigns/{id}/contacts`.
+- Filters by status, search text, and network provider.
+- The network filter also persists the campaign dial gate with `PUT /api/campaigns/{id}` (`network_provider`).
+- CSV import parses rows client-side and forwards them to `POST /api/campaigns/{id}/contacts/import`; CallOps owns dedupe, E.164 normalization, and rejection summaries.
+- Row actions are allowlisted calls to `POST /api/contacts/{id}/archive|retry|do-not-call`.
+
+### 7.7 Leads — `leads` view
+
+`LeadsView` lists contacts who pressed 1 in Lead-Gen campaigns.
+
+- Fetches `GET /api/leads`.
+- Shows double opt-in and single opt-in counts separately.
+- Exports visible rows to CSV.
+
+### 7.8 Campaign Report — `reports` view
 
 Two sub-states:
 
@@ -280,7 +330,7 @@ Two sub-states:
 
 Clicking a report row calls `viewDetailedLogs(report)`.
 
-### 7.6 Call Quality — `quality` view
+### 7.9 Call Quality — `quality` view
 
 `CallQuality` component:
 
@@ -289,32 +339,26 @@ Clicking a report row calls `viewDetailedLogs(report)`.
 - Renders intent waterfall table: count, % of connected, % dropped from previous row
 - CSV export
 
-Same calculation logic is duplicated in the `call-quality` insight widget inside `dashboardInsights.tsx`.
+The legacy `call-quality` insight widget inside `dashboardInsights.tsx` uses the same intent waterfall concepts but is not the mounted Control Room implementation.
 
-### 7.7 Security Audit — `security` view
+### 7.10 Security Audit — `security` view
 
 `SecurityView` — read-only table of `securityLogs` passed from parent. Event types styled with MUI Chips (`login`, `unauthorized_access`, etc.).
 
-### 7.8 STS Dashboard — `sts` view
+### 7.11 Telephony — `telephony` view
 
-`STSDashboard` — placeholder ("No subscription data available yet").
+`TelephonyView` has seven tabs: Settings, SIP Providers, Outbound Trunks, Dispatch Rules, Agents, Test Dial, Status.
 
-### 7.9 Telephony — `telephony` view
-
-`TelephonyView` — **mock/local-only** LiveKit telephony admin UI.
-
-- State stored in browser via `useTelephonyStore()` from `lib/telephony-mock.ts` (localStorage).
-- Seven tabs: Settings, SIP Providers, Outbound Trunks, Dispatch Rules, Agents, Test Dial, Status.
-- Uses reusable `CrudSection` + `EntityFormDialog` from `components/telephony/`.
-- **Not connected** to production callops or LiveKit APIs yet.
+- **Outbound Trunks** mounts `SipTrunksPanel` and is live through CallOps (`/api/companies/{id}/sip-trunks`, `/api/sip-trunks/{id}`, `/health`, `/test-call`, `/archive`).
+- The other tabs still use `useTelephonyStore()` from `lib/telephony-mock.ts` and store data in this browser's localStorage.
 
 Note: Telephony appears in `Sidebar` but **not** in `FloatingNav`.
 
-### 7.10 Settings — `settings` view
+### 7.12 Settings — `settings` view
 
-`SettingsView` — informational panel. Explains that outbound calling uses `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` env var or per-campaign `sip_trunk_id`. Shows admin-only warning for non-admins; no editable settings yet.
+`SettingsView` reads and updates the platform cost-per-minute setting via `GET/PATCH /api/settings`. CallOps enforces write permissions.
 
-### 7.11 Profile — `profile` view
+### 7.13 Profile — `profile` view
 
 `ProfileView`:
 
@@ -323,50 +367,52 @@ Note: Telephony appears in `Sidebar` but **not** in `FloatingNav`.
 
 ---
 
-## 8. Control Room insight system
+## 8. Control Room analytics and flow-builder systems
 
-The Control Room is a **configurable dashboard** built from a registry of "insight" widgets.
+The mounted Control Room is a fixed operations dashboard in `components/ControlRoom.tsx`. The older configurable insight registry remains in the repo for supporting widgets/templates, but it is not the primary dashboard body rendered by `app/page.tsx`.
 
-### 8.1 Architecture
+### 8.1 Mounted Control Room architecture
 
 ```
-useDashboardLayout()          lib/dashboardInsights.tsx
-        │                              │
-        │ layout: { order,             │ INSIGHTS[] registry
-        │   pinned, hidden }           │ each: id, title, size, render(ctx)
-        ▼                              ▼
-InsightDashboard ──────────► InsightCard (drag/pin/hide chrome)
-                                      │
-                                      └── def.render(ctx) → charts/tables/KPIs
+app/page.tsx
+  ├─ fetches campaigns, reports, logs, intents
+  ├─ polls /api/campaigns/{id}/status for running/paused campaigns
+  ├─ derives dashCampaigns, dashReports, dashCalls, dashIntents from scope filters
+  └─ ControlRoom(ctx, liveStatus)
+       ├─ Live Now band
+       ├─ grouped KPI cards
+       ├─ funnel + outcome panels
+       └─ campaign performance table + drill-down dialog
 ```
 
-### 8.2 Layout persistence
+### 8.2 Control Room panels
 
-`lib/useDashboardLayout.ts`:
+- **Live Now** — active calls on air, running/paused campaign counts, and up to three live campaign cards.
+- **Key Metrics** — 10 indicators grouped into Funnel Metrics, Call Outcomes, Operations, and Financials.
+- **Funnel & Outcomes** — a toggle between the custom 3D cone funnel and the `funnel-graph-js` flow, plus live outcome feed and donut breakdown.
+- **Campaign Performance** — sorted report table; clicking a campaign opens a drill-down dialog.
+
+Metrics are derived from the scoped `reports` and `calls` arrays. `liveStatus` supplies queue/runtime counters only; it is not persisted by the frontend.
+
+### 8.3 Funnel rendering
+
+- `ControlRoom` owns the decorative 3D cone funnel SVG. Counts drive labels and conversion percentages; the taper is visual.
+- `FunnelGraphFlow` wraps `funnel-graph-js`, which draws into a DOM container. It redraws on data or container resize and uses the green EVRA color schema.
+- `types/funnel-graph-js.d.ts` declares the library's untyped UMD bundle and CSS modules.
+
+### 8.4 Legacy insight registry and templates
+
+`components/InsightDashboard.tsx`, `components/InsightCard.tsx`, `lib/dashboardInsights.tsx`, and `lib/useDashboardLayout.ts` still exist.
 
 - **localStorage key**: `avm.dash.layout.v3`
-- **Default layout**: `DEFAULT_INSIGHTS` visible; all other registered insights hidden (available via "Add insight" dropdown)
-- **Operations**: pin (move to top), hide, drag-reorder, reset, save/apply templates
-- **Templates**: `GET/POST /api/dashboard-templates` (stored in Supabase for team sharing)
+- **Templates API**: `GET/POST/DELETE /api/dashboard-templates`
+- **Current limitation**: `app/page.tsx` imports `useDashboardLayout()` and `SaveTemplateDialog`, but there is no visible opener for saving/applying templates in the current `ControlRoom` UI.
 
-### 8.3 Insight sizes (grid spans)
-
-| Size | MUI Grid span (xs / sm / md) |
-|------|------------------------------|
-| `sm` | 6 / 4 / 3 (quarter width on desktop) |
-| `md` | 12 / 12 / 6 (half width) |
-| `lg` | 12 / 12 / 12 (full width) |
-
-### 8.4 Insight registry (`INSIGHTS` in `lib/dashboardInsights.tsx`)
-
-**Default visible insights** (`DEFAULT_INSIGHTS`):
+`INSIGHTS` still defines these widget groups:
 
 - Tables: `campaigns-table`, `campaign-report`
 - KPI cards: `dialed`, `connected`, `qualified`, `avg-talk`, `hangup`, `callback`, `avg-cpl`, `total-spent`
 - Charts: `outcome-donut`, `campaign-compare`, `spend-cpl`, `funnel`
-
-**Add-on insights** (hidden by default, user can add):
-
 - KPIs: `transfer-rate`, `voicemail`, `no-answer`, `spend-efficiency`, `active-campaigns`
 - Charts: `company-compare`, `calls-trend`, `busiest-hours`, `talk-distribution`, `dropoff`, `status-breakdown`, `agent-split`
 - Tables: `recent-calls`, `leaderboard`, `call-quality`
@@ -389,8 +435,29 @@ interface InsightCtx {
 |----------------|----------|
 | `components/Charts.tsx` | `OutcomeDonut`, `FunnelChart`, `CampaignBar`, `SpendChart` — styled Chart.js charts using `lib/chartTheme.ts` |
 | `components/InsightCharts.tsx` | `BarChart`, `LineChart`, `DonutChart`, `Sparkline`, `MiniBars` — lighter charts for KPI sparklines and add-on insights |
+| `components/FunnelGraphFlow.tsx` | DOM-driven `funnel-graph-js` flow option in the mounted Control Room |
 
 `components/KpiStrip.tsx` exists as a standalone KPI row component but is **not currently mounted** in `app/page.tsx` (superseded by individual insight KPI cards).
+
+### 8.6 Flow Builder POC (`/flow-builder`)
+
+The campaign flow builder is a standalone visual demo, not part of the authenticated shell.
+
+| File | Role |
+|------|------|
+| `app/flow-builder/page.tsx` | Route entry; renders `FlowBuilder` |
+| `components/flow-builder/FlowCanvas.tsx` | React Flow canvas, seeded demo graph, palette, inspector, import/export, Claude preview modal |
+| `components/flow-builder/FlowNodes.tsx` | Custom node renderer for start/end, config/action, and branch nodes |
+| `components/flow-builder/nodeSpecs.ts` | Source of truth for available node types, fields, default params, branch outputs, and palette groups |
+| `app/api/flow-builder/generate/route.ts` | Anthropic-powered prompt-to-flow endpoint |
+
+POC constraints:
+
+- Browser session only: edits live in React state unless the user exports JSON.
+- Import/export format is React Flow `nodes` and `edges`, not a persisted campaign schema.
+- No writes to campaigns, products, contacts, or CallOps.
+- Node palette is spec-driven. To add a node type, update `SPECS`; the palette, inspector, custom handles, and Claude catalog all read from the same registry.
+- Claude generation requires `ANTHROPIC_API_KEY`. The endpoint returns `400` when the key is unset, validates node `specKey`s against `SPECS`, filters edges to known node IDs, and opens a proof-check preview before replacing the canvas.
 
 ---
 
@@ -400,7 +467,7 @@ interface InsightCtx {
 |-----------|---------|---------|
 | `CampaignModal` | "+ New Campaign" | 3-step wizard: Campaign → Schedule → Voice & Contacts |
 | `CampaignActionDialog` | Edit / Reuse on campaign | Edit MP4 URL or clone campaign with new CSV |
-| `SaveTemplateDialog` | "Save layout template" on dashboard | Names and saves current insight layout |
+| `SaveTemplateDialog` | Dormant import in `page.tsx` | Template save dialog exists, but no current UI opens it |
 | `TutorialOverlay` | First visit or "Replay tour" / `?` button | Spotlight guided tour (`TOUR_STEPS`) |
 | Chart expand `Dialog` | (legacy path in page.tsx) | Full-screen chart with campaign filter — `expandedChart` state exists but no current UI sets it |
 | New Company `Dialog` | "+ New Company" | Inline in `page.tsx` |
@@ -475,6 +542,9 @@ Key entities the frontend works with:
 | `CallRecord` | Individual call: phone, outcome, talk_seconds, cost, transferred, recording_url |
 | `IntentStat` | IVR intent name, step, reached count |
 | `Company` | Client company with optional contact fields |
+| `Product` | Company-scoped product with consent-flow type and active script version |
+| `ProductScriptVersion` | Versioned script text/audio metadata for a product |
+| `Contact` | Campaign contact row used by ContactsView and CallOps dial state |
 | `DashboardLayout` | `{ order: string[], pinned: string[], hidden: string[] }` |
 
 ---
@@ -503,11 +573,11 @@ Role is resolved on login and stored in `page.tsx` `role` state. Most views do n
 
 | Key | Purpose |
 |-----|---------|
-| `avm.dash.layout.v3` | Dashboard insight layout |
+| `avm.dash.layout.v3` | Legacy dashboard insight layout state; not actively surfaced by current Control Room |
 | `avm.view.companies` | Companies list: `cards` or `table` |
 | `avm.view.campaigns` | Campaigns list: `cards` or `table` |
 | `avm.tour.seen` | Suppresses auto-start of guided tour |
-| Telephony mock keys | Managed inside `lib/telephony-mock.ts` |
+| Telephony mock keys | Managed inside `lib/telephony-mock.ts` for non-SIP-trunk Telephony tabs |
 
 ---
 
@@ -518,7 +588,7 @@ Role is resolved on login and stored in `page.tsx` `role` state. Most views do n
 - **Auto-start**: first authenticated visit if `avm.tour.seen` is unset
 - **Replay**: Sidebar footer link or TopBar `?` button
 
-Elements tagged with `data-tour`: sidebar nav items (`nav-dashboard`, etc.), dashboard header (`dash-header`, `dash-scope`, `dash-templates`, `add-insight`), new company/campaign buttons.
+Elements tagged with `data-tour`: sidebar nav items (`nav-dashboard`, etc.), dashboard header (`dash-header`, `dash-scope`), and new company/campaign buttons.
 
 ---
 
@@ -530,7 +600,7 @@ Elements tagged with `data-tour`: sidebar nav items (`nav-dashboard`, etc.), das
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase anon/publishable key |
 | `NEXT_PUBLIC_POLL_INTERVAL_MS` | Dashboard polling interval (default 15000) |
 
-Server-only vars (not in browser, but affect API responses the UI consumes): `LIVEKIT_*`, callops URLs, TTS provider keys, etc.
+Server-only vars (not in browser, but affect API responses the UI consumes): `CALLOPS_URL`, `CALLOPS_WEBHOOK_SECRET`, `LIVEKIT_*`, TTS provider keys, STS relay/GUID values, and `ANTHROPIC_API_KEY` for `/api/flow-builder/generate`.
 
 ---
 
@@ -551,9 +621,10 @@ Server-only vars (not in browser, but affect API responses the UI consumes): `LI
          ▼                              ▼
 ┌─────────────────┐          ┌─────────────────────┐
 │  Route Handlers │          │  View components     │
-│  + Supabase DB  │          │  InsightDashboard    │
+│  + Supabase DB  │          │  ControlRoom         │
 │  + callops proxy│          │  CampaignModal       │
-└────────┬────────┘          │  CallQuality, etc.   │
+└────────┬────────┘          │  Products, Contacts  │
+         │                   │  Leads, CallQuality  │
          │                   └─────────────────────┘
          ▼
 ┌─────────────────┐
@@ -567,7 +638,7 @@ Server-only vars (not in browser, but affect API responses the UI consumes): `LI
 
 ```
 CampaignModal → parse CSV → upload voice (optional) → POST /api/campaigns
-  → Supabase campaigns + contacts tables → user starts campaign
+  → CallOps creates campaign + imports contacts → user starts campaign
   → POST /api/campaigns/{id}/start → callops dials via LiveKit
   → webhooks update call_records → UI polls /api/logs and /api/reports
 ```
@@ -581,26 +652,38 @@ page.tsx
 ├── Sidebar
 ├── TopBar
 ├── [view content]
-│   ├── InsightDashboard
-│   │   ├── InsightCard (×N)
-│   │   │   └── dashboardInsights render → Charts / InsightCharts / tables
-│   │   └── useDashboardLayout
+│   ├── ControlRoom
+│   │   ├── FunnelGraphFlow
+│   │   └── campaign drill-down Dialog
+│   ├── ProductsView
+│   ├── ContactsView
+│   ├── LeadsView
 │   ├── CallQuality
 │   ├── SecurityView
 │   ├── SettingsView
 │   ├── TelephonyView
-│   │   └── telephony/CrudSection → EntityFormDialog
-│   ├── STSDashboard
+│   │   ├── SipTrunksPanel
+│   │   └── telephony/CrudSection → EntityFormDrawer
 │   ├── ProfileView
 │   └── CampaignDetail
 ├── CampaignModal
 │   ├── ui/WizardChrome
 │   └── VoiceGenerator
 ├── CampaignActionDialog
-├── SaveTemplateDialog
+├── SaveTemplateDialog (dormant)
 ├── TutorialOverlay
 ├── FloatingNav
 └── AuthView (when logged out)
+```
+
+Standalone route:
+
+```
+app/flow-builder/page.tsx
+└── FlowBuilder
+    ├── FlowCanvas
+    ├── FlowNodes
+    └── nodeSpecs
 ```
 
 ---
@@ -608,14 +691,14 @@ page.tsx
 ## 20. Known limitations and placeholders
 
 1. **Single route** — no deep linking to views; refreshing always lands on Control Room default.
-2. **STS Dashboard** — empty placeholder.
-3. **Telephony view** — mock localStorage only; not production telephony management.
-4. **Settings** — no editable platform config in UI.
+2. **Flow Builder** — visual POC only; no auth shell, no persistence, no campaign execution wiring.
+3. **Telephony view** — SIP trunk tab is CallOps-backed; all other tabs are localStorage mock data.
+4. **Dashboard templates** — template API and dialog exist, but the current Control Room UI has no visible save/apply entry point.
 5. **Passkey login** — registration UI exists; passwordless sign-in not implemented.
 6. **Profile employee invite** — UI only; no backend invite flow.
-7. **KpiStrip** — component exists but unused in current page layout.
+7. **KpiStrip / InsightDashboard** — components exist but are not mounted in the current page layout.
 8. **Chart expand dialog** — state and dialog JSX exist in `page.tsx` but no button currently sets `expandedChart`.
-9. **FloatingNav** — missing Telephony and Profile entries compared to Sidebar.
+9. **FloatingNav** — intentionally shorter than Sidebar; it omits Products, Contacts, Telephony, and Profile.
 
 ---
 

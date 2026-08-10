@@ -33,9 +33,9 @@ Two outbound paths exist:
 | Path | Use |
 |------|-----|
 | **Production UI path** | Operator controls campaign lifecycle through callops proxy routes. |
-| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial` and the legacy authenticated `POST /api/campaigns/:id/dial` route; not used by production campaign controls. |
+| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial`; not exposed as a dashboard API route and not used by production campaign controls. |
 
-There is no `/api/simulate` fallback in the current codebase.
+There is no `/api/simulate` fallback or `POST /api/campaigns/:id/dial` dashboard route in the current codebase.
 
 ---
 
@@ -59,8 +59,8 @@ There is no `/api/simulate` fallback in the current codebase.
 | `app/api/trunks/[trunk_id]/route.ts` | Proxies LiveKit trunk PATCH/DELETE to callops by `ST_...` trunk id. |
 | `app/api/trunks/test-call/route.ts` | Proxies one-off SIP test calls to callops `/livekit/test-call`. |
 | `app/api/livekit/webhook/route.ts` | Signature-validated LiveKit webhook fallback updates to `call_records`. |
-| `app/api/campaigns/[id]/dial/route.ts` | Legacy direct LiveKit diagnostic batch dial route with local compliance gate. |
-| `lib/outbound-call.ts` | Direct LiveKit SDK helpers used by the diagnostic CLI. |
+| `scripts/dial-outbound.ts` | Direct LiveKit diagnostic CLI for selected campaigns/contacts. |
+| `lib/outbound-call.ts` | Direct LiveKit SDK helpers used by the diagnostic CLI only. |
 | `lib/livekit.ts` | Server-only exports for LiveKit helpers and webhook receiver. |
 | `lib/phone.ts` | `normalizePhone()` for contact imports before dialing. |
 | `lib/voice.ts` | Resolves uploaded or generated campaign voice URLs. |
@@ -239,7 +239,7 @@ npm run dial -- --campaign-id <id> --contact-id <id>
 npm run dial -- --campaign-id <id> --batch 5
 ```
 
-Use this only when diagnosing LiveKit SDK/trunk/agent behavior from this repo. It is not the dashboard production path.
+Use this only when diagnosing LiveKit SDK/trunk/agent behavior from this repo. It is not the dashboard production path, and there is no authenticated dashboard `/dial` route wrapping it.
 
 ### Verify Supabase
 
@@ -264,6 +264,7 @@ LIMIT 10;
 | Agent never joins a call | callops worker name/trunk config mismatch | Campaign create sets `agent_name = outbound-recorder`; verify callops worker registration |
 | Webhook updates missing | LiveKit webhook not configured, invalid LiveKit secrets, or service-role key missing | Server logs and `/api/livekit/webhook` responses |
 | TTS save/generate fails | Inworld or script storage env incomplete | `INWORLD_API_KEY` and `AVM_SCRIPT_AUDIO_STORAGE_*` |
+| Old runbook/script calls `POST /api/campaigns/:id/dial` | Retired dashboard dial route | Use callops lifecycle/test-call routes or `npm run dial` from an ops shell |
 
 ---
 

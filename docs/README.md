@@ -5,7 +5,10 @@ Documentation for integrating and operating the Agent AVM dashboard, callops lif
 | Doc | Audience | Contents |
 |-----|----------|----------|
 | [API reference & alignment guide](./app-api-reference.md) | Backend / frontend / integration | Current `app/api/` route inventory, auth model, Supabase tables, callops/OpenAPI boundary |
+| [Frontend architecture](./frontend-architecture.md) | Frontend | Dashboard shell, mounted views, standalone `/tv` and `/flow-builder` routes, component/data-flow map |
+| [Data model](./data-model.md) | Backend / data | Callops-owned operational entities, app-owned dashboard tables, campaign/contact/call-result relationships |
 | [Callops and LiveKit outbound integration](./livekit-outbound-integration.md) | Ops / backend / UI | Production callops flow, LiveKit webhook, trunk catalog, diagnostic CLI, testing |
+| [Agent outcome contract](./agent-call-events-contract.md) | Agent / backend | Current callops `/calls/outcome` contract and legacy `call_events` notes |
 | [STS SmartCall SDP integration](./sts-sdp-integration.md) | Backend / agent integration | Product subscribe/opt-out relay, STS GUID/env contract, outcome vocabulary |
 | [Inworld voice list](./voicelist.md) | Product / frontend | Voice IDs used by the campaign voice generator |
 | [evra-callops OpenAPI](./openapi.json) | Backend integration | External callops API contract; not the Next.js app route spec |

@@ -19,7 +19,7 @@ At a high level, Agent AVM connects four concerns:
 flowchart TB
   subgraph UI["Browser (app/page.tsx)"]
     Auth[AuthView]
-    Dash[InsightDashboard / Charts]
+    Dash[ControlRoom / Charts]
     Camp[Campaigns & Companies]
   end
 
@@ -79,7 +79,7 @@ The UI is a **client-rendered single page** (`app/page.tsx`) wrapped in MUI them
 
 | View ID | Component(s) | Purpose |
 |---------|--------------|---------|
-| `dashboard` | `ControlRoom`, `InsightDashboard`, `InsightCharts` | Control Room — configurable KPI cards, charts, filters by company/campaign/agent/date |
+| `dashboard` | `ControlRoom`, `FunnelGraphFlow`, `InsightCharts` | Control Room — fixed live operations dashboard with company/campaign/product/date-range filters |
 | `sts` | `STSDashboard` | STS-specific metrics view |
 | `companies` | Inline in `page.tsx` | Company roster (card/table toggle) |
 | `campaigns` | `CampaignModal`, `CampaignActionDialog` | Campaign list, create/edit/reuse/archive, play/pause/stop |
@@ -105,9 +105,9 @@ After auth, the page polls backend APIs on an interval (`NEXT_PUBLIC_POLL_INTERV
 
 Starting, pausing, or stopping a campaign (`updateStatus`) triggers `POST /api/campaigns/:id/start|pause|stop`. When `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset, those POSTs fall back to a local campaign status update only outside production; production returns 503 so callops remains the lifecycle owner. `GET /status` reports `{ mode: 'unconfigured' }` when callops env is missing.
 
-### Dashboard layout
+### Control Room layout
 
-`lib/useDashboardLayout.ts` and `SaveTemplateDialog` persist custom card order/pin/hide state. Layouts can be saved as `dashboard_templates` rows via `GET/POST /api/dashboard-templates`.
+`ControlRoom` renders a fixed operations dashboard: Live Now, Key Metrics, Funnel & Outcomes, and Campaign Performance. Legacy configurable-grid helpers (`useDashboardLayout`, `InsightDashboard`, `SaveTemplateDialog`, `dashboard_templates`) remain in the repo but are not the mounted Control Room path.
 
 ---
 
@@ -247,8 +247,8 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 | `/api/trunks` | GET, POST | User | SIP trunk catalog and trunk create proxy through callops |
 | `/api/trunks/:trunk_id` | PATCH, DELETE | User | LiveKit SIP trunk update/delete proxy through callops |
 | `/api/trunks/test-call` | POST | User | One-off SIP test call through callops/LiveKit |
-| `/api/logs` | GET | User | Per-call `call_records` |
-| `/api/reports` | GET | User | Aggregate `call_logs` |
+| `/api/logs` | GET | User | Callops-backed per-call history (`campaignId` drill-down or recent company fan-out) |
+| `/api/reports` | GET | User | Callops-backed campaign performance rollups with product/date-range filters |
 | `/api/intents` | GET | User | Intent waterfall data |
 | `/api/security` | GET | User | Security logs |
 | `/api/dashboard-templates` | GET, POST, DELETE | User | Saved dashboard layouts |

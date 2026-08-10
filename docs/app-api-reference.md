@@ -333,18 +333,24 @@ The route asks Anthropic for a tool response, filters out unknown node types and
 | | |
 |---|---|
 | Auth | Supabase user |
-| Query | `campaignId?`; omit for last 2000 calls across all campaigns |
+| Query | `campaignId?`; omit for dashboard-wide recent calls |
 | Response | `{ logs: CallRecord[] }` |
-| Supabase tables | `call_records` |
+| Upstream | `GET $CALLOPS_URL/campaigns/{id}/calls` when `campaignId` is set; otherwise fans out over `GET /companies/{id}/calls?from_date=...` |
+| Supabase tables | None in this app route |
+
+Without `campaignId`, the route fetches the last 45 days per visible company and caps the merged response at 5000 rows. It normalizes `duration_seconds` from callops to `on_air_seconds` for existing dashboard widgets.
 
 ### `GET /api/reports`
 
 | | |
 |---|---|
 | Auth | Supabase user |
-| Query | `agent?`, `date?` |
-| Response | `{ reports: CallLog[] }` with joined `campaign(name, agent)` |
-| Supabase tables | `call_logs`, `campaigns` |
+| Query | `agent?`, `product_id?`, `from?`, `to?` |
+| Response | `{ reports: CampaignReport[] }` |
+| Upstream | Fans out over `GET /companies/{id}/dashboard/campaign-performance`, `GET /companies/{id}/campaigns`, and `GET /companies/{id}/products` |
+| Supabase tables | None in this app route |
+
+The Control Room range selector sends UTC `from` / `to` values; this route forwards them to callops as `from_date` / `to_date`. It maps callops `by_outcome` counts into the dashboard report columns (`subscribed -> qualified`, `opted_out -> opt_out`, `lead -> lead`) and computes CPL from real persisted cost.
 
 ### `GET /api/intents`
 
@@ -552,6 +558,9 @@ Known outcome values include legacy IVR values (`connected`, `qualified`, `voice
 | `GET /campaigns/{id}/contacts` | `GET /api/campaigns/[id]/contacts` proxy |
 | `GET /campaigns/{id}/contacts/network-breakdown` | Best-effort breakdown in `GET /api/campaigns/[id]/contacts` |
 | `POST /campaigns/{id}/contacts/import` | `POST /api/campaigns/[id]/contacts/import` proxy |
+| `GET /campaigns/{id}/calls` | `GET /api/logs?campaignId=...` proxy |
+| `GET /companies/{id}/calls` | Dashboard-wide `GET /api/logs` fan-out proxy |
+| `GET /companies/{id}/dashboard/campaign-performance` | `GET /api/reports` fan-out proxy |
 | `POST /contacts/{id}/archive|retry|do-not-call` | `POST /api/contacts/[id]/[action]` proxy |
 | `GET /companies/{id}/leads` | `GET /api/leads` fan-out proxy |
 | `POST /calls/outcome` | Agent replacement for deprecated `/api/calls/result` |

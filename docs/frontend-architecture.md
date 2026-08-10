@@ -24,7 +24,7 @@ The UI is branded **EVRA** (green-on-dark theme) and targets call-center enginee
 
 | Layer | Technology | Notes |
 |-------|------------|-------|
-| Framework | **Next.js 16** (App Router) | Single-page shell at `app/page.tsx`; no multi-route page tree beyond root |
+| Framework | **Next.js 16** (App Router) | Main authenticated shell at `app/page.tsx`, plus standalone auxiliary routes `/tv` and `/flow-builder` |
 | UI library | **MUI v9** (`@mui/material`) | Components, theming, layout |
 | Styling | **Emotion** (via MUI) + **Tailwind CSS v4** | MUI `sx` props for component styling; global CSS variables in `app/globals.css` |
 | Charts | **Chart.js** + **react-chartjs-2** | Dashboard charts in `components/Charts.tsx` and `components/InsightCharts.tsx` |
@@ -43,6 +43,8 @@ There is **no** global state library (Redux, Zustand, etc.). State lives in Reac
 app/
   layout.tsx          # Root HTML shell, font, Providers wrapper
   page.tsx            # Entire authenticated app (single client component)
+  tv/page.tsx         # Read-only smart-TV wallboard route
+  flow-builder/page.tsx # Standalone visual flow-builder POC
   globals.css         # CSS variables, utility classes
 components/
   Providers.tsx       # MUI ThemeProvider + CssBaseline
@@ -99,7 +101,7 @@ Session handling:
 
 ## 4. Navigation model
 
-The app uses **client-side view switching**, not URL-based routing. A single string state `view` in `app/page.tsx` determines which screen is shown.
+The main dashboard uses **client-side view switching**, not URL-based routing. A single string state `view` in `app/page.tsx` determines which screen is shown. Standalone routes (`/tv`, `/flow-builder`) sit outside that shell and do not share the sidebar/topbar view state.
 
 ### 4.1 View IDs and titles
 
@@ -109,6 +111,9 @@ The app uses **client-side view switching**, not URL-based routing. A single str
 | `sts` | STS Dashboard | `STSDashboard` (placeholder) |
 | `companies` | Companies | Inline JSX in `page.tsx` |
 | `campaigns` | Campaigns | Inline JSX in `page.tsx` |
+| `products` | Products | `ProductsView` |
+| `contacts` | Contacts | `ContactsView` |
+| `leads` | Leads | `LeadsView` |
 | `reports` | Campaign Report | Inline table or `CampaignDetail` |
 | `quality` | Call Quality | `CallQuality` |
 | `telephony` | Telephony | `TelephonyView` |
@@ -118,11 +123,18 @@ The app uses **client-side view switching**, not URL-based routing. A single str
 
 Navigation is triggered by:
 
-- **`Sidebar`** — permanent drawer on `lg+`, temporary drawer on smaller screens. Groups: Campaigns, Telephony, Operations, Platform.
-- **`FloatingNav`** — mobile-only (`xs`–`md`) radial menu fixed bottom-right. Does not include Telephony or Profile entries.
+- **`Sidebar`** — permanent drawer on `lg+`, temporary drawer on smaller screens. Groups: Campaigns, Telephony, Operations, Platform. It includes Products, Contacts, and Leads.
+- **`FloatingNav`** — mobile-only (`xs`–`md`) radial menu fixed bottom-right. It includes the highest-use operational views plus Settings, but omits Products, Contacts, Telephony, and Profile.
 - **Deep links within views** — e.g. clicking a company/campaign card calls `openInControlRoom(company, campaignId?)` which sets filters and switches to `dashboard`.
 
-### 4.2 Responsive layout
+### 4.2 Auxiliary URL routes
+
+| Route | File | Purpose | Data/auth constraints |
+|-------|------|---------|-----------------------|
+| `/tv` | `app/tv/page.tsx` | Read-only "10-foot" wallboard for unattended campaign monitoring | Fetches authenticated `GET /api/reports`; shows a sign-in prompt on 401; no mutation paths |
+| `/flow-builder` | `app/flow-builder/page.tsx` | Visual campaign-flow builder POC using React Flow | Visual-only; export/import/download are client-side JSON; optional AI generation calls `POST /api/flow-builder/generate` |
+
+### 4.3 Responsive layout
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -212,15 +224,22 @@ All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Ever
 | `/api/campaigns/{id}` | PUT | CampaignActionDialog (edit voice) | updated campaign |
 | `/api/campaigns/{id}/{action}` | POST | page.tsx (`start`/`pause`/`stop`) | callops result |
 | `/api/campaigns/{id}/status` | GET | page.tsx live polling | `CampaignLiveStatus` |
+| `/api/campaigns/{id}` | GET | CampaignDetail summary flow | `{ summary, campaign }` |
+| `/api/campaigns/{id}/contacts` | GET | ContactsView | `{ items, page, page_size, total, breakdown }` |
+| `/api/campaigns/{id}/contacts/import` | POST | ContactsView import flow | callops import summary |
+| `/api/contacts/{id}/{action}` | POST | ContactsView row actions | callops action result |
 | `/api/reports` | GET | page.tsx | `{ reports }` — query: `agent`, `date` |
 | `/api/logs` | GET | page.tsx, CampaignDetail flow | `{ logs }` — query: `campaignId` |
 | `/api/intents` | GET | page.tsx, CallQuality | `{ intents, connectedTotal }` |
 | `/api/companies` | GET, POST | page.tsx | `{ companies }` |
+| `/api/products` and nested version routes | GET, POST, PUT/DELETE/PATCH | ProductsView, CampaignModal, CampaignActionDialog | callops product/version payloads |
+| `/api/leads` | GET | LeadsView | `{ leads, total, double_optin, single_optin }` |
 | `/api/security` | GET | page.tsx | `{ logs }` |
 | `/api/trunks` | GET | CampaignModal | `{ trunks }` — SIP trunk picker |
 | `/api/dashboard-templates` | GET, POST, DELETE | useDashboardLayout | saved layouts |
 | `/api/tts/generate` | POST | VoiceGenerator | base64 audio |
 | `/api/tts/save` | POST | VoiceGenerator | public URL for recording |
+| `/api/flow-builder/generate` | POST | `/flow-builder` POC | generated `{ nodes, edges }` preview |
 
 Voice file uploads for new campaigns go **directly to Supabase Storage** (`voice-recordings` bucket) from the browser, then the storage path is sent to `POST /api/campaigns` as `voice_path`.
 
@@ -271,7 +290,28 @@ Also inline in `page.tsx`.
 - **"+ New Campaign"** opens `CampaignModal`.
 - Card/table toggle persisted in `localStorage` (`avm.view.campaigns`).
 
-### 7.5 Campaign Report — `reports` view
+### 7.5 Products — `products` view
+
+`ProductsView` fetches companies and their callops products. It manages company-scoped product definitions, script versions, activation, and consent-flow metadata used by campaign creation/editing.
+
+- Product data comes from `/api/products` and nested version routes.
+- Campaign flows can send `product_id` and optional `product_version_id`; callops derives the product script/consent fields from that selection.
+- The product view is mounted from the desktop/mobile `Sidebar`; it is not in `FloatingNav`.
+
+### 7.6 Contacts — `contacts` view
+
+`ContactsView` is campaign-scoped and proxies all data/actions through callops:
+
+- `GET /api/campaigns/{id}/contacts` for paginated contacts plus whole-campaign network breakdown.
+- Network filter values map to callops `network_provider` filtering (`Vodacom`, `MTN`, `Cell C`).
+- Bulk import posts parsed rows to `/api/campaigns/{id}/contacts/import`; callops owns dedupe, normalization, and rejection counts.
+- Row actions post to `/api/contacts/{id}/archive|retry|do-not-call`.
+
+### 7.7 Leads — `leads` view
+
+`LeadsView` reads `/api/leads`, which fans out over callops company lead endpoints and returns lead rows plus `double_optin` / `single_optin` totals. Campaign/contact display names are best-effort enrichments; missing names render as blank or `—`.
+
+### 7.8 Campaign Report — `reports` view
 
 Two sub-states:
 
@@ -280,7 +320,7 @@ Two sub-states:
 
 Clicking a report row calls `viewDetailedLogs(report)`.
 
-### 7.6 Call Quality — `quality` view
+### 7.9 Call Quality — `quality` view
 
 `CallQuality` component:
 
@@ -291,15 +331,15 @@ Clicking a report row calls `viewDetailedLogs(report)`.
 
 Same calculation logic is duplicated in the `call-quality` insight widget inside `dashboardInsights.tsx`.
 
-### 7.7 Security Audit — `security` view
+### 7.10 Security Audit — `security` view
 
 `SecurityView` — read-only table of `securityLogs` passed from parent. Event types styled with MUI Chips (`login`, `unauthorized_access`, etc.).
 
-### 7.8 STS Dashboard — `sts` view
+### 7.11 STS Dashboard — `sts` view
 
 `STSDashboard` — placeholder ("No subscription data available yet").
 
-### 7.9 Telephony — `telephony` view
+### 7.12 Telephony — `telephony` view
 
 `TelephonyView` — **mock/local-only** LiveKit telephony admin UI.
 
@@ -310,16 +350,35 @@ Same calculation logic is duplicated in the `call-quality` insight widget inside
 
 Note: Telephony appears in `Sidebar` but **not** in `FloatingNav`.
 
-### 7.10 Settings — `settings` view
+### 7.13 Settings — `settings` view
 
 `SettingsView` — informational panel. Explains that outbound calling uses `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` env var or per-campaign `sip_trunk_id`. Shows admin-only warning for non-admins; no editable settings yet.
 
-### 7.11 Profile — `profile` view
+### 7.14 Profile — `profile` view
 
 `ProfileView`:
 
 - Password reset via `supabase.auth.updateUser`
 - Admin-only "Link Employee" section (UI mock with placeholder emails; invite not wired)
+
+### 7.15 Smart-TV wallboard — `/tv`
+
+`app/tv/page.tsx` is outside the dashboard shell. It renders a full-screen, read-only wallboard for TVs and large monitors:
+
+- Polls `GET /api/reports` every 30 seconds and sorts campaigns busiest-first by `dialed`.
+- Shows KPI tiles for dialed, connected, leads (`qualified + lead`), spend, and running campaign count.
+- Supports D-pad/keyboard navigation: arrows move focus, Enter/Space opens detail, Escape/Backspace/Tizen `10009`/webOS `461` returns to overview.
+- Starts auto-cycle after 90 seconds idle on overview; Play/Pause or `c` toggles cycling manually.
+- On 401 it prompts the operator to sign in on the TV browser, then return to `/tv`; there are no mutation controls.
+
+### 7.16 Flow Builder POC — `/flow-builder`
+
+`app/flow-builder/page.tsx` mounts `components/flow-builder/FlowCanvas.tsx` as a standalone visual POC:
+
+- Node types and editable fields come from `components/flow-builder/nodeSpecs.ts`.
+- Users can drag nodes, connect branch handles, edit node params, export/import/download JSON, and preview/apply AI-generated flows.
+- `POST /api/flow-builder/generate` uses the same node spec registry to constrain generated nodes/fields and filters invalid edges before returning a preview.
+- There is no persistence and no campaign execution wiring.
 
 ---
 
@@ -585,6 +644,9 @@ page.tsx
 │   │   ├── InsightCard (×N)
 │   │   │   └── dashboardInsights render → Charts / InsightCharts / tables
 │   │   └── useDashboardLayout
+│   ├── ProductsView
+│   ├── ContactsView
+│   ├── LeadsView
 │   ├── CallQuality
 │   ├── SecurityView
 │   ├── SettingsView
@@ -601,13 +663,18 @@ page.tsx
 ├── TutorialOverlay
 ├── FloatingNav
 └── AuthView (when logged out)
+
+standalone routes
+├── app/tv/page.tsx
+└── app/flow-builder/page.tsx
+    └── FlowCanvas → FlowNodes / nodeSpecs
 ```
 
 ---
 
 ## 20. Known limitations and placeholders
 
-1. **Single route** — no deep linking to views; refreshing always lands on Control Room default.
+1. **Main shell has no deep links** — `/` uses client-side view state; refreshing the dashboard shell lands on Control Room default. `/tv` and `/flow-builder` are separate standalone routes.
 2. **STS Dashboard** — empty placeholder.
 3. **Telephony view** — mock localStorage only; not production telephony management.
 4. **Settings** — no editable platform config in UI.
@@ -615,7 +682,7 @@ page.tsx
 6. **Profile employee invite** — UI only; no backend invite flow.
 7. **KpiStrip** — component exists but unused in current page layout.
 8. **Chart expand dialog** — state and dialog JSX exist in `page.tsx` but no button currently sets `expandedChart`.
-9. **FloatingNav** — missing Telephony and Profile entries compared to Sidebar.
+9. **FloatingNav** — intentionally smaller than Sidebar; omits Products, Contacts, Telephony, and Profile.
 
 ---
 

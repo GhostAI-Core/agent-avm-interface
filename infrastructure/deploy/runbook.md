@@ -9,7 +9,6 @@
 | `COMPOSE_DIR` | `.` (repo root) |
 | `DEPLOY_PATH` | `/opt/docker/production/evra_avm` |
 | `DEPLOY_USER` | `deploy` |
-| `CONCURRENCY_GROUP` | `agent-avm-deploy` |
 | `PUBLIC_DOMAIN` | Confirm with ops (e.g. `vas.inc`) |
 
 ## Services
@@ -32,14 +31,9 @@ Configure in **Cloudflare Zero Trust → Networks → Tunnels → \[tunnel\] →
 
 Target must match the compose **service name** and **expose** port exactly.
 
-## GitHub repository secrets
+## Deployment channel
 
-| Secret | Example value |
-| --- | --- |
-| `DEPLOY_SSH_PRIVATE_KEY` | Deploy user private key |
-| `DEPLOY_HOST` | Server hostname or IP |
-| `DEPLOY_USER` | `deploy` |
-| `DEPLOY_PATH` | `/opt/docker/production/evra_avm` |
+This repo currently has no checked-in `.github/workflows/` deploy workflow. Deploy by updating the server checkout/rsync target at `DEPLOY_PATH`, preserving the server-local `.env`, then running `docker compose up -d --build` from the repo root. If an automation workflow is reintroduced later, it should use the same path, service name, shared-network, and environment constraints below.
 
 ## First deploy (manual bootstrap)
 
@@ -58,7 +52,7 @@ cd /opt/docker/production/evra_avm
 docker compose up -d --build
 ```
 
-`.env` lives only on the server. The deploy workflow does not sync or overwrite it.
+`.env` lives only on the server. Do not sync or overwrite it from a developer machine or CI job.
 
 ## Runtime environment checklist
 
@@ -108,7 +102,7 @@ cd /opt/docker/production/evra_avm
 docker compose up -d
 ```
 
-Prefer re-running a prior successful GitHub Actions deploy from a known-good commit on `production`.
+Prefer checking out a known-good commit in `DEPLOY_PATH` and re-running `docker compose up -d --build`.
 
 ## Debugging without host ports
 

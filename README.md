@@ -79,10 +79,13 @@ The UI is a **client-rendered single page** (`app/page.tsx`) wrapped in MUI them
 
 | View ID | Component(s) | Purpose |
 |---------|--------------|---------|
-| `dashboard` | `InsightDashboard`, `KpiStrip`, `InsightCharts` | Control Room — configurable KPI cards, charts, filters by company/campaign/agent/date |
+| `dashboard` | `ControlRoom`, `InsightDashboard`, `InsightCharts` | Control Room — configurable KPI cards, charts, filters by company/campaign/agent/date |
 | `sts` | `STSDashboard` | STS-specific metrics view |
 | `companies` | Inline in `page.tsx` | Company roster (card/table toggle) |
 | `campaigns` | `CampaignModal`, `CampaignActionDialog` | Campaign list, create/edit/reuse/archive, play/pause/stop |
+| `products` | `ProductsView` | Company-scoped products, script versions, consent-flow metadata |
+| `contacts` | `ContactsView` | Campaign contacts, network breakdown, import and row actions |
+| `leads` | `LeadsView` | CallOps lead-gen reporting and single/double opt-in split |
 | `reports` | `Charts`, `CampaignDetail` | Aggregate campaign report — outcome donut, funnel, spend |
 | `quality` | `CallQuality` | Per-call quality and recording review |
 | `security` | `SecurityView` | Security audit log |
@@ -133,15 +136,15 @@ API routes authenticate via `getAuthUser()` (`utils/supabase/auth.ts`), which ca
 
 ### Database schema
 
-Migrations live in `supabase/migrations/` (apply via Supabase CLI or SQL editor). `schema.sql` at the repo root is a consolidated idempotent snapshot of the initial schema.
+Migrations live in `supabase/migrations/` (apply via Supabase CLI or SQL editor). `schema.sql` at the repo root is a consolidated idempotent snapshot of the initial schema. Operational company/campaign/contact/product writes now go through evra-callops; the dashboard still reads app-owned tables such as `call_records`, `call_logs`, `intent_stats`, `security_logs`, and `dashboard_templates` directly where no callops proxy exists.
 
 #### Core entities
 
 | Table | Purpose |
 |-------|---------|
 | `companies` | Client organizations (`name`, optional `contact_name/email/phone`) |
-| `campaigns` | Dialing campaigns — agent persona, status, time window, voice prompt, transfer settings, company link, callops/LiveKit overrides (`sip_trunk_id`, `agent_name`), pacing (`max_retries`, `max_concurrent`, …) |
-| `contacts` | Per-campaign dial list — phone, name, status lifecycle (`pending` → `in_progress` → `dialed` / `failed` / `retry`) |
+| `campaigns` | Dialing campaigns — agent persona/product, status, time window, voice prompt, transfer settings, company link, callops/LiveKit overrides (`sip_trunk_id`, `agent_name`), network gate, pacing (`max_retries`, `max_concurrent`, …) |
+| `contacts` | Dial list records owned by callops for imports, dedupe, network labels, and status lifecycle (`pending` → `in_progress` → `dialed` / `failed` / `retry`) |
 | `profiles` | App user profile linked to `auth.users` — role, passkey credential |
 | `voip_providers` | Legacy/provider config table; current Settings UI does not expose carrier CRUD |
 | `sip_trunks` | Catalog mapping friendly names → LiveKit trunk IDs (`ST_…`); campaigns store the integer FK in `campaigns.sip_trunk_id` |
@@ -176,7 +179,7 @@ Migration `20260612130000_voice_recordings_storage.sql` creates a private `voice
 
 ## Callops and LiveKit integration
 
-The app does **not** call Twilio or Telnyx directly. Those providers are configured as **SIP outbound trunks** inside LiveKit Cloud. In production, evra-callops drives LiveKit; this repo keeps LiveKit SDK helpers and `npm run dial` for diagnostics and pre-cutover testing.
+The app does **not** call Twilio or Telnyx directly. Those providers are configured as **SIP outbound trunks** inside LiveKit Cloud. In production, evra-callops drives LiveKit; this repo keeps LiveKit SDK helpers and `npm run dial` for developer/ops diagnostics only.
 
 ### Production lifecycle flow
 
@@ -227,13 +230,15 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 
 | Route | Method | Auth | Description |
 |-------|--------|------|-------------|
-| `/api/campaigns` | GET, POST | User | List / create campaigns |
-| `/api/campaigns/:id` | PUT, DELETE | User | Campaign updates / soft delete |
+| `/api/campaigns` | GET, POST | User | List / create campaigns through callops |
+| `/api/campaigns/:id` | GET, PUT, DELETE | User | Callops campaign summary, update, archive |
 | `/api/campaigns/:id/start` | POST | User | Proxy campaign start to callops; local status fallback only outside production |
 | `/api/campaigns/:id/pause` | POST | User | Proxy campaign pause to callops; local status fallback only outside production |
 | `/api/campaigns/:id/stop` | POST | User | Proxy campaign stop to callops; local status fallback only outside production |
 | `/api/campaigns/:id/status` | GET | User | Proxy live queue/call stats from callops |
-| `/api/campaigns/:id/dial` | POST | User | Legacy direct LiveKit diagnostic batch dial; not the production UI lifecycle path |
+| `/api/campaigns/:id/contacts` | GET | User | Callops campaign contact list and network breakdown |
+| `/api/campaigns/:id/contacts/import` | POST | User | Bulk contact import through callops |
+| `/api/contacts/:id/:action` | POST | User | Callops contact actions: archive, retry, do-not-call |
 | `/api/tts/generate` | POST | User | Generate campaign voice audio via Inworld TTS |
 | `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts`; optional text creates reusable `voice_scripts` row |
 | `/api/scripts` | GET | User | List saved campaign script MP3s for campaign edit reuse |
@@ -250,6 +255,8 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 | `/api/sts/mark` | POST | Optional `x-relay-secret` | Relay product subscribe/opt-out keypresses to STS SDP |
 | `/api/livekit/webhook` | POST | LiveKit signature | Room lifecycle updates |
 | `/api/calls/result` | POST | None | Deprecated no-op; agents should use callops `/calls/outcome` |
+| `/api/flow-builder/generate` | POST | None | Claude-assisted visual flow generation for the standalone POC route |
+| `/api/whatsapp/webhook` | GET, POST | Meta verify token / signed webhook | WhatsApp Cloud API verification and fast-ACK inbound/status logging |
 | `/api/health` | GET | None | Health check for deploy |
 
 ---
@@ -315,7 +322,7 @@ npm run start   # production server
 
 ### 6. Production deploy
 
-Docker Compose + GitHub Actions workflow (`.github/workflows/deploy-agent-avm.yml`). See [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) for server paths, Cloudflare tunnel, and secrets.
+Docker Compose on the shared production network. This repo currently has no checked-in GitHub Actions deploy workflow; see [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) for the manual/server-side deploy path, Cloudflare tunnel target, and environment checklist.
 
 ---
 

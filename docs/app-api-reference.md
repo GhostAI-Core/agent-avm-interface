@@ -8,7 +8,7 @@ This document describes the Next.js Route Handlers under `app/api/`, how they re
 
 | Layer | What it is | Role |
 |-------|------------|------|
-| `app/api/` (this repo) | Next.js Route Handlers | Dashboard CRUD, auth-gated read model, lifecycle proxy to callops, telephony trunk proxies, TTS/script reuse, STS relay, LiveKit webhook |
+| `app/api/` (this repo) | Next.js Route Handlers | Dashboard CRUD, auth-gated read model, lifecycle proxy to callops, telephony trunk proxies, TTS/script reuse, flow-builder AI draft generation, STS relay, LiveKit webhook |
 | `docs/openapi.json` | OpenAPI 3.1 for **evra-callops** | Campaign dispatcher, queue stats, call outcome/telemetry ingestion, LiveKit admin API |
 | Supabase | PostgreSQL + Auth + Storage | Source of truth for campaigns, contacts, call records, intents, audit logs |
 
@@ -24,6 +24,7 @@ app/api/*
   ├─ GET  /api/campaigns/{id}/status            ──X-Webhook-Secret──► evra-callops
   ├─ /api/trunks/*                              ──X-Webhook-Secret──► callops LiveKit admin
   ├─ POST /api/sts/mark                         ──optional x-relay-secret──► STS SDP
+  ├─ POST /api/flow-builder/generate            ──ANTHROPIC_API_KEY────────► Anthropic
   ├─ POST /api/livekit/webhook ◄──────────── signed LiveKit room events
   └─ POST /api/calls/result ── deprecated no-op; use callops /calls/outcome
 ```
@@ -38,9 +39,9 @@ app/api/*
 | `X-Webhook-Secret` | Sent server-side from this app to `CALLOPS_URL` | callops lifecycle/status/trunk admin/test-call cross-checks |
 | `x-relay-secret` | Optional shared secret checked when `STS_RELAY_SECRET` is set | `POST /api/sts/mark` |
 | LiveKit webhook JWT | `Authorization` header; validated by `WebhookReceiver` | `POST /api/livekit/webhook` |
-| None | Public | `GET /api/health`, deprecated `POST /api/calls/result` no-op; `POST /api/sts/mark` only when `STS_RELAY_SECRET` is unset |
+| None | Public / route-specific | `GET /api/health`, `POST /api/flow-builder/generate`, deprecated `POST /api/calls/result` no-op; `POST /api/sts/mark` only when `STS_RELAY_SECRET` is unset |
 
-The browser never receives `CALLOPS_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, LiveKit API secrets, Inworld credentials, or STS relay/GUID secrets.
+The browser never receives `CALLOPS_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, LiveKit API secrets, Inworld credentials, Anthropic credentials, or STS relay/GUID secrets.
 
 ---
 
@@ -364,6 +365,35 @@ When `text` is provided, the route best-effort inserts a `voice_scripts` row so 
 | Response | `{ scripts: [{ id, text, voice_id, audio_url, campaign_name, created_at }] }` |
 | Supabase tables | `voice_scripts`; newest 50 rows |
 
+### `POST /api/flow-builder/generate`
+
+| | |
+|---|---|
+| Auth | None in the current POC route |
+| Purpose | Convert a natural-language campaign-flow prompt into React Flow-compatible node and edge drafts |
+| Body | `{ prompt: string }` |
+| Response | `{ nodes: [{ id, specKey, params? }], edges: [{ id?, source, target, sourceHandle? }] }` |
+| Env | `ANTHROPIC_API_KEY` |
+| Model | `claude-opus-4-8` via `@anthropic-ai/sdk` |
+| Source of truth | `components/flow-builder/nodeSpecs.ts` |
+
+Behavior and constraints:
+
+- Missing `ANTHROPIC_API_KEY` returns **400** `{ error: 'ANTHROPIC_API_KEY is not set. Add it to .env to enable AI flow generation.' }`.
+- Blank or invalid JSON body returns **400** `{ error: 'Describe the flow you want.' }`.
+- The route forces Anthropic tool use with a `build_flow` tool whose `specKey` enum comes from `SPECS`.
+- After the model responds, the route filters out nodes whose `specKey` is not in the registry and drops edges whose endpoints do not reference retained node IDs.
+- Empty valid output returns **502**; SDK errors are normalized to **500** with the thrown error message.
+- The route does not persist, execute, or attach flows to campaigns. The `/flow-builder` UI previews the returned graph before applying it to the local canvas.
+
+Example request:
+
+```json
+{
+  "prompt": "Dial, play an intro if answered, press 1 marks a lead and sends WhatsApp, otherwise hang up."
+}
+```
+
 ---
 
 ## Routes Documented Elsewhere But Not Implemented Here
@@ -467,6 +497,7 @@ OpenAPI endpoints for telemetry, dispatch jobs, and rooms are not surfaced direc
 | `LIVEKIT_RECORD_*` | Direct diagnostic CLI egress path |
 | `INWORLD_API_KEY` | `/api/tts/generate` |
 | `AVM_SCRIPT_AUDIO_STORAGE_*` | `/api/tts/save`, `/api/scripts` |
+| `ANTHROPIC_API_KEY` | `/api/flow-builder/generate` |
 | `STS_RELAY_SECRET`, `STS_SDP_BASE_URL`, `STS_GUID_<PRODUCT>` | `/api/sts/mark` |
 
 ---
@@ -482,6 +513,7 @@ OpenAPI endpoints for telemetry, dispatch jobs, and rooms are not surfaced direc
 | `app/api/trunks/test-call/route.ts` | one-off SIP test-call proxy through callops |
 | `app/api/scripts/route.ts` | saved script audio object listing |
 | `app/api/voice-scripts/route.ts` | saved script text/audio reuse library |
+| `app/api/flow-builder/generate/route.ts` | AI draft generator for the visual flow-builder POC |
 | `app/api/sts/mark/route.ts` | STS subscribe/opt-out relay |
 | `app/api/calls/result/route.ts` | deprecated no-op result endpoint |
 | `app/api/livekit/webhook/route.ts` | signed LiveKit webhook fallback updates |

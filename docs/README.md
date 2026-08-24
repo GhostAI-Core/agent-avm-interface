@@ -5,6 +5,7 @@ Documentation for integrating and operating the Agent AVM dashboard, callops lif
 | Doc | Audience | Contents |
 |-----|----------|----------|
 | [API reference & alignment guide](./app-api-reference.md) | Backend / frontend / integration | Current `app/api/` route inventory, auth model, Supabase tables, callops/OpenAPI boundary |
+| [Frontend architecture](./frontend-architecture.md) | Frontend / QA / integration | App shell routing, standalone `/tv` and `/flow-builder` routes, state/data flow, UI constraints |
 | [Callops and LiveKit outbound integration](./livekit-outbound-integration.md) | Ops / backend / UI | Production callops flow, LiveKit webhook, trunk catalog, diagnostic CLI, testing |
 | [STS SmartCall SDP integration](./sts-sdp-integration.md) | Backend / agent integration | Product subscribe/opt-out relay, STS GUID/env contract, outcome vocabulary |
 | [Inworld voice list](./voicelist.md) | Product / frontend | Voice IDs used by the campaign voice generator |

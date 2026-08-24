@@ -24,7 +24,7 @@ The UI is branded **EVRA** (green-on-dark theme) and targets call-center enginee
 
 | Layer | Technology | Notes |
 |-------|------------|-------|
-| Framework | **Next.js 16** (App Router) | Single-page shell at `app/page.tsx`; no multi-route page tree beyond root |
+| Framework | **Next.js 16** (App Router) | Authenticated dashboard shell at `app/page.tsx`, plus standalone display/demo routes such as `/tv` and `/flow-builder` |
 | UI library | **MUI v9** (`@mui/material`) | Components, theming, layout |
 | Styling | **Emotion** (via MUI) + **Tailwind CSS v4** | MUI `sx` props for component styling; global CSS variables in `app/globals.css` |
 | Charts | **Chart.js** + **react-chartjs-2** | Dashboard charts in `components/Charts.tsx` and `components/InsightCharts.tsx` |
@@ -43,6 +43,8 @@ There is **no** global state library (Redux, Zustand, etc.). State lives in Reac
 app/
   layout.tsx          # Root HTML shell, font, Providers wrapper
   page.tsx            # Entire authenticated app (single client component)
+  tv/page.tsx         # Smart-TV wallboard route
+  flow-builder/page.tsx # Campaign flow-builder POC route
   globals.css         # CSS variables, utility classes
 components/
   Providers.tsx       # MUI ThemeProvider + CssBaseline
@@ -52,6 +54,7 @@ components/
   AuthView.tsx        # Login screen (unauthenticated)
   InsightDashboard.tsx # Control Room widget grid
   CampaignModal.tsx   # 3-step new-campaign wizard
+  flow-builder/       # React Flow campaign-flow POC
   ... (view components, ui primitives, telephony subfolder)
 lib/
   theme.ts            # MUI theme from design tokens
@@ -99,7 +102,7 @@ Session handling:
 
 ## 4. Navigation model
 
-The app uses **client-side view switching**, not URL-based routing. A single string state `view` in `app/page.tsx` determines which screen is shown.
+The main authenticated dashboard uses **client-side view switching**, not URL-based routing. A single string state `view` in `app/page.tsx` determines which screen is shown. Standalone App Router pages exist for narrow display/demo workflows that should not inherit the dashboard chrome.
 
 ### 4.1 View IDs and titles
 
@@ -122,7 +125,15 @@ Navigation is triggered by:
 - **`FloatingNav`** — mobile-only (`xs`–`md`) radial menu fixed bottom-right. Does not include Telephony or Profile entries.
 - **Deep links within views** — e.g. clicking a company/campaign card calls `openInControlRoom(company, campaignId?)` which sets filters and switches to `dashboard`.
 
-### 4.2 Responsive layout
+### 4.2 Standalone routes
+
+| Path | Entry file | Purpose | Data path |
+|------|------------|---------|-----------|
+| `/` | `app/page.tsx` | Authenticated dashboard shell with client-side view switching | Supabase-authenticated `/api/*` routes |
+| `/tv` | `app/tv/page.tsx` | Read-only smart-TV wallboard for campaign metrics | Polls authenticated `GET /api/reports` every 30s |
+| `/flow-builder` | `app/flow-builder/page.tsx` | React Flow campaign-flow proof of concept | Local canvas state; optional `POST /api/flow-builder/generate` for Claude-generated draft flows |
+
+### 4.3 Responsive layout
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -203,7 +214,7 @@ After any status change, `fetchData()` refreshes campaigns and reports.
 
 ## 6. API surface (frontend consumer)
 
-All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Every route (except webhooks/health) checks Supabase auth via `getAuthUser()`.
+Frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Dashboard CRUD/read routes check Supabase auth via `getAuthUser()`; webhooks, health checks, deprecated transition endpoints, and the flow-builder AI POC have their own route-specific auth behavior documented in `docs/app-api-reference.md`.
 
 | Endpoint | Method | Used by | Returns |
 |----------|--------|---------|---------|
@@ -221,6 +232,7 @@ All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Ever
 | `/api/dashboard-templates` | GET, POST, DELETE | useDashboardLayout | saved layouts |
 | `/api/tts/generate` | POST | VoiceGenerator | base64 audio |
 | `/api/tts/save` | POST | VoiceGenerator | public URL for recording |
+| `/api/flow-builder/generate` | POST | FlowBuilder | React Flow node/edge draft |
 
 Voice file uploads for new campaigns go **directly to Supabase Storage** (`voice-recordings` bucket) from the browser, then the storage path is sent to `POST /api/campaigns` as `voice_path`.
 
@@ -320,6 +332,58 @@ Note: Telephony appears in `Sidebar` but **not** in `FloatingNav`.
 
 - Password reset via `supabase.auth.updateUser`
 - Admin-only "Link Employee" section (UI mock with placeholder emails; invite not wired)
+
+### 7.12 Smart-TV route — `/tv`
+
+`app/tv/page.tsx` is a standalone full-screen client route for wall-mounted campaign monitoring. It deliberately reuses the dashboard's `GET /api/reports` read model rather than introducing a separate reporting endpoint.
+
+- Polls every 30 seconds and sorts campaigns by `dialed` count.
+- Shows aggregate KPIs: dialed, connected, leads (`qualified + lead`), spend, and running campaign count.
+- Supports D-pad/keyboard navigation: arrows move focus, Enter/Space opens detail, Escape/Backspace returns to grid, Play/`c` toggles auto-cycle.
+- Shows an auth-required message if `/api/reports` returns 401; it does not implement its own login surface.
+
+### 7.13 Campaign Flow Builder POC — `/flow-builder`
+
+`app/flow-builder/page.tsx` mounts `components/flow-builder/FlowCanvas.tsx`, a standalone React Flow proof of concept for designing outbound campaign logic. It is a visual planning tool today, not a persisted or executable campaign definition.
+
+Architecture:
+
+```text
+app/flow-builder/page.tsx
+  -> FlowCanvas
+     -> ReactFlowProvider
+     -> nodeSpecs.ts   # source of truth for palette, inspector fields, and branch outputs
+     -> FlowNodes.tsx  # renders spec-driven nodes and handles
+     -> POST /api/flow-builder/generate (optional AI draft)
+```
+
+Key behaviors:
+
+- The palette and inspector are generated from `components/flow-builder/nodeSpecs.ts`; add new node capabilities there first.
+- Node fields are typed as `number`, `text`, `toggle`, or `select`, and `defaultParams()` seeds new nodes.
+- Branch nodes expose labelled outputs such as `Answered`, `No Answer`, `match`, `else`, `pass`, and `block`; edge `sourceHandle` values must match those labels.
+- Import/export is JSON-only and local to the browser session. `Download .json` saves `{ nodes, edges }` as `campaign-flow.json`.
+- Claude generation is preview-first: the proposed graph is laid out top-down and shown in a modal before replacing the current canvas.
+
+Example exported shape:
+
+```json
+{
+  "nodes": [
+    { "id": "start", "type": "spec", "position": { "x": 360, "y": 0 }, "data": { "specKey": "start", "params": {} } },
+    { "id": "call", "type": "spec", "position": { "x": 300, "y": 80 }, "data": { "specKey": "call-result", "params": {} } }
+  ],
+  "edges": [
+    { "id": "e-s", "source": "start", "target": "call", "style": { "strokeWidth": 1.5 } }
+  ]
+}
+```
+
+Current constraints:
+
+- No database persistence, versioning, campaign attach flow, or callops execution path exists for these flow definitions.
+- The AI generation API requires server-side `ANTHROPIC_API_KEY`; without it the route returns a 400 error shown in the builder.
+- The generator filters invalid node types and edges with missing endpoints, but generated graphs should still be reviewed in the preview before applying.
 
 ---
 
@@ -508,6 +572,8 @@ Role is resolved on login and stored in `page.tsx` `role` state. Most views do n
 | `avm.view.campaigns` | Campaigns list: `cards` or `table` |
 | `avm.tour.seen` | Suppresses auto-start of guided tour |
 | Telephony mock keys | Managed inside `lib/telephony-mock.ts` |
+
+The flow builder does not currently write a localStorage key; users must export JSON if they want to keep a draft.
 
 ---
 

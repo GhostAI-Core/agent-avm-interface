@@ -49,23 +49,24 @@ The repository SHALL include `.env.example` listing all required production envi
 - **WHEN** `.env` is absent and `docker compose config` is run
 - **THEN** compose parsing succeeds without error
 
-### Requirement: GitHub Actions deploy workflow
+### Requirement: Ops-controlled deploy process
 
-The repository SHALL include `.github/workflows/deploy-agent-avm.yml` that on push to `main` (and `workflow_dispatch`): checks out code, connects via SSH, verifies `shared` network exists, rsyncs the repo to `DEPLOY_PATH` excluding `.git/` and `.github/`, and runs `docker compose up -d --build` from the compose directory.
+The repository SHALL document a Docker Compose deploy path, but it SHALL NOT require a checked-in
+GitHub Actions deploy workflow. Deployment credentials and environment files stay outside git.
 
-#### Scenario: Shared network missing fails deploy
+#### Scenario: Shared network missing blocks deploy
 
-- **WHEN** the deploy workflow runs and `docker network inspect shared` fails on the server
-- **THEN** the workflow exits with error before rsync or compose
+- **WHEN** the operator validates the target server before deploying
+- **THEN** `docker network inspect shared` must succeed before compose is started
 
-#### Scenario: Concurrent deploys serialized
+#### Scenario: Server env is preserved
 
-- **WHEN** two deploy workflows are triggered for the same project
-- **THEN** only one runs at a time via concurrency group `agent-avm-deploy`
+- **WHEN** code is deployed to `DEPLOY_PATH`
+- **THEN** the existing server `.env` is not overwritten from git
 
 ### Requirement: Deploy runbook
 
-The repository SHALL include `infrastructure/deploy/runbook.md` documenting deploy path, service names, Cloudflare tunnel target, GitHub secrets, first-deploy bootstrap steps, and post-deploy validation commands.
+The repository SHALL include `infrastructure/deploy/runbook.md` documenting deploy path, service names, Cloudflare tunnel target, deployment inputs, first-deploy bootstrap steps, and post-deploy validation commands.
 
 #### Scenario: Operator can validate deployment
 

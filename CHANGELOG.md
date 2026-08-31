@@ -20,7 +20,7 @@ Documentation now reflects the callops cutover: the dashboard proxies campaign l
 - Campaign Play/Pause/Stop goes through `POST /api/campaigns/:id/start|pause|stop`.
 - Running/paused campaign cards can show live callops counters from `GET /api/campaigns/:id/status`.
 - The campaign wizard loads SIP trunk choices from `GET /api/trunks`.
-- `POST /api/calls/result` is deprecated and is a no-op; agents should post outcomes to callops `/calls/outcome`.
+- `POST /api/calls/result` is not the agent contract; agents should post outcomes to callops `/calls/outcome`. The local route is only a secondary CallOps-forwarded reconciliation safety net.
 
 ### Technical details
 
@@ -189,7 +189,7 @@ Copy `.env.local.example` → `.env.local` (or use `.env`).
 /opt/docker/production/evra_avm/.env
 ```
 
-The GitHub deploy workflow **rsyncs code** but **does not overwrite** server `.env`. After adding new features, **SSH to the server and add missing keys**, then:
+The current ops-controlled deploy process should **not overwrite** server `.env`. After adding new features, **SSH to the server and add missing keys**, then:
 
 ```bash
 cd /opt/docker/production/evra_avm
@@ -287,7 +287,7 @@ Requires `INWORLD_API_KEY` in local `.env`.
 - [ ] Server `.env` includes all `AVM_SCRIPT_AUDIO_STORAGE_*` vars
 - [ ] `avm-scripts` bucket exists and is **public** in Supabase
 - [ ] S3 access keys have upload permission to `avm-scripts`
-- [ ] Merge to `production` branch (triggers deploy workflow)
+- [ ] Deploy the selected commit with the current ops-controlled process
 - [ ] Verify: `curl -sf https://avm.evra-ai.com/api/health`
 - [ ] Verify: logged-in UI → New Campaign → Generate (not 503)
 

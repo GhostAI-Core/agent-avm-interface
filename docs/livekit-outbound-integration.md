@@ -33,7 +33,7 @@ Two outbound paths exist:
 | Path | Use |
 |------|-----|
 | **Production UI path** | Operator controls campaign lifecycle through callops proxy routes. |
-| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial` and the legacy authenticated `POST /api/campaigns/:id/dial` route; not used by production campaign controls. |
+| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial`; not used by production campaign controls. |
 
 There is no `/api/simulate` fallback in the current codebase.
 
@@ -55,14 +55,13 @@ There is no `/api/simulate` fallback in the current codebase.
 
 | File | Role |
 |------|------|
-| `app/api/trunks/route.ts` | SIP trunk catalog for the campaign wizard; optionally cross-checks callops `/livekit/trunks`; proxies trunk create to callops. |
+| `app/api/trunks/route.ts` | Compact SIP trunk catalog for the campaign wizard; fans out over CallOps company-scoped SIP trunks and proxies legacy trunk create to CallOps. |
 | `app/api/trunks/[trunk_id]/route.ts` | Proxies LiveKit trunk PATCH/DELETE to callops by `ST_...` trunk id. |
 | `app/api/trunks/test-call/route.ts` | Proxies one-off SIP test calls to callops `/livekit/test-call`. |
 | `app/api/livekit/webhook/route.ts` | Signature-validated LiveKit webhook fallback updates to `call_records`. |
-| `app/api/campaigns/[id]/dial/route.ts` | Legacy direct LiveKit diagnostic batch dial route with local compliance gate. |
 | `lib/outbound-call.ts` | Direct LiveKit SDK helpers used by the diagnostic CLI. |
 | `lib/livekit.ts` | Server-only exports for LiveKit helpers and webhook receiver. |
-| `lib/phone.ts` | `normalizePhone()` for contact imports before dialing. |
+| `lib/phone.ts` | Phone helper used by diagnostic paths; CallOps owns production contact normalization. |
 | `lib/voice.ts` | Resolves uploaded or generated campaign voice URLs. |
 | `utils/supabase/admin.ts` | Service-role client for webhook writes and server-side signing. |
 
@@ -70,11 +69,11 @@ There is no `/api/simulate` fallback in the current codebase.
 
 | Route | Reads |
 |-------|-------|
-| `GET /api/campaigns` | `campaigns` joined to `companies` |
-| `GET /api/logs` | `call_records` |
-| `GET /api/reports` | `call_logs` joined to `campaigns` |
-| `GET /api/intents` | `intent_stats`; `call_records` denominator for campaign-specific views |
-| `GET /api/trunks` | `sip_trunks`; optional callops live-trunk cross-check |
+| `GET /api/campaigns` | CallOps `/companies` + `/companies/{id}/campaigns` |
+| `GET /api/logs` | CallOps `/companies/{id}/calls` or `/campaigns/{id}/calls` |
+| `GET /api/reports` | CallOps `/companies/{id}/dashboard/campaign-performance` |
+| `GET /api/intents` | CallOps campaign/company intent endpoints |
+| `GET /api/trunks` | CallOps `/companies/{id}/sip-trunks`, deduped by trunk id |
 
 ---
 
@@ -180,7 +179,9 @@ Typical body:
 }
 ```
 
-The local `POST /api/calls/result` route is deprecated and intentionally performs no writes. It returns `{ "ok": true, "deprecated": true }` for transitional agents.
+The local `POST /api/calls/result` route is a secondary reconciliation safety net. Agents still
+post outcomes to CallOps; CallOps may forward the same payload here so the dashboard can insert a
+missing `call_records` row only if the primary CallOps write did not land.
 
 Outcome values used by callops include `answered`, `no_answer`, `busy`, `failed`, `transferred`, and `voicemail`. Legacy dashboard rows may also contain IVR-specific values such as `qualified`, `no_speech`, `hangup`, `ni`, `dnq`, and `callback`.
 

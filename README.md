@@ -12,14 +12,14 @@ At a high level, Agent AVM connects four concerns:
 
 1. **Campaign operations** — Create and manage companies, campaigns, contact lists, voice prompts, and dialing settings (time windows, speed, transfer targets).
 2. **Outbound dialing** — When an operator presses Play/Pause/Stop, the app proxies lifecycle commands to evra-callops. callops dispatches contacts through LiveKit SIP trunks, enforces pacing/retry rules, and writes progress back to Supabase.
-3. **Call reporting** — Per-call detail (`call_records`), aggregate campaign counters (`call_logs`), and conversation intent waterfalls (`intent_stats`) feed charts and tables across the dashboard.
+3. **Call reporting** — CallOps-backed per-call detail (`call_records`), campaign performance rollups, leads, recordings, and conversation intent waterfalls (`intent_stats`) feed charts and tables across the dashboard.
 4. **Access control & audit** — Invite-only Supabase Auth (password + optional WebAuthn passkeys), role-based UI (`admin` vs `engineer`), and immutable security event logging.
 
 ```mermaid
 flowchart TB
   subgraph UI["Browser (app/page.tsx)"]
     Auth[AuthView]
-    Dash[InsightDashboard / Charts]
+    Dash[ControlRoom / Charts]
     Camp[Campaigns & Companies]
   end
 
@@ -79,14 +79,16 @@ The UI is a **client-rendered single page** (`app/page.tsx`) wrapped in MUI them
 
 | View ID | Component(s) | Purpose |
 |---------|--------------|---------|
-| `dashboard` | `InsightDashboard`, `KpiStrip`, `InsightCharts` | Control Room — configurable KPI cards, charts, filters by company/campaign/agent/date |
-| `sts` | `STSDashboard` | STS-specific metrics view |
+| `dashboard` | `ControlRoom`, `FunnelGraphFlow`, `InsightCharts` | Control Room — live campaigns, KPI groups, funnel/outcomes, filters by company/campaign/product/date range |
 | `companies` | Inline in `page.tsx` | Company roster (card/table toggle) |
 | `campaigns` | `CampaignModal`, `CampaignActionDialog` | Campaign list, create/edit/reuse/archive, play/pause/stop |
+| `products` | `ProductsView` | Company-scoped products, consent-flow type, script version management |
+| `contacts` | `ContactsView` | Per-campaign contacts, CSV import, status/search/network filters, network dial gate |
+| `leads` | `LeadsView` | Lead-Gen single/double opt-ins and CSV export |
 | `reports` | `Charts`, `CampaignDetail` | Aggregate campaign report — outcome donut, funnel, spend |
 | `quality` | `CallQuality` | Per-call quality and recording review |
 | `security` | `SecurityView` | Security audit log |
-| `settings` | `SettingsView` | Read-only telephony configuration note; carrier settings live in LiveKit/callops |
+| `settings` | `SettingsView` | CallOps-backed call-cost rate plus telephony configuration note |
 | `profile` | `ProfileView` | User profile and appearance |
 
 ### Data loading pattern
@@ -104,7 +106,7 @@ Starting, pausing, or stopping a campaign (`updateStatus`) triggers `POST /api/c
 
 ### Dashboard layout
 
-`lib/useDashboardLayout.ts` and `SaveTemplateDialog` persist custom card order/pin/hide state. Layouts can be saved as `dashboard_templates` rows via `GET/POST /api/dashboard-templates`.
+`components/ControlRoom.tsx` is the mounted dashboard body. `lib/useDashboardLayout.ts`, `InsightDashboard`, and `SaveTemplateDialog` remain as legacy/configurable dashboard support; layouts can still be saved as `dashboard_templates` rows via `GET/POST /api/dashboard-templates`.
 
 ---
 
@@ -122,7 +124,7 @@ The app uses three Supabase clients, each for a different trust boundary:
 
 Session refresh runs in `proxy.ts` → `utils/supabase/middleware.ts` on every matched request (`supabase.auth.getSession()`).
 
-API routes authenticate via `getAuthUser()` (`utils/supabase/auth.ts`), which calls `supabase.auth.getUser()` and returns 401 when unauthenticated.
+API routes authenticate via `getAuthUser()` or `getAccessToken()` (`utils/supabase/auth.ts`). Bearer-token proxy routes forward the user's Supabase JWT to CallOps, where operational authorization is enforced.
 
 ### Authentication & roles
 
@@ -133,26 +135,28 @@ API routes authenticate via `getAuthUser()` (`utils/supabase/auth.ts`), which ca
 
 ### Database schema
 
-Migrations live in `supabase/migrations/` (apply via Supabase CLI or SQL editor). `schema.sql` at the repo root is a consolidated idempotent snapshot of the initial schema.
+Migrations live in `supabase/migrations/` (apply via Supabase CLI or SQL editor). `schema.sql` at the repo root is a consolidated idempotent snapshot of the initial schema. Operational ownership has moved to CallOps; see [docs/data-model.md](./docs/data-model.md) for the current ownership boundaries.
 
 #### Core entities
 
 | Table | Purpose |
 |-------|---------|
 | `companies` | Client organizations (`name`, optional `contact_name/email/phone`) |
-| `campaigns` | Dialing campaigns — agent persona, status, time window, voice prompt, transfer settings, company link, callops/LiveKit overrides (`sip_trunk_id`, `agent_name`), pacing (`max_retries`, `max_concurrent`, …) |
-| `contacts` | Per-campaign dial list — phone, name, status lifecycle (`pending` → `in_progress` → `dialed` / `failed` / `retry`) |
+| `products` | Company-scoped script + consent-flow bundle (`sts_subscription` or `lead_gen`) |
+| `product_script_versions` | Versioned script text, voice id, generated audio URL, and measured duration |
+| `campaigns` | Dialing campaigns — status, time window, product links, voice prompt, transfer settings, company link, callops/LiveKit overrides (`sip_trunk_id`, `agent_name`), pacing, network gate |
+| `contacts` | Per-campaign dial list — phone, name, network provider, status lifecycle (`pending` → `in_progress` → `dialed` / `failed` / `retry`) |
 | `profiles` | App user profile linked to `auth.users` — role, passkey credential |
 | `voip_providers` | Legacy/provider config table; current Settings UI does not expose carrier CRUD |
 | `sip_trunks` | Catalog mapping friendly names → LiveKit trunk IDs (`ST_…`); campaigns store the integer FK in `campaigns.sip_trunk_id` |
-| `system_settings` | Global config — IP whitelist, environment label |
+| `system_settings` | Global settings, including the CallOps call-cost rate |
 
 #### Call data (two layers)
 
 | Table | Granularity | Consumed by |
 |-------|-------------|-------------|
-| `call_records` | One row per placed call — `outcome`, `talk_seconds`, `cost`, `recording_url`, `room`, `contact_id`, `egress_id` | Written by callops and LiveKit webhook, read by `GET /api/logs`, Call Quality view, intent denominators |
-| `call_logs` | One aggregate row per campaign — rolled-up counters (`dialed`, `connected`, `qualified`, …), CPL, total spend | `GET /api/reports`, campaign report charts |
+| `call_records` | One row per placed call — `outcome`, `business_disposition`, `talk_seconds`, `cost`, `recording_url`, `room`, `contact_id` | Written by callops and LiveKit webhook fallback, read by `GET /api/logs`, Call Quality, Leads, Campaign Detail |
+| `call_sessions` | Timing and recording session layer | Surfaced as `duration_seconds`/`on_air_seconds` and recording fallback URLs |
 | `intent_stats` | Daily per-campaign intent reach counts (`intent_name`, `step`, `reached`) | `GET /api/intents`, intent waterfall charts |
 
 The `bump_intent()` SQL function atomically increments intent counters for outcome ingestion.
@@ -166,11 +170,11 @@ The `bump_intent()` SQL function atomically increments intent counters for outco
 
 #### Row-Level Security
 
-All application tables enable RLS with **authenticated-only** policies (broad `USING (true)` for logged-in users). Server-to-server writers such as the LiveKit webhook and evra-callops use service-role credentials to bypass RLS. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
+CallOps enforces company-scoped authorization for operational data using the forwarded Supabase JWT. Server-to-server writers such as the LiveKit webhook and evra-callops use service-role credentials to bypass RLS where needed. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
 
 ### Storage
 
-Migration `20260612130000_voice_recordings_storage.sql` creates a private `voice-recordings` bucket. Campaigns reference uploaded files via `campaigns.voice_path` or generated script audio via `campaigns.audio_path`. `lib/voice.ts` can mint a short-lived signed URL for the agent when the direct LiveKit CLI path is used; production dispatch is owned by callops.
+Migration `20260612130000_voice_recordings_storage.sql` creates a private `voice-recordings` bucket. The campaign wizard uploads local audio there, then sends the storage path/audio URL to CallOps as dispatcher-read script audio. `lib/voice.ts` can mint a short-lived signed URL for diagnostic paths; production dispatch is owned by callops.
 
 ---
 
@@ -228,23 +232,43 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 | Route | Method | Auth | Description |
 |-------|--------|------|-------------|
 | `/api/campaigns` | GET, POST | User | List / create campaigns |
-| `/api/campaigns/:id` | PUT, DELETE | User | Campaign updates / soft delete |
+| `/api/campaigns/:id` | GET, PUT, DELETE | User | CallOps campaign summary, campaign updates, archive |
 | `/api/campaigns/:id/start` | POST | User | Proxy campaign start to callops; local status fallback only outside production |
 | `/api/campaigns/:id/pause` | POST | User | Proxy campaign pause to callops; local status fallback only outside production |
 | `/api/campaigns/:id/stop` | POST | User | Proxy campaign stop to callops; local status fallback only outside production |
 | `/api/campaigns/:id/status` | GET | User | Proxy live queue/call stats from callops |
-| `/api/campaigns/:id/dial` | POST | User | Legacy direct LiveKit diagnostic batch dial; not the production UI lifecycle path |
+| `/api/campaigns/:id/contacts` | GET | User | CallOps-backed paged contacts plus network breakdown |
+| `/api/campaigns/:id/contacts/import` | POST | User | Import parsed contacts through CallOps |
+| `/api/products` | GET, POST | User | Company-scoped products |
+| `/api/products/:id` | GET, PATCH | User | Product detail / update |
+| `/api/products/:id/versions` | GET, POST | User | Product script version history / create |
+| `/api/products/:id/versions/:versionId/activate` | POST | User | Promote or roll back a product script version |
 | `/api/tts/generate` | POST | User | Generate campaign voice audio via Inworld TTS |
-| `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts`; optional text creates reusable `voice_scripts` row |
+| `/api/tts/save` | POST | User | Save generated script audio to script storage; optional text creates CallOps script-library metadata |
 | `/api/scripts` | GET | User | List saved campaign script MP3s for campaign edit reuse |
-| `/api/voice-scripts` | GET | User | List saved voice script text/audio rows for voice-generator reuse |
+| `/api/voice-scripts` | GET, POST | User | CallOps script-library text/audio rows for voice-generator reuse |
+| `/api/script-audio` | GET, POST | User | Per-campaign script/audio history |
 | `/api/companies` | GET, POST | User | Company management |
 | `/api/trunks` | GET, POST | User | SIP trunk catalog and trunk create proxy through callops |
 | `/api/trunks/:trunk_id` | PATCH, DELETE | User | LiveKit SIP trunk update/delete proxy through callops |
 | `/api/trunks/test-call` | POST | User | One-off SIP test call through callops/LiveKit |
-| `/api/logs` | GET | User | Per-call `call_records` |
-| `/api/reports` | GET | User | Aggregate `call_logs` |
+| `/api/companies/:id/sip-trunks` | GET, POST | User | Company-scoped SIP trunk list/create |
+| `/api/sip-trunks/:id` | GET, PATCH | User | Company-scoped SIP trunk detail/update |
+| `/api/sip-trunks/:id/archive` | POST | User | Archive a SIP trunk |
+| `/api/sip-trunks/:id/health` | GET | User | SIP trunk health |
+| `/api/sip-trunks/:id/test-call` | POST | User | One-off SIP trunk test call |
+| `/api/logs` | GET | User | CallOps-backed per-call rows |
+| `/api/reports` | GET | User | CallOps-backed campaign performance rollups |
+| `/api/leads` | GET | User | Lead-Gen single/double opt-ins |
 | `/api/intents` | GET | User | Intent waterfall data |
+| `/api/calls/:id` | GET | User | Call detail |
+| `/api/calls/:id/recording` | GET | User | Signed recording URL |
+| `/api/calls/:id/call-report` | GET | User | Telephony narrative |
+| `/api/calls/:id/telemetry` | GET | User | Model/SDK telemetry |
+| `/api/settings` | GET, PATCH | User | CallOps system settings |
+| `/api/lookups/:type` | GET | User | Allowlisted CallOps vocabularies |
+| `/api/whatsapp/webhook` | GET, POST | Meta verify/HMAC | WhatsApp Cloud API webhook |
+| `/api/flow-builder/generate` | POST | None | Visual flow-builder POC generation |
 | `/api/security` | GET | User | Security logs |
 | `/api/dashboard-templates` | GET, POST, DELETE | User | Saved dashboard layouts |
 | `/api/sts/mark` | POST | Optional `x-relay-secret` | Relay product subscribe/opt-out keypresses to STS SDP |
@@ -269,7 +293,7 @@ utils/supabase/         # Browser, server, admin clients; auth helpers; middlewa
 supabase/migrations/    # Ordered SQL migrations (source of truth for schema)
 scripts/                # dial-outbound CLI, env preload
 infrastructure/deploy/  # Docker Compose deploy runbook
-docs/                   # Integration guides (LiveKit)
+docs/                   # Architecture, API, data-model, integration, and ops guides
 proxy.ts                # Next.js middleware entry — session cookie refresh
 schema.sql              # Idempotent initial schema snapshot
 ```
@@ -315,7 +339,7 @@ npm run start   # production server
 
 ### 6. Production deploy
 
-Docker Compose + GitHub Actions workflow (`.github/workflows/deploy-agent-avm.yml`). See [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) for server paths, Cloudflare tunnel, and secrets.
+Production deploy is documented as Docker Compose behind the Cloudflare tunnel. See [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) for server paths, networking, and secrets.
 
 ---
 
@@ -336,6 +360,8 @@ Docker Compose + GitHub Actions workflow (`.github/workflows/deploy-agent-avm.ym
 | Document | Contents |
 |----------|----------|
 | [docs/app-api-reference.md](./docs/app-api-reference.md) | Route inventory, auth model, callops/OpenAPI alignment |
+| [docs/frontend-architecture.md](./docs/frontend-architecture.md) | Main UI shell, current views, Control Room layout, frontend data flow |
+| [docs/data-model.md](./docs/data-model.md) | CallOps-owned operational model, products/scripts, contacts, reports, Supabase boundaries |
 | [docs/livekit-outbound-integration.md](./docs/livekit-outbound-integration.md) | Callops + LiveKit operational flow, env vars, testing |
 | [docs/voicelist.md](./docs/voicelist.md) | Inworld voice IDs used by the campaign voice generator |
 | [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) | Production deployment on Docker + Cloudflare |

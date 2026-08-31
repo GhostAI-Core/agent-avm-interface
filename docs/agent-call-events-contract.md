@@ -1,70 +1,80 @@
-# Agent ↔ App contract — call_events pipeline & in-call behavior
+# Agent outcome contract
 
-**For:** the LiveKit outbound agent worker (Seeker/Grace path).
-**Owner of this doc:** control-plane (agent-avm-interface). **Date:** 2026-06-18.
+**For:** LiveKit outbound agent workers.
+**Owner of this doc:** control-plane (`agent-avm-interface`).
+**Current write path:** agent -> `evra-callops` -> Supabase read model.
 
-The agent does the in-call work and **dumps raw events into Supabase `call_events`**. A DB trigger
-(`process_call_event`) maps each row into `call_records` / `intent_stats`, which the dashboards read.
-The agent does **not** need to call any HTTP endpoint for results — just insert rows.
+Agents should report final call outcomes to **CallOps**, not to this Next.js app and not by
+writing raw `call_events` rows from the frontend repo's perspective. This app's local
+`POST /api/calls/result` route is deprecated and intentionally performs no writes.
 
----
+## 1. Authoritative endpoint
 
-## 1. What the agent reads (per-call config)
-
-Two equivalent sources — use whichever is easier:
-
-- **Dispatch metadata** (attached at dial time). JSON includes:
-  ```json
-  {
-    "campaignId": 42, "contactId": 1007, "phone": "+27821234567",
-    "campaignName": "...", "firstName": "...", "lastName": "...",
-    "voiceRecordingUrl": "https://…", "disclosureText": "…",
-    "behavior": { "answerDelaySec": 2, "amdEnabled": true, "voicemailAction": "hangup", "silenceTimeoutSec": 4 },
-    "transferKey": "...", "transferTarget": "..."
-  }
-  ```
-- **Supabase `campaigns` row** (by `campaignId` parsed from the room name `avm_<campaignId>_<contactId>_<rand>`):
-  columns `answer_delay_sec`, `amd_enabled`, `voicemail_action`, `silence_timeout_sec`.
-
-## 2. In-call behavior the agent must enforce (touch points 3–6)
-
-| # | Behavior | Rule |
-|---|---|---|
-| 3 | **Answer delay** | After the callee answers, wait `answerDelaySec` (2s) before the first TTS. |
-| 4 + 5 | **Voicemail / AMD** | If `amdEnabled`, run answering-machine detection on the first audio (beep/greeting). If it's a machine and `voicemailAction == "hangup"`, **terminate the call immediately** (don't burn spend). |
-| 6 | **Silence drop** | If no caller speech for `silenceTimeoutSec` (4s) at any point, **drop the call** so it can't hang for hours. |
-
-When the agent terminates, **it hangs up itself** (it's in the room) and records the reason via a
-`call_events` row (below). The control plane does not need to issue the hangup.
-
-## 3. What the agent writes — `call_events`
-
-Insert one row per event. Only `room` and `event_type` are required; put everything else in `payload`.
-`campaign_id` / `contact_id` come from the room name; `processed` is set by the trigger — leave it `false`.
-
-```sql
-INSERT INTO call_events (room, campaign_id, contact_id, phone, event_type, payload) VALUES (…);
+```text
+POST $CALLOPS_URL/calls/outcome
+Headers:
+  Content-Type: application/json
+  X-Webhook-Secret: <CALLOPS_WEBHOOK_SECRET>
 ```
 
-| `event_type` | When | `payload` keys used by the trigger | Resulting `call_records` change |
-|---|---|---|---|
-| `answered` | callee picks up | — | `outcome` 'pending' → 'connected' |
-| `voicemail_detected` | AMD says machine (then hang up) | — | `outcome` → 'voicemail' |
-| `dropped_no_response` | silence timeout → dropped | `{ "seconds": 4 }` (optional) | `outcome` → 'dropped_no_response' |
-| `outcome` | final disposition | `{ "outcome": "...", "talk_seconds": 37, "cost": 0.42, "transferred": true }` | sets those fields |
-| `recording` | recording stored | `{ "url": "s3://…" }` | sets `recording_url` |
-| `intent` | an intent step reached | `{ "name": "qualified", "step": 2 }` | bumps the intent waterfall |
+Typical body:
 
-`outcome` must be one of: `connected, qualified, voicemail, no_speech, hangup, ni, dnq, callback,
-no_answer, busy, failed, dropped_no_response`.
+```json
+{
+  "campaign_id": 42,
+  "contact_id": 1007,
+  "room_name": "call-27821234567-1007-1",
+  "phone": "+27821234567",
+  "outcome": "answered",
+  "business_disposition": "subscribe",
+  "talk_seconds": 37,
+  "transferred": false,
+  "attempt": 1
+}
+```
 
-Unknown `event_type`s are accepted and kept **raw** (not mapped) — safe to dump extra telemetry
-(transcripts, partials, debug) for later use without breaking anything.
+CallOps owns validation, cost calculation, contact status updates, retry scheduling, and writes
+to `call_records`/related tables. The dashboard reads those results through `/api/logs`,
+`/api/reports`, `/api/leads`, and `/api/calls/:id/*`.
 
-## 4. Notes
+## 2. Outcome vocabulary
 
-- The dial route pre-creates a `pending` `call_records` row keyed by `room`; the trigger upserts, so
-  the agent dumping before/after that is fine in either order.
-- `room` is unique in `call_records` — always send the exact room name you joined.
-- The legacy HTTP path (`POST /api/calls/result` with `x-agent-secret`) still works if you prefer it,
-  but the `call_events` dump is the primary path going forward.
+The frontend treats CallOps lookup endpoints as the source of truth. Relevant current types in
+`types/index.ts`:
+
+| Field | Meaning | Examples |
+|---|---|---|
+| `outcome` | Telephony/business result used for charts and status chips | `connected`, `no_answer`, `busy`, `failed`, `voicemail`, `transferred`, `opted_out`, `subscribed`, `lead` |
+| `business_disposition` | Raw agent-reported disposition | `subscribe`, `opt_out`, `lead`, `callback`, `qualified`, `not_interested`, `single_opt_in` |
+
+When adding or changing values, update CallOps lookups first, then check frontend rendering in
+`types/index.ts`, `components/ui/StatusChip.tsx`, `lib/tokens.ts`, and report mapping in
+`app/api/reports/route.ts`.
+
+## 3. What agents receive/read
+
+Production dispatch is owned by CallOps and LiveKit. The frontend create/update routes only
+materialize campaign fields that CallOps later uses:
+
+| Campaign field | Purpose |
+|---|---|
+| `voice_recording_url` | Pre-generated main script audio to play during the call. |
+| `voice_id` | Inworld voice id for voice-matched confirmation assets when that flow is enabled. |
+| `routing_mode` | Call flow mode, usually product-derived (`script` or `lead`). |
+| `sts_product` | Product key for STS subscription outcomes. |
+| `transfer_key`, `transfer_target` | Optional DTMF transfer behavior. |
+| `answer_delay_sec`, `silence_timeout_sec`, `amd_enabled`, `voicemail_action` | In-call behavior knobs surfaced in the shared type model. |
+
+Products are the preferred source for script/consent-flow selection. A campaign stores the
+resolved script URL at save time; activating a newer product script version does not change a
+saved campaign until it is re-saved.
+
+## 4. Frontend fallback endpoints
+
+| Route | Status |
+|---|---|
+| `POST /api/calls/result` | Deprecated no-op. Returns `{ ok: true, deprecated: true }`; do not build new agents against it. |
+| `POST /api/livekit/webhook` | Signed LiveKit room/egress fallback. Can update `call_records` by room for connected/no-answer/recording/talk-time hints. |
+
+The LiveKit webhook is a safety net for room lifecycle data. It is not a replacement for
+CallOps `/calls/outcome`, which remains the authoritative outcome path.

@@ -1,108 +1,137 @@
 # Data model
 
-The database for the Agent AVM Interface. This app is the **control plane** — it manages
-campaigns, dispatches calls via LiveKit, and renders dashboards. The in-call audio is handled by
-an external LiveKit **agent worker** (Seeker/Grace), which dumps results back into Supabase.
+Agent AVM is now a **dashboard/control plane** for data owned by `evra-callops`. The browser
+still signs users in with Supabase Auth, but most operational reads/writes go through this
+repo's `app/api/*` proxy routes, which forward the user's Supabase JWT to CallOps. CallOps owns
+dispatch, queueing, LiveKit SIP calls, retry state, call outcomes, and most operational tables.
 
-Tables grouped by function. ⭐ = added in the 2026-06-18 telephony/compliance work, 🪦 = legacy/parallel.
+This page describes the model as consumed by this frontend. See `docs/app-api-reference.md` for
+the route-by-route proxy map and `docs/CALLOPS_MIGRATION_HANDOVER.md` for migration history.
 
-## A. Identity, access & audit
+## Ownership boundaries
 
-| Table | What it does |
-|---|---|
-| **profiles** | One row per operator, extends Supabase `auth.users`. `role` (admin/engineer) + biometric/passkey auth (`face_signature`, `passkey_credential`). Operator identity — not the people being called. |
-| **system_settings** | Global app config: `whitelisted_ips`, `environment`. |
-| **security_logs** | Append-only audit of operator/system events (logins, campaign executions). The dial route writes a `campaign_execution` row per run. |
+| Area | Owner | Notes |
+|---|---|---|
+| Login/session | Supabase Auth + this frontend | `utils/supabase/*` manages browser/session cookies. |
+| Operational data | CallOps | Campaigns, contacts, products, leads, calls, SIP trunks, settings, script library. |
+| Dashboard-only data | This repo + Supabase | `security_logs` and `dashboard_templates` still use direct Supabase routes. |
+| LiveKit fallback | This repo + Supabase | `POST /api/livekit/webhook` can backfill `call_records` room/recording state. |
 
-## B. Clients & campaigns (what you're calling about)
+## Core entities
 
-| Table | What it does |
-|---|---|
-| **companies** | The **clients** you run campaigns for, plus their point-of-contact (`contact_name/email/phone`). |
-| **campaigns** | A campaign = **one product**. Script (`voice_recording_url`/`voice_path`), `agent` (**= the product**, e.g. seeker/grace), `status`, `dialing_speed`, `time_window_start/end`, transfer config, and gate/behavior knobs: `region`, `require_consent`, `max_attempts_per_day`, `retry_jitter_seconds`, `disclosure_text`, `answer_delay_sec`, `silence_timeout_sec`, `amd_enabled`, `voicemail_action`. FK → `companies`. |
+| Entity/table | What it represents | Frontend/API usage |
+|---|---|---|
+| `companies` | Customer organizations. | `/api/companies`; scopes products, campaigns, leads, and SIP trunks. |
+| `products` | Data-driven script + consent-flow bundle. | `ProductsView`, campaign wizard product picker, reports product filter. |
+| `product_script_versions` | Versioned product script text, voice id, generated audio URL, and measured duration. | `ProductsView` script dialog; campaign create/edit can copy the current version. |
+| `campaigns` | A dialing run for a company/product. | `/api/campaigns`; stores lifecycle status, pacing, script URL, trunk, network gate, and product links. |
+| `contacts` | Canonical phone records with per-campaign status from CallOps. | `ContactsView`, `/api/campaigns/:id/contacts`, CSV import. |
+| `sip_trunks` + trunk/company links | LiveKit outbound trunk catalog and company sharing. | Campaign wizard picker and Telephony SIP Trunks panel. |
+| `call_records` | One structured call result. | `/api/logs`, Control Room, Call Quality, Campaign Detail, Leads. |
+| `call_sessions` | CallOps session timing/recording layer. | Surfaced indirectly as `duration_seconds`/`on_air_seconds` and recording URLs. |
+| `intent_stats` | Per-campaign/day funnel reach counts. | `/api/intents`, Call Quality and dashboard funnel views. |
+| `security_logs` | Audit table still read directly from Supabase. | `/api/security`. |
+| `dashboard_templates` | Saved Control Room insight layouts. | `/api/dashboard-templates`; legacy support for dormant `InsightDashboard`. |
 
-## C. People you call (M:N contact model)
+## Products and campaign scripts
 
-| Table | What it does |
-|---|---|
-| **contacts** | The **canonical person/number** — `phone`, `first/last_name`, `timezone`. One row per unique number. |
-| **campaign_contacts** ⭐ | The **join**: which contact is in which campaign + **per-campaign dialing status** (`pending/in_progress/dialed/failed/retry`) and `retry_count`. `UNIQUE(campaign_id, contact_id)` → a contact appears once per campaign. Lets one contact belong to many campaigns. |
+A product replaces the old hardcoded "agent = seeker/grace/sangoma" selector as the business
+object operators choose for a campaign.
 
-## D. Telephony plumbing (placing the call)
-
-| Table | What it does |
-|---|---|
-| **sip_trunks** | LiveKit SIP **outbound trunks** — `livekit_trunk_id`, `from_number` (caller ID), optionally scoped to a `company`. The dial route resolves which trunk to dial through. |
-| **voip_providers** 🪦 | Legacy provider credentials from before LiveKit. Dead now. |
-
-## E. Compliance & dial-control (the gate)
-
-| Table | What it does |
-|---|---|
-| **product_consent** ⭐ | **Per-(contact, product) consent** (`opted_in/opted_out/unknown`). Product = `campaigns.agent`. Opt-out of one product never affects another. |
-| **suppression_list** ⭐ | Global / company-scoped do-not-dial. Hook for the 2026 national DNC opt-out registry; not written by per-product opt-out. |
-| **dial_number_state** ⭐ | **Per-phone daily frequency rollover** (`reached`, `attempts`, `next_eligible_at`) — cross-campaign throttle (one live answer/day, retry caps, randomized spacing). Driven by `claim_dial()` + `record_dial_outcome()`. |
-| **compliance_events** ⭐ | Immutable audit of **every gate decision** — `gate_pass`/`gate_block`/`opt_out` + `reason` + masked phone. |
-
-## F. Call results & metrics (what happened)
-
-| Table | What it does |
-|---|---|
-| **call_events** ⭐ | The **raw landing table** the agent dumps into (`room`, `event_type`, `payload` JSONB). A `BEFORE INSERT` trigger `process_call_event()` ETLs each row into the structured tables. |
-| **call_records** | The **per-call structured record** — `outcome`, `talk_seconds`, `cost`, `transferred`, `recording_url`, `room`, `contact_id`. Powers KPI cards, Recent Calls, Call Quality. |
-| **intent_stats** | The **conversation funnel** — per campaign/day, how many calls `reached` each `intent` (`step`). Filled by `bump_intent()`. |
-| **call_logs** 🪦 | Older **aggregate** result table with count columns (`dialed/connected/qualified/…`). Simulator writes it; `/api/reports` reads it. Parallel to `call_records`. |
-
-## G. Dashboard UX
-
-| Table | What it does |
-|---|---|
-| **dashboard_templates** | Saved dashboard **layouts** (JSONB) per user — arrange/pin/hide widgets. |
-
-## How it ties together (one call's journey)
-
-```
-companies ──< campaigns (= product, agent) ──┐
-                                             │ campaign_contacts (join, per-campaign status)
-contacts (canonical phone) ──────────────────┘
-                                             │
-                          DIAL ROUTE pulls pending campaign_contacts
-                                             │
-            ┌──── THE GATE (lib/compliance/gate.ts) ─────────────┐
-            │ region → network(prefix) → product_consent →       │
-            │ calling-window → dial_number_state (frequency)     │
-            └───────────────┬───────────────────┬───────────────┘
-              blocked → compliance_events     allowed
-                                                 │ claim_dial() → dial_number_state
-                                                 │ dispatch via sip_trunks → LiveKit
-                                                 ▼
-                                    external agent runs the call
-                                                 │ dumps rows →
-                                            call_events  ⭐
-                                                 │ TRIGGER process_call_event()
-                          ┌──────────────────────┼───────────────────────┐
-                          ▼                       ▼                       ▼
-                    call_records            intent_stats          (opt-out →) product_consent
-                  (outcome, cost,          (funnel/waterfall)     record_dial_outcome() →
-                   recording, talk)                               dial_number_state
-                          │
-                          ▼
-                  DASHBOARDS (KPIs, Recent Calls, Call Quality, Reports)
+```text
+companies
+  └── products
+        ├── product_script_versions
+        └── campaigns.product_id
 ```
 
-**Throughline:** a **company** owns **campaigns** (each = a product); **campaign_contacts** puts canonical
-**contacts** into campaigns; the **dial route** runs each through the **gate** (reads `product_consent`,
-`dial_number_state`, network prefixes, calling window) and audits to **compliance_events**; allowed calls
-dial via **sip_trunks**; the agent dumps **call_events**, which a trigger fans out into **call_records**
-(metrics), **intent_stats** (funnel), and updates **dial_number_state**/**product_consent**; **dashboards**
-read the structured tables.
+Important constraints:
 
-## Notes / cleanup debt
+- `products.integration_type` is `sts_subscription` or `lead_gen`.
+- `sts_subscription` products need an `sts_product_key`; `lead_gen` products do not.
+- `product_script_versions.version` increments per product. Activating an older version only
+  changes the product's `current_version_id`; already-saved campaigns keep their materialized
+  `voice_recording_url` until they are re-saved.
+- `campaigns.agent` remains a legacy/product-label field. New code should prefer
+  `campaigns.product_id` and report rows' `campaign.product_name` when available.
 
-- **`call_logs` vs `call_records`** — parallel result models (`call_logs` = older aggregate for the
-  simulator + `/api/reports`; `call_records` = real per-call pipeline for `/api/logs` + Call Quality).
-  Consolidate on `call_records` eventually.
-- **`voip_providers`** — legacy, safe to retire (LiveKit + `sip_trunks` is the live path).
-- **Network labels** — a number's mobile network (Vodacom/MTN/Cell C) is derived from its prefix at
-  display time via `lib/networks.ts` (`networkProvider()`); not stored. Note: SA number portability
-  means the prefix is the *original* allocation, not a guaranteed current carrier.
+## Campaign dialing fields
+
+| Field | Meaning |
+|---|---|
+| `status` | Lifecycle state (`draft`, `running`, `paused`, `stopped`, `completed`, `archived`, `deleted`). Start/pause/stop must go through CallOps lifecycle routes. |
+| `dialing_speed`, `max_concurrent` | Pacing controls enforced by CallOps. |
+| `max_retries`, `retry_cooldown_seconds` | Retry controls for no-answer/busy-style outcomes. |
+| `time_window_start`, `time_window_end` | Daily dialing window. CallOps may set `auto_paused` outside the window. |
+| `sip_trunk_id` | Integer CallOps/Supabase trunk row id; CallOps resolves it to the LiveKit `ST_...` id. |
+| `voice_recording_url` / `audio_path` | Script audio. The frontend normalizes generated/uploaded audio into the dispatcher-read URL field. |
+| `voice_id` | Inworld voice id, used by CallOps/agent flows that need voice-matched confirmation audio. |
+| `network_provider` | Optional single dial gate: `Vodacom`, `MTN`, `Cell C`, or null for all networks. |
+| `product_id`, `product_version_id`, `sts_product`, `routing_mode` | Product-derived campaign routing and consent-flow fields. |
+
+## Contacts and network gating
+
+Contacts are loaded per campaign from CallOps:
+
+```text
+GET /api/campaigns/:id/contacts
+  -> GET /campaigns/:id/contacts
+  -> GET /campaigns/:id/contacts/network-breakdown
+```
+
+The Contacts view treats the network selector as both a visible-list filter and the campaign
+dial gate. Changing it persists `campaigns.network_provider` through `PUT /api/campaigns/:id`;
+CallOps then enqueues only contacts whose stored `contacts.network_provider` matches. Null means
+"all networks." Network labels are based on allocated prefixes and may not reflect ported numbers.
+
+CSV imports are forwarded to CallOps unchanged after client-side parsing. CallOps owns E.164
+normalization, dedupe, rejection reporting, contact status, and `network_provider` population.
+
+## Calls, leads, reports, and recordings
+
+```text
+CallOps dispatcher + LiveKit agent
+  -> POST $CALLOPS_URL/calls/outcome
+  -> call_records + contact status + call_sessions
+  -> dashboard proxy routes
+```
+
+| View/route | Source | Notes |
+|---|---|---|
+| `/api/logs` | CallOps `/companies/:id/calls` or `/campaigns/:id/calls` | Renames CallOps `duration_seconds` to frontend `on_air_seconds`. |
+| `/api/reports` | CallOps `/companies/:id/dashboard/campaign-performance` | Maps raw outcomes into dashboard columns and attaches product names for filtering/display. |
+| `/api/leads` | CallOps `/companies/:id/leads` | Shows single and double opt-ins for Lead-Gen campaigns; cost is the persisted per-call cost. |
+| `/api/calls/:id` | CallOps `/calls/:id` | Detailed call/contact/campaign record. |
+| `/api/calls/:id/recording` | CallOps `/calls/:id/recording` | Signed recording URL; may fall back to session recording when the call record has not been linked yet. |
+| `/api/calls/:id/call-report` | CallOps `/calls/:id/call-report` | Telephony narrative: AMD, SIP, DTMF, playback, disconnect, transfer, talk time. |
+| `/api/calls/:id/telemetry` | CallOps `/calls/:id/telemetry` | Model/SDK metric events; empty telemetry is valid for script-only calls. |
+
+The local `POST /api/calls/result` route is deprecated and intentionally performs no writes.
+Live agents should report outcomes to CallOps.
+
+## Data flow
+
+```text
+Supabase Auth session
+  -> app/page.tsx
+  -> app/api/* proxy with Bearer JWT
+  -> evra-callops
+  -> Supabase operational tables + LiveKit
+  -> app/api/logs/reports/intents/leads/calls
+  -> Control Room, Campaign Detail, Call Quality, Leads
+```
+
+`POST /api/livekit/webhook` remains a signed fallback that updates `call_records` by room for
+events such as callee joined, egress ended, or room finished. CallOps outcome ingestion is still
+the authoritative path for production call results.
+
+## Known quirks / cleanup debt
+
+- `security_logs` and `dashboard_templates` still use direct Supabase routes while most other
+  operational data goes through CallOps.
+- `app/api/trunks/*` and `app/api/sip-trunks/*` both exist. The campaign wizard uses
+  `/api/trunks` for a compact picker; the Telephony SIP Trunks panel uses company-scoped
+  `/api/companies/:id/sip-trunks` and `/api/sip-trunks/:id/*` routes.
+- `campaigns.agent` survives for legacy labels only. Prefer product ids/names for new UI and
+  reporting behavior.
+- `voip_providers` is legacy provider configuration from the pre-LiveKit path.

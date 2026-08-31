@@ -179,7 +179,9 @@ Typical body:
 }
 ```
 
-The local `POST /api/calls/result` route is deprecated and intentionally performs no writes. It returns `{ "ok": true, "deprecated": true }` for transitional agents.
+The local `POST /api/calls/result` route is a secondary reconciliation safety net. Agents still
+post outcomes to CallOps; CallOps may forward the same payload here so the dashboard can insert a
+missing `call_records` row only if the primary CallOps write did not land.
 
 Outcome values used by callops include `answered`, `no_answer`, `busy`, `failed`, `transferred`, and `voicemail`. Legacy dashboard rows may also contain IVR-specific values such as `qualified`, `no_speech`, `hangup`, `ni`, `dnq`, and `callback`.
 

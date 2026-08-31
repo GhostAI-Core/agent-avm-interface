@@ -25,11 +25,11 @@ The system SHALL resolve the SIP trunk for outbound calls using only the legacy 
 
 ### Requirement: No Routr runtime in application stack
 
-The application MUST NOT include Routr Docker services, `@routr/sdk` dependency, Routr bootstrap scripts, or HTTP API routes under `/api/routr`. Deploy workflows MUST NOT build or run Routr bootstrap containers.
+The application MUST NOT include Routr Docker services, `@routr/sdk` dependency, Routr bootstrap scripts, or HTTP API routes under `/api/routr`. Deploy processes MUST NOT build or run Routr bootstrap containers.
 
 #### Scenario: Production deploy
 
-- **WHEN** the deploy workflow completes on the application host
+- **WHEN** the application is deployed on the production host
 - **THEN** only the web (and non-Routr) compose services are required for outbound calling
 
 #### Scenario: Settings page load

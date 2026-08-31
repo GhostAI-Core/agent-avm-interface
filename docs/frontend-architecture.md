@@ -137,6 +137,15 @@ Navigation is triggered by:
 └────────────────┴─────────────────────────────────────────┘
 ```
 
+### 4.3 Standalone routes
+
+These routes live outside the sidebar view switcher:
+
+| Route | Component | Purpose |
+|---|---|---|
+| `/tv` | `app/tv/page.tsx` | Read-only wallboard that polls authenticated `/api/reports`, supports TV remote/D-pad navigation, and auto-cycles campaign detail views. |
+| `/flow-builder` | `app/flow-builder/page.tsx` | Visual-only campaign flow-builder POC. It can call `/api/flow-builder/generate` for a Claude-generated node spec, but has no persistence or execution path. |
+
 ---
 
 ## 5. Central state in `app/page.tsx`

@@ -8,6 +8,7 @@ Documentation for integrating and operating the Agent AVM dashboard, callops lif
 | [Frontend architecture](./frontend-architecture.md) | Frontend / product engineering | Main shell, current views, Control Room layout, state/data flow, UI limitations |
 | [Data model](./data-model.md) | Backend / frontend / integration | Current CallOps-owned operational model, products/scripts, contacts, reports, remaining Supabase boundaries |
 | [Callops and LiveKit outbound integration](./livekit-outbound-integration.md) | Ops / backend / UI | Production callops flow, LiveKit webhook, trunk catalog, diagnostic CLI, testing |
+| [Products handover](./PRODUCTS_HANDOVER.md) | Product / backend / frontend | Product entities, script versions, campaign product wiring, and end-to-end test checklist |
 | [STS SmartCall SDP integration](./sts-sdp-integration.md) | Backend / agent integration | Product subscribe/opt-out relay, STS GUID/env contract, outcome vocabulary |
 | [Inworld voice list](./voicelist.md) | Product / frontend | Voice IDs used by the campaign voice generator |
 | [evra-callops OpenAPI](./openapi.json) | Backend integration | External callops API contract; not the Next.js app route spec |

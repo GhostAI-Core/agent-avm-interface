@@ -273,7 +273,7 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 | `/api/dashboard-templates` | GET, POST, DELETE | User | Saved dashboard layouts |
 | `/api/sts/mark` | POST | Optional `x-relay-secret` | Relay product subscribe/opt-out keypresses to STS SDP |
 | `/api/livekit/webhook` | POST | LiveKit signature | Room lifecycle updates |
-| `/api/calls/result` | POST | None | Deprecated no-op; agents should use callops `/calls/outcome` |
+| `/api/calls/result` | POST | `X-Webhook-Secret` | Secondary callops outcome reconciliation; agents should use callops `/calls/outcome` |
 | `/api/health` | GET | None | Health check for deploy |
 
 ---

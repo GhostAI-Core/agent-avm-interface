@@ -6,7 +6,8 @@
 
 Agents should report final call outcomes to **CallOps**, not to this Next.js app and not by
 writing raw `call_events` rows from the frontend repo's perspective. This app's local
-`POST /api/calls/result` route is deprecated and intentionally performs no writes.
+`POST /api/calls/result` route is a CallOps-forwarded reconciliation safety net, not the
+primary agent contract.
 
 ## 1. Authoritative endpoint
 
@@ -73,7 +74,7 @@ saved campaign until it is re-saved.
 
 | Route | Status |
 |---|---|
-| `POST /api/calls/result` | Deprecated no-op. Returns `{ ok: true, deprecated: true }`; do not build new agents against it. |
+| `POST /api/calls/result` | Secondary CallOps reconciliation. Secret-authenticated; inserts a `call_records` row only if the primary CallOps write is missing. Do not build new agents against it. |
 | `POST /api/livekit/webhook` | Signed LiveKit room/egress fallback. Can update `call_records` by room for connected/no-answer/recording/talk-time hints. |
 
 The LiveKit webhook is a safety net for room lifecycle data. It is not a replacement for

@@ -106,8 +106,9 @@ CallOps dispatcher + LiveKit agent
 | `/api/calls/:id/call-report` | CallOps `/calls/:id/call-report` | Telephony narrative: AMD, SIP, DTMF, playback, disconnect, transfer, talk time. |
 | `/api/calls/:id/telemetry` | CallOps `/calls/:id/telemetry` | Model/SDK metric events; empty telemetry is valid for script-only calls. |
 
-The local `POST /api/calls/result` route is deprecated and intentionally performs no writes.
-Live agents should report outcomes to CallOps.
+The local `POST /api/calls/result` route is a secondary reconciliation safety net: CallOps may
+forward the same outcome payload here, and the route inserts a `call_records` row only when the
+primary CallOps write is missing. Live agents should still report outcomes to CallOps, not this app.
 
 ## Data flow
 
@@ -135,3 +136,5 @@ the authoritative path for production call results.
 - `campaigns.agent` survives for legacy labels only. Prefer product ids/names for new UI and
   reporting behavior.
 - `voip_providers` is legacy provider configuration from the pre-LiveKit path.
+- `supabase/database-schema.md` is an older generated snapshot; verify current shape against
+  migrations and CallOps-owned schema before using it for implementation decisions.

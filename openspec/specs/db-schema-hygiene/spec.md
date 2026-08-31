@@ -41,17 +41,20 @@ A table MAY be dropped only when it is confirmed to have zero rows AND zero code
 - **WHEN** a relation (e.g. `campaign_report`) is found to be a live reporting VIEW rather than a table
 - **THEN** its real definition is captured as a `CREATE OR REPLACE VIEW` migration and it is retained, NOT `DROP TABLE`-d
 
-### Requirement: Coupled `/dial` tables are dropped only after the route is retired
+### Requirement: Coupled `/dial` tables stay retired
 
-`campaign_contacts` and `compliance_events` are referenced only by the orphaned dashboard `/dial` route. They MUST NOT be dropped until that route (`app/api/campaigns/[id]/dial/route.ts`) is deleted, so no live code path loses its table.
+The orphaned dashboard direct-dial route has been deleted, and the coupled
+`campaign_contacts`/`compliance_events` tables were dropped by
+`supabase/migrations/20260703090000_drop_dial_tables.sql`. Do not reintroduce the dashboard
+direct-dial route or new dependencies on those retired tables; production dispatch and gating are
+owned by CallOps.
 
-#### Scenario: Tier 2 drop follows route deletion
+#### Scenario: Route remains absent
 
-- **WHEN** the orphaned `/dial` route has been deleted and the build passes
-- **THEN** `campaign_contacts` and `compliance_events` are verified 0-row and unreferenced
-- **AND** each is backed up and dropped, and dashboard build + health checks still pass
+- **WHEN** a developer searches `app/api/campaigns`
+- **THEN** there is no direct-dial route under a campaign id
 
-#### Scenario: Tier 2 drop is blocked while `/dial` exists
+#### Scenario: Retired tables remain unused
 
-- **WHEN** the `/dial` route still exists in the codebase
-- **THEN** `campaign_contacts` and `compliance_events` are NOT dropped
+- **WHEN** dashboard code imports or queries campaign contact membership/status
+- **THEN** it uses CallOps contact endpoints rather than `campaign_contacts` or `compliance_events`

@@ -22,7 +22,7 @@ Browser
 | LiveKit webhook JWT | `Authorization` validated by `WebhookReceiver` | `POST /api/livekit/webhook` |
 | Meta webhook verification/HMAC | Verify token on GET; app secret HMAC on POST | `/api/whatsapp/webhook` |
 | Optional relay secret | `x-relay-secret` when `STS_RELAY_SECRET` is configured | `POST /api/sts/mark` |
-| None | Public | `GET /api/health`, deprecated `POST /api/calls/result` no-op |
+| None | Public | `GET /api/health` |
 
 The browser never receives `CALLOPS_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, LiveKit API
 secrets, Inworld credentials, WhatsApp app secrets, or STS relay/GUID secrets.
@@ -217,10 +217,12 @@ Allowed lookup types are `call-outcomes`, `agent-outcomes`, `business-dispositio
 | `GET /api/calls/[id]/recording` | User Bearer | Signed recording URL | `GET /calls/{id}/recording` |
 | `GET /api/calls/[id]/call-report` | User Bearer | Telephony narrative: AMD, SIP, DTMF, playback, disconnect, transfer, talk time | `GET /calls/{id}/call-report` |
 | `GET /api/calls/[id]/telemetry` | User Bearer | Model/SDK telemetry events | `GET /calls/{id}/telemetry` |
-| `POST /api/calls/result` | None | Deprecated no-op transition endpoint | None; use CallOps `POST /calls/outcome` |
+| `POST /api/calls/result` | `X-Webhook-Secret` | Secondary CallOps outcome reconciliation/backfill | Direct Supabase `call_records` insert only when primary CallOps write is missing |
 
 `/api/calls/[id]/telemetry` returns `{ telemetry: [] }` when no events exist; that is valid for
-script-only calls. `/api/calls/result` logs a warning and returns `{ ok: true, deprecated: true }`.
+script-only calls. `/api/calls/result` is idempotent by room: it returns `exists` when CallOps'
+primary write already landed, `inserted` only when it backfills a missing row, and `skipped` when
+the shared secret or service-role client is unavailable.
 
 ## Telephony and SIP trunks
 

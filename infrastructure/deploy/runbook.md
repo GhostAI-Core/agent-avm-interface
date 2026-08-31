@@ -32,14 +32,10 @@ Configure in **Cloudflare Zero Trust → Networks → Tunnels → \[tunnel\] →
 
 Target must match the compose **service name** and **expose** port exactly.
 
-## GitHub repository secrets
+## Deployment inputs
 
-| Secret | Example value |
-| --- | --- |
-| `DEPLOY_SSH_PRIVATE_KEY` | Deploy user private key |
-| `DEPLOY_HOST` | Server hostname or IP |
-| `DEPLOY_USER` | `deploy` |
-| `DEPLOY_PATH` | `/opt/docker/production/evra_avm` |
+There is no checked-in GitHub Actions deploy workflow in this repo. Keep deployment credentials
+outside git and follow the manual/ops-controlled deploy process for the target server.
 
 ## First deploy (manual bootstrap)
 
@@ -58,7 +54,7 @@ cd /opt/docker/production/evra_avm
 docker compose up -d --build
 ```
 
-`.env` lives only on the server. The deploy workflow does not sync or overwrite it.
+`.env` lives only on the server. Do not sync or overwrite it from git.
 
 ## Runtime environment checklist
 
@@ -66,7 +62,7 @@ docker compose up -d --build
 |-------|-----------|--------------|
 | Supabase | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Authenticated dashboard routes |
 | Service role | `SUPABASE_SERVICE_ROLE_KEY` | LiveKit webhook writes, direct diagnostic scripts |
-| callops | `CALLOPS_URL`, `CALLOPS_WEBHOOK_SECRET` | Production Play/Pause/Stop lifecycle and live stats |
+| callops | `CALLOPS_URL`, `CALLOPS_WEBHOOK_SECRET` | Production Play/Pause/Stop lifecycle, live stats, and reconciliation backfill |
 | LiveKit | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Webhook validation and direct diagnostic CLI |
 | LiveKit diagnostics | `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`, `LIVEKIT_AGENT_NAME`, `LIVEKIT_RECORD_*` | `npm run dial` and optional egress |
 | TTS | `INWORLD_API_KEY`, `AVM_SCRIPT_AUDIO_STORAGE_*` | Campaign script generation and saved audio |
@@ -108,7 +104,7 @@ cd /opt/docker/production/evra_avm
 docker compose up -d
 ```
 
-Prefer re-running a prior successful GitHub Actions deploy from a known-good commit on `production`.
+Prefer redeploying a known-good commit or restoring the previous server copy using the current ops-controlled deploy process.
 
 ## Debugging without host ports
 

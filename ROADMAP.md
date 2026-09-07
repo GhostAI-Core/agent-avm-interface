@@ -101,9 +101,12 @@ each branch's files against `main`:
 ## 4. <a name="callops"></a>Callops integration reference
 
 - App proxies lifecycle to callops: `POST /campaigns/{id}/{start|pause|stop}`, `GET /campaigns/{id}/status`,
-  `GET /livekit/trunks`. All requests carry `X-Webhook-Secret`.
-- If `CALLOPS_URL` / `CALLOPS_WEBHOOK_SECRET` are unset, routes fall back to a direct Supabase status write ("local" mode).
-- The LiveKit agent posts call outcomes **to callops, not to this app** (`/api/calls/result` is a deprecated no-op).
+  `GET /livekit/trunks`. These compatibility routes carry `X-Webhook-Secret`; most operational
+  dashboard routes proxy CallOps with the user's bearer token.
+- If `CALLOPS_URL` / `CALLOPS_WEBHOOK_SECRET` are unset, lifecycle routes fall back to a direct
+  Supabase status write only outside production.
+- The LiveKit agent posts call outcomes **to callops, not to this app**. `/api/calls/result` is a
+  callops-forwarded reconciliation fallback that inserts only when the primary callops write is missing.
 - callops writes `call_records` rows directly via service role.
 
 ### Key env keys

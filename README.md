@@ -2,7 +2,7 @@
 
 Outbound IVR campaign management portal for the South African market. Operators create companies and campaigns, upload contact lists and voice recordings, start outbound dialing, and monitor call outcomes, intent funnels, and spend in real time.
 
-The app is a **Next.js 16** single-page dashboard backed by **Supabase** (PostgreSQL, Auth, Storage). Production outbound dialing is orchestrated by **evra-callops**, which owns campaign lifecycle, pacing, retries, LiveKit SIP dispatch, and agent outcome ingestion. The dashboard proxies lifecycle commands server-side so shared callops credentials never reach the browser.
+The app is a **Next.js 16** dashboard backed by **Supabase** (Auth/Storage plus local utility tables) and **evra-callops** for operational campaign data. Production outbound dialing is orchestrated by evra-callops, which owns campaign lifecycle, pacing, retries, LiveKit SIP dispatch, and agent outcome ingestion. The dashboard proxies lifecycle commands and most operational reads server-side so shared callops credentials never reach the browser.
 
 ---
 
@@ -19,7 +19,7 @@ At a high level, Agent AVM connects four concerns:
 flowchart TB
   subgraph UI["Browser (app/page.tsx)"]
     Auth[AuthView]
-    Dash[InsightDashboard / Charts]
+    Dash[ControlRoom / Charts]
     Camp[Campaigns & Companies]
   end
 
@@ -52,7 +52,7 @@ flowchart TB
   API -->|user session client| DB
   Life -->|X-Webhook-Secret| Orchestrator
   Stat -->|X-Webhook-Secret| Orchestrator
-  Trunks -->|optional cross-check| LKAdmin
+  Trunks -->|trunk catalog/admin proxy| LKAdmin
   Orchestrator -->|service role| DB
   Orchestrator --> LK
   LK -->|webhooks| WH
@@ -79,7 +79,7 @@ The UI is a **client-rendered single page** (`app/page.tsx`) wrapped in MUI them
 
 | View ID | Component(s) | Purpose |
 |---------|--------------|---------|
-| `dashboard` | `InsightDashboard`, `KpiStrip`, `InsightCharts` | Control Room — configurable KPI cards, charts, filters by company/campaign/agent/date |
+| `dashboard` | `ControlRoom`, `InsightCharts`, `FunnelGraphFlow` | Control Room — fixed EVRA dashboard with Live Now, grouped KPIs, 3D/flow funnel toggle, outcomes, recent calls, and campaign drill-down |
 | `sts` | `STSDashboard` | STS-specific metrics view |
 | `companies` | Inline in `page.tsx` | Company roster (card/table toggle) |
 | `campaigns` | `CampaignModal`, `CampaignActionDialog` | Campaign list, create/edit/reuse/archive, play/pause/stop |
@@ -104,7 +104,9 @@ Starting, pausing, or stopping a campaign (`updateStatus`) triggers `POST /api/c
 
 ### Dashboard layout
 
-`lib/useDashboardLayout.ts` and `SaveTemplateDialog` persist custom card order/pin/hide state. Layouts can be saved as `dashboard_templates` rows via `GET/POST /api/dashboard-templates`.
+`components/ControlRoom.tsx` is the mounted dashboard body. It receives scoped reports, calls, intents, campaigns, and `liveStatus` from `app/page.tsx`, then renders the Live Now band, grouped metric cards, funnel/outcome panels, recent calls, and campaign-performance table.
+
+`InsightDashboard`, `lib/useDashboardLayout.ts`, and `SaveTemplateDialog` still exist as legacy/supporting configurable-dashboard code. Saved layout templates remain available through `GET/POST /api/dashboard-templates`, but the current Control Room does not mount the draggable widget grid.
 
 ---
 
@@ -227,29 +229,38 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 
 | Route | Method | Auth | Description |
 |-------|--------|------|-------------|
-| `/api/campaigns` | GET, POST | User | List / create campaigns |
-| `/api/campaigns/:id` | PUT, DELETE | User | Campaign updates / soft delete |
+| `/api/campaigns` | GET, POST | User | CallOps-backed campaign list/create |
+| `/api/campaigns/:id` | GET, PUT, DELETE | User | Campaign detail, updates, archive |
 | `/api/campaigns/:id/start` | POST | User | Proxy campaign start to callops; local status fallback only outside production |
 | `/api/campaigns/:id/pause` | POST | User | Proxy campaign pause to callops; local status fallback only outside production |
 | `/api/campaigns/:id/stop` | POST | User | Proxy campaign stop to callops; local status fallback only outside production |
 | `/api/campaigns/:id/status` | GET | User | Proxy live queue/call stats from callops |
-| `/api/campaigns/:id/dial` | POST | User | Legacy direct LiveKit diagnostic batch dial; not the production UI lifecycle path |
+| `/api/campaigns/:id/contacts` | GET | User | CallOps contact list plus network breakdown |
+| `/api/campaigns/:id/contacts/import` | POST | User | CallOps contact import |
+| `/api/contacts/:id/:action` | POST | User | Contact archive, retry, or do-not-call action |
 | `/api/tts/generate` | POST | User | Generate campaign voice audio via Inworld TTS |
-| `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts`; optional text creates reusable `voice_scripts` row |
+| `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts`; optional text saves reuse metadata through CallOps |
 | `/api/scripts` | GET | User | List saved campaign script MP3s for campaign edit reuse |
-| `/api/voice-scripts` | GET | User | List saved voice script text/audio rows for voice-generator reuse |
-| `/api/companies` | GET, POST | User | Company management |
-| `/api/trunks` | GET, POST | User | SIP trunk catalog and trunk create proxy through callops |
+| `/api/voice-scripts` | GET, POST | User | CallOps script-library reuse metadata |
+| `/api/script-audio` | GET, POST | User | Campaign-scoped generated script-audio history |
+| `/api/companies` | GET, POST | User | CallOps-backed company management |
+| `/api/products*` | GET, POST, PATCH | User | Company products and script versions |
+| `/api/leads` | GET | User | CallOps lead reporting |
+| `/api/trunks` | GET, POST | User | Compatibility SIP trunk catalog and LiveKit-admin create/update proxy |
 | `/api/trunks/:trunk_id` | PATCH, DELETE | User | LiveKit SIP trunk update/delete proxy through callops |
 | `/api/trunks/test-call` | POST | User | One-off SIP test call through callops/LiveKit |
-| `/api/logs` | GET | User | Per-call `call_records` |
-| `/api/reports` | GET | User | Aggregate `call_logs` |
-| `/api/intents` | GET | User | Intent waterfall data |
+| `/api/sip-trunks*` | GET, POST, PATCH | User | Company-scoped CallOps SIP trunk administration |
+| `/api/logs` | GET | User | CallOps call history, normalized for dashboard widgets |
+| `/api/reports` | GET | User | CallOps campaign-performance aggregates |
+| `/api/intents` | GET | User | CallOps intent waterfall data |
+| `/api/calls/:id/*` | GET | User | Call detail, telemetry, call report, and signed recording URL |
+| `/api/settings` | GET, PATCH | User | CallOps system settings such as cost-per-minute |
 | `/api/security` | GET | User | Security logs |
 | `/api/dashboard-templates` | GET, POST, DELETE | User | Saved dashboard layouts |
 | `/api/sts/mark` | POST | Optional `x-relay-secret` | Relay product subscribe/opt-out keypresses to STS SDP |
 | `/api/livekit/webhook` | POST | LiveKit signature | Room lifecycle updates |
-| `/api/calls/result` | POST | None | Deprecated no-op; agents should use callops `/calls/outcome` |
+| `/api/calls/result` | POST | `X-Webhook-Secret` | CallOps-forwarded reconciliation fallback for missing call records |
+| `/api/flow-builder/generate` | POST | None + `ANTHROPIC_API_KEY` | Generate visual flow-builder nodes/edges |
 | `/api/health` | GET | None | Health check for deploy |
 
 ---
@@ -258,11 +269,13 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 
 ```text
 app/
-  page.tsx              # Main SPA — auth gate, all views, polling, campaign controls
+  page.tsx              # Main dashboard shell — auth gate, views, polling, campaign controls
+  tv/page.tsx           # Standalone read-only wall-board route
+  flow-builder/page.tsx # Standalone visual flow-builder POC
   layout.tsx            # Root layout, MUI Providers, fonts
   globals.css           # EVRA design tokens and global styles
   api/                  # Next.js Route Handlers (see table above)
-components/             # UI modules (AuthView, Sidebar, charts, campaign modals, …)
+components/             # UI modules (AuthView, Sidebar, ControlRoom, campaign modals, …)
 lib/                    # Business logic (outbound-call diagnostics, livekit, voice, roles, …)
 types/                  # Shared TypeScript interfaces
 utils/supabase/         # Browser, server, admin clients; auth helpers; middleware
@@ -293,7 +306,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
-Add callops, LiveKit, and service-role keys when ready for real dialing (see [env table](#required-environment-variables) above). Without callops vars, lifecycle buttons only update local campaign status.
+Add callops, LiveKit, and service-role keys when ready for real dialing (see [env table](#required-environment-variables) above). Without callops vars, lifecycle buttons only update local campaign status outside production; production returns 503 instead.
 
 ### 3. Database
 

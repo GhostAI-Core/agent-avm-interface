@@ -1,6 +1,6 @@
 # Callops and LiveKit Outbound Integration
 
-This guide explains how outbound calling is wired today: the dashboard proxies campaign controls to **evra-callops**, callops dispatches through **LiveKit SIP**, and Supabase remains the dashboard read model.
+This guide explains how outbound calling is wired today: the dashboard proxies campaign controls and operational reads to **evra-callops**, callops dispatches through **LiveKit SIP**, and Supabase remains the shared data/auth layer behind the dashboard.
 
 ---
 
@@ -33,7 +33,7 @@ Two outbound paths exist:
 | Path | Use |
 |------|-----|
 | **Production UI path** | Operator controls campaign lifecycle through callops proxy routes. |
-| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial` and the legacy authenticated `POST /api/campaigns/:id/dial` route; not used by production campaign controls. |
+| **Direct LiveKit diagnostics** | Developer/ops diagnostic path via `npm run dial`; not used by production campaign controls and not exposed as an app API route. |
 
 There is no `/api/simulate` fallback in the current codebase.
 
@@ -55,11 +55,10 @@ There is no `/api/simulate` fallback in the current codebase.
 
 | File | Role |
 |------|------|
-| `app/api/trunks/route.ts` | SIP trunk catalog for the campaign wizard; optionally cross-checks callops `/livekit/trunks`; proxies trunk create to callops. |
+| `app/api/trunks/route.ts` | Compatibility SIP trunk catalog for the campaign wizard; sources company trunks through CallOps and proxies LiveKit-admin create/update via callops. |
 | `app/api/trunks/[trunk_id]/route.ts` | Proxies LiveKit trunk PATCH/DELETE to callops by `ST_...` trunk id. |
 | `app/api/trunks/test-call/route.ts` | Proxies one-off SIP test calls to callops `/livekit/test-call`. |
 | `app/api/livekit/webhook/route.ts` | Signature-validated LiveKit webhook fallback updates to `call_records`. |
-| `app/api/campaigns/[id]/dial/route.ts` | Legacy direct LiveKit diagnostic batch dial route with local compliance gate. |
 | `lib/outbound-call.ts` | Direct LiveKit SDK helpers used by the diagnostic CLI. |
 | `lib/livekit.ts` | Server-only exports for LiveKit helpers and webhook receiver. |
 | `lib/phone.ts` | `normalizePhone()` for contact imports before dialing. |
@@ -68,13 +67,15 @@ There is no `/api/simulate` fallback in the current codebase.
 
 ### Dashboard read model
 
-| Route | Reads |
-|-------|-------|
-| `GET /api/campaigns` | `campaigns` joined to `companies` |
-| `GET /api/logs` | `call_records` |
-| `GET /api/reports` | `call_logs` joined to `campaigns` |
-| `GET /api/intents` | `intent_stats`; `call_records` denominator for campaign-specific views |
-| `GET /api/trunks` | `sip_trunks`; optional callops live-trunk cross-check |
+| Route | Source |
+|-------|--------|
+| `GET /api/campaigns` | CallOps company fan-out (`/companies/{id}/campaigns`) |
+| `GET /api/logs` | CallOps call history (`/companies/{id}/calls` or `/campaigns/{id}/calls`) |
+| `GET /api/reports` | CallOps campaign performance (`/companies/{id}/dashboard/campaign-performance`) |
+| `GET /api/intents` | CallOps intent stats (`/companies/{id}/intent-stats` or `/campaigns/{id}/intent-stats`) |
+| `GET /api/trunks` | CallOps company SIP trunks, returned in the legacy `{ trunks }` shape |
+
+Local direct-Supabase reads/writes remain for dashboard templates, security logs, LiveKit webhook fallback updates, and callops-forwarded `/api/calls/result` reconciliation.
 
 ---
 

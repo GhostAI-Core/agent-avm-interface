@@ -24,7 +24,7 @@ The UI is branded **EVRA** (green-on-dark theme) and targets call-center enginee
 
 | Layer | Technology | Notes |
 |-------|------------|-------|
-| Framework | **Next.js 16** (App Router) | Single-page shell at `app/page.tsx`; no multi-route page tree beyond root |
+| Framework | **Next.js 16** (App Router) | Main authenticated shell at `app/page.tsx`; standalone `/tv` and `/flow-builder` routes |
 | UI library | **MUI v9** (`@mui/material`) | Components, theming, layout |
 | Styling | **Emotion** (via MUI) + **Tailwind CSS v4** | MUI `sx` props for component styling; global CSS variables in `app/globals.css` |
 | Charts | **Chart.js** + **react-chartjs-2** | Dashboard charts in `components/Charts.tsx` and `components/InsightCharts.tsx` |
@@ -50,7 +50,8 @@ components/
   TopBar.tsx          # Sticky header with title, live indicator, logout
   FloatingNav.tsx     # Mobile-only radial quick-nav FAB
   AuthView.tsx        # Login screen (unauthenticated)
-  InsightDashboard.tsx # Control Room widget grid
+  ControlRoom.tsx     # Mounted fixed Control Room dashboard body
+  InsightDashboard.tsx # Dormant legacy configurable widget grid
   CampaignModal.tsx   # 3-step new-campaign wizard
   ... (view components, ui primitives, telephony subfolder)
 lib/
@@ -90,7 +91,7 @@ app/layout.tsx
 Session handling:
 
 - `supabase.auth.onAuthStateChange` subscribes on mount and calls `resolveUserRole()` from `lib/roles.ts` to sync the user's `admin` or `engineer` role from the `profiles` table.
-- **Inactivity logout**: 15 minutes without mouse/keyboard activity triggers `signOut`.
+- **Inactivity logout**: 30 minutes without mouse/keyboard activity triggers `signOut`.
 - **401 handling**: `getJson()` helper signs the user out if any API returns 401.
 
 `proxy.ts` (Next.js middleware) runs `updateSession()` on every request to refresh Supabase auth cookies without blocking on `getUser()`.
@@ -105,10 +106,12 @@ The app uses **client-side view switching**, not URL-based routing. A single str
 
 | `view` value | Screen title | Primary component |
 |--------------|--------------|-------------------|
-| `dashboard` | Control Room | `InsightDashboard` + scope filters |
-| `sts` | STS Dashboard | `STSDashboard` (placeholder) |
+| `dashboard` | Control Room | `ControlRoom` + scope filters |
 | `companies` | Companies | Inline JSX in `page.tsx` |
 | `campaigns` | Campaigns | Inline JSX in `page.tsx` |
+| `products` | Products | `ProductsView` |
+| `contacts` | Contacts | `ContactsView` |
+| `leads` | Leads | `LeadsView` |
 | `reports` | Campaign Report | Inline table or `CampaignDetail` |
 | `quality` | Call Quality | `CallQuality` |
 | `telephony` | Telephony | `TelephonyView` |
@@ -119,7 +122,7 @@ The app uses **client-side view switching**, not URL-based routing. A single str
 Navigation is triggered by:
 
 - **`Sidebar`** — permanent drawer on `lg+`, temporary drawer on smaller screens. Groups: Campaigns, Telephony, Operations, Platform.
-- **`FloatingNav`** — mobile-only (`xs`–`md`) radial menu fixed bottom-right. Does not include Telephony or Profile entries.
+- **`FloatingNav`** — mobile-only (`xs`–`md`) radial menu fixed bottom-right. Does not include all Sidebar entries.
 - **Deep links within views** — e.g. clicking a company/campaign card calls `openInControlRoom(company, campaignId?)` which sets filters and switches to `dashboard`.
 
 ### 4.2 Responsive layout
@@ -146,7 +149,7 @@ Almost all shared application state lives in `Page()` inside `app/page.tsx`. Chi
 |-------|------|---------|
 | `auth`, `authChecked`, `role` | boolean / boolean / `AppRole` | Login gate and role for admin-only UI |
 | `view` | string | Active screen |
-| `campaigns` | `Campaign[]` | All non-archived campaigns |
+| `campaigns` | `Campaign[]` | Campaigns returned by callops for the user's companies |
 | `liveStatus` | `Record<number, CampaignLiveStatus>` | Real-time callops stats per running campaign |
 | `reports` | `CampaignReport[]` | Aggregated campaign metrics |
 | `allCalls` | call log rows | Per-call records for dashboard insights |
@@ -171,7 +174,7 @@ Almost all shared application state lives in `Page()` inside `app/page.tsx`. Chi
 - `GET /api/logs`
 - `GET /api/intents?date={today}`
 
-**On filter change** (`filterAgent`, `filterDate`), only `GET /api/reports` is re-fetched.
+**On report/range filter change** (`filterAgent`, `filterDate`, `rangePreset`, `customFrom`, `customTo`), only `GET /api/reports` is re-fetched. The UI still sends `date` for the report view's legacy date picker; the current reports proxy scopes callops rollups with `from`/`to`.
 
 **Polling** (default every 15s via `NEXT_PUBLIC_POLL_INTERVAL_MS`):
 
@@ -188,7 +191,7 @@ When `companyFilter` or `campaignFilter` is set, derived arrays feed the Control
 - `dashCalls` — call logs filtered likewise
 - `dashIntents` — intent stats filtered likewise
 
-These are passed to `InsightDashboard` as `ctx`.
+These are passed to `ControlRoom` as `ctx`. `InsightDashboard` and `useDashboardLayout()` remain in the repo for the older configurable widget dashboard but are not rendered by `app/page.tsx` today.
 
 ### 5.4 Campaign lifecycle actions
 
@@ -203,24 +206,33 @@ After any status change, `fetchData()` refreshes campaigns and reports.
 
 ## 6. API surface (frontend consumer)
 
-All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Every route (except webhooks/health) checks Supabase auth via `getAuthUser()`.
+All frontend `fetch()` calls go to Next.js Route Handlers under `app/api/`. Browser-facing routes either validate the Supabase user with `getAuthUser()` or read the session access token with `getAccessToken()` and forward it to callops as `Authorization: Bearer`.
 
 | Endpoint | Method | Used by | Returns |
 |----------|--------|---------|---------|
 | `/api/campaigns` | GET | page.tsx | `{ campaigns }` |
 | `/api/campaigns` | POST | CampaignModal, CampaignActionDialog | `{ campaign }` |
-| `/api/campaigns/{id}` | PUT | CampaignActionDialog (edit voice) | updated campaign |
+| `/api/campaigns/{id}` | GET, PUT, DELETE | CampaignDetail/action flows | summary/detail, updated campaign, archive success |
 | `/api/campaigns/{id}/{action}` | POST | page.tsx (`start`/`pause`/`stop`) | callops result |
 | `/api/campaigns/{id}/status` | GET | page.tsx live polling | `CampaignLiveStatus` |
-| `/api/reports` | GET | page.tsx | `{ reports }` — query: `agent`, `date` |
+| `/api/campaigns/{id}/contacts` | GET | ContactsView | contact list and network breakdown |
+| `/api/campaigns/{id}/contacts/import` | POST | ContactsView | import summary |
+| `/api/contacts/{id}/{action}` | POST | ContactsView | archive/retry/do-not-call result |
+| `/api/products*` | GET, POST, PATCH | ProductsView, CampaignModal | product and script-version data |
+| `/api/leads` | GET | LeadsView | `{ leads, total, double_optin, single_optin }` |
+| `/api/reports` | GET | page.tsx | `{ reports }` — query: `agent`, `product_id`, `from`, `to` |
 | `/api/logs` | GET | page.tsx, CampaignDetail flow | `{ logs }` — query: `campaignId` |
 | `/api/intents` | GET | page.tsx, CallQuality | `{ intents, connectedTotal }` |
 | `/api/companies` | GET, POST | page.tsx | `{ companies }` |
 | `/api/security` | GET | page.tsx | `{ logs }` |
-| `/api/trunks` | GET | CampaignModal | `{ trunks }` — SIP trunk picker |
+| `/api/trunks` | GET | CampaignModal | `{ trunks }` — compatibility SIP trunk picker |
+| `/api/companies/{id}/sip-trunks`, `/api/sip-trunks/{id}/*` | GET, POST, PATCH | SipTrunksPanel | company-scoped trunk list/create/update/archive/health/test-call |
+| `/api/settings` | GET, PATCH | SettingsView | platform cost-per-minute setting |
 | `/api/dashboard-templates` | GET, POST, DELETE | useDashboardLayout | saved layouts |
 | `/api/tts/generate` | POST | VoiceGenerator | base64 audio |
 | `/api/tts/save` | POST | VoiceGenerator | public URL for recording |
+| `/api/script-audio` | GET, POST | CampaignModal/action flows | per-campaign generated script history |
+| `/api/calls/{id}/*` | GET | CallDetailDialog | detail, report, recording, telemetry |
 
 Voice file uploads for new campaigns go **directly to Supabase Storage** (`voice-recordings` bucket) from the browser, then the storage path is sent to `POST /api/campaigns` as `voice_path`.
 
@@ -245,12 +257,13 @@ The primary operational screen.
 - Company `<Select>` — `companyFilter`
 - Campaign `<Select>` — `campaignFilter` (scoped to selected company)
 
-**Body** — `InsightDashboard`:
+**Body** — `ControlRoom`:
 
-- Receives `dash` from `useDashboardLayout()` hook
-- Receives `ctx` with scoped `reports`, `calls`, `intents`, `campaigns`, and `actions` (play/pause/stop/edit/reuse/archive callbacks)
+- Receives `ctx` with scoped `reports`, `calls`, `intents`, and `campaigns`
+- Receives `liveStatus` keyed by campaign ID
+- Renders Live Now cards, grouped KPI cards, a switchable 3D funnel/flow panel, live outcome feed, outcome donut, campaign performance table, and a campaign drill-down dialog
 
-See [Section 8](#8-control-room-insight-system) for the insight widget architecture.
+See [Section 8](#8-control-room-system) for the Control Room architecture.
 
 ### 7.3 Companies — `companies` view
 
@@ -267,7 +280,7 @@ Also inline in `page.tsx`.
 
 - Lists all campaigns with `AgentChip`, `StatusChip`, schedule/speed info.
 - **Live stats strip** on cards when `liveStatus[campaign.id]` exists (active, queued, dialed, failed).
-- **Actions** on each card: Play/Pause, Stop, Edit, Reuse, Archive — same handlers as Control Room `actions`.
+- **Actions** on each card: Play/Pause, Stop, Edit, Reuse, Archive — wired to `updateStatus()` or `CampaignActionDialog`.
 - **"+ New Campaign"** opens `CampaignModal`.
 - Card/table toggle persisted in `localStorage` (`avm.view.campaigns`).
 
@@ -291,87 +304,124 @@ Clicking a report row calls `viewDetailedLogs(report)`.
 
 Same calculation logic is duplicated in the `call-quality` insight widget inside `dashboardInsights.tsx`.
 
-### 7.7 Security Audit — `security` view
+### 7.7 Products — `products` view
+
+`ProductsView` manages company-scoped products through callops:
+
+- Selects a company before listing products.
+- Creates and edits product metadata (`name`, `integration_type`, `sts_product_key`, active state).
+- Manages product script versions and can activate a previous version.
+- Feeds campaign create/edit flows through `product_id` and optional `product_version_id`.
+
+### 7.8 Contacts — `contacts` view
+
+`ContactsView` reads contacts for one campaign from callops and supports:
+
+- Search, status, and network-provider filtering.
+- CSV import through `POST /api/campaigns/{id}/contacts/import`; callops owns dedupe and phone normalization.
+- Row actions for archive, retry, and do-not-call via `POST /api/contacts/{id}/{action}`.
+- Network breakdown so operators can set campaign network gates before dialing.
+
+### 7.9 Leads — `leads` view
+
+`LeadsView` reports callops lead-gen opt-ins:
+
+- Optional campaign filter.
+- Double- and single-opt-in totals.
+- Per-lead phone, campaign, timestamp, talk/on-air duration, disposition, and cost.
+
+### 7.10 Security Audit — `security` view
 
 `SecurityView` — read-only table of `securityLogs` passed from parent. Event types styled with MUI Chips (`login`, `unauthorized_access`, etc.).
 
-### 7.8 STS Dashboard — `sts` view
+### 7.11 Telephony — `telephony` view
 
-`STSDashboard` — placeholder ("No subscription data available yet").
+`TelephonyView` mixes live SIP-trunk management with local mock tabs that preserve the future admin UI shape.
 
-### 7.9 Telephony — `telephony` view
-
-`TelephonyView` — **mock/local-only** LiveKit telephony admin UI.
-
-- State stored in browser via `useTelephonyStore()` from `lib/telephony-mock.ts` (localStorage).
 - Seven tabs: Settings, SIP Providers, Outbound Trunks, Dispatch Rules, Agents, Test Dial, Status.
-- Uses reusable `CrudSection` + `EntityFormDialog` from `components/telephony/`.
-- **Not connected** to production callops or LiveKit APIs yet.
+- **Outbound Trunks** renders `SipTrunksPanel`, which reads companies and uses callops-backed routes for list/create/archive/health/test-call.
+- Other tabs still use `useTelephonyStore()` from `lib/telephony-mock.ts` (localStorage).
+- Mock tabs use reusable `CrudSection` + `EntityFormDrawer` from `components/telephony/`.
 
 Note: Telephony appears in `Sidebar` but **not** in `FloatingNav`.
 
-### 7.10 Settings — `settings` view
+### 7.12 Settings — `settings` view
 
-`SettingsView` — informational panel. Explains that outbound calling uses `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` env var or per-campaign `sip_trunk_id`. Shows admin-only warning for non-admins; no editable settings yet.
+`SettingsView` reads and patches the callops `cost_per_minute_zar` platform setting through `/api/settings`. Callops enforces the final authorization policy.
 
-### 7.11 Profile — `profile` view
+### 7.13 Profile — `profile` view
 
 `ProfileView`:
 
 - Password reset via `supabase.auth.updateUser`
 - Admin-only "Link Employee" section (UI mock with placeholder emails; invite not wired)
 
+### 7.14 Standalone routes
+
+These routes do not participate in the Sidebar view switcher:
+
+| Route | Component | Purpose |
+|-------|-----------|---------|
+| `/tv` | `app/tv/page.tsx` | Read-only smart-TV wall board that polls authenticated `/api/reports`, supports D-pad/keyboard navigation, and auto-cycles through campaign detail screens |
+| `/flow-builder` | `app/flow-builder/page.tsx`, `components/flow-builder/FlowCanvas.tsx` | Visual proof-of-concept campaign-flow canvas with spec-driven nodes, JSON import/export, and optional AI generation through `/api/flow-builder/generate` |
+
+`/flow-builder` is explicitly visual-only: it has no backend persistence and does not execute or alter campaign behavior.
+
 ---
 
-## 8. Control Room insight system
+## 8. Control Room system
 
-The Control Room is a **configurable dashboard** built from a registry of "insight" widgets.
+The mounted Control Room is a fixed operational dashboard in `components/ControlRoom.tsx`. It replaced the older configurable `InsightDashboard` widget grid for the main `dashboard` view.
 
 ### 8.1 Architecture
 
 ```
-useDashboardLayout()          lib/dashboardInsights.tsx
-        │                              │
-        │ layout: { order,             │ INSIGHTS[] registry
-        │   pinned, hidden }           │ each: id, title, size, render(ctx)
-        ▼                              ▼
-InsightDashboard ──────────► InsightCard (drag/pin/hide chrome)
-                                      │
-                                      └── def.render(ctx) → charts/tables/KPIs
+app/page.tsx scope filters
+        │
+        │ ctx: { reports, calls, intents, campaigns }
+        │ liveStatus: Record<campaignId, CampaignLiveStatus>
+        ▼
+ControlRoom
+  ├─ Live Now hero band
+  ├─ Key Metrics groups
+  ├─ Funnel & Outcomes
+  ├─ Campaign Performance table
+  └─ CampaignDrill dialog
 ```
 
-### 8.2 Layout persistence
+`app/page.tsx` derives the Control Room scope from the company/campaign selectors:
 
-`lib/useDashboardLayout.ts`:
+- `dashCampaigns`
+- `dashReports`
+- `dashCalls`
+- `dashIntents`
 
-- **localStorage key**: `avm.dash.layout.v3`
-- **Default layout**: `DEFAULT_INSIGHTS` visible; all other registered insights hidden (available via "Add insight" dropdown)
-- **Operations**: pin (move to top), hide, drag-reorder, reset, save/apply templates
-- **Templates**: `GET/POST /api/dashboard-templates` (stored in Supabase for team sharing)
+Those arrays are passed to `ControlRoom`. The component then computes totals, daily sparkline series, outcome slices, live campaign cards, top campaign rows, and drill-down state locally with `useMemo`.
 
-### 8.3 Insight sizes (grid spans)
+### 8.2 Panels
 
-| Size | MUI Grid span (xs / sm / md) |
-|------|------------------------------|
-| `sm` | 6 / 4 / 3 (quarter width on desktop) |
-| `md` | 12 / 12 / 6 (half width) |
-| `lg` | 12 / 12 / 12 (full width) |
+| Panel | Contents |
+|-------|----------|
+| Live Now | Active calls on air, running/paused count, up to three live campaign cards with progress |
+| Key Metrics | Funnel, outcome, operations, and financial KPI groups with sparklines |
+| Funnel & Outcomes | Toggle between an in-house 3D funnel and `FunnelGraphFlow`; includes live outcome feed and outcome donut |
+| Campaign Performance | Campaign table sorted by spend; row click opens `CampaignDrill` |
+| CampaignDrill | Per-campaign status, totals, progress bar, and 3D funnel dialog |
 
-### 8.4 Insight registry (`INSIGHTS` in `lib/dashboardInsights.tsx`)
+### 8.3 Legacy configurable dashboard code
 
-**Default visible insights** (`DEFAULT_INSIGHTS`):
+The older configurable dashboard still exists but is dormant:
 
-- Tables: `campaigns-table`, `campaign-report`
-- KPI cards: `dialed`, `connected`, `qualified`, `avg-talk`, `hangup`, `callback`, `avg-cpl`, `total-spent`
-- Charts: `outcome-donut`, `campaign-compare`, `spend-cpl`, `funnel`
+- `components/InsightDashboard.tsx`
+- `components/InsightCard.tsx`
+- `lib/dashboardInsights.tsx`
+- `lib/useDashboardLayout.ts`
+- `components/SaveTemplateDialog.tsx`
+- `/api/dashboard-templates`
 
-**Add-on insights** (hidden by default, user can add):
+`app/page.tsx` still instantiates `useDashboardLayout()` and can open `SaveTemplateDialog`, but there is currently no mounted `InsightDashboard` body or visible trigger for saving/applying layout templates. Treat `dashboard_templates` as legacy/supporting infrastructure unless the configurable dashboard is reintroduced.
 
-- KPIs: `transfer-rate`, `voicemail`, `no-answer`, `spend-efficiency`, `active-campaigns`
-- Charts: `company-compare`, `calls-trend`, `busiest-hours`, `talk-distribution`, `dropoff`, `status-breakdown`, `agent-split`
-- Tables: `recent-calls`, `leaderboard`, `call-quality`
-
-Each insight's `render(ctx)` receives `InsightCtx`:
+`InsightCtx` is still shared with `ControlRoom`:
 
 ```typescript
 interface InsightCtx {
@@ -383,12 +433,13 @@ interface InsightCtx {
 }
 ```
 
-### 8.5 Chart components
+### 8.4 Chart components
 
 | Component file | Used for |
 |----------------|----------|
 | `components/Charts.tsx` | `OutcomeDonut`, `FunnelChart`, `CampaignBar`, `SpendChart` — styled Chart.js charts using `lib/chartTheme.ts` |
-| `components/InsightCharts.tsx` | `BarChart`, `LineChart`, `DonutChart`, `Sparkline`, `MiniBars` — lighter charts for KPI sparklines and add-on insights |
+| `components/InsightCharts.tsx` | `Sparkline` in Control Room KPI cards; also contains dormant lightweight chart primitives for legacy insights |
+| `components/FunnelGraphFlow.tsx` | `funnel-graph-js` flow variant inside the Control Room funnel panel |
 
 `components/KpiStrip.tsx` exists as a standalone KPI row component but is **not currently mounted** in `app/page.tsx` (superseded by individual insight KPI cards).
 
@@ -503,7 +554,7 @@ Role is resolved on login and stored in `page.tsx` `role` state. Most views do n
 
 | Key | Purpose |
 |-----|---------|
-| `avm.dash.layout.v3` | Dashboard insight layout |
+| `avm.dash.layout.v3` | Legacy configurable-dashboard insight layout; not used by mounted `ControlRoom` |
 | `avm.view.companies` | Companies list: `cards` or `table` |
 | `avm.view.campaigns` | Campaigns list: `cards` or `table` |
 | `avm.tour.seen` | Suppresses auto-start of guided tour |
@@ -518,7 +569,7 @@ Role is resolved on login and stored in `page.tsx` `role` state. Most views do n
 - **Auto-start**: first authenticated visit if `avm.tour.seen` is unset
 - **Replay**: Sidebar footer link or TopBar `?` button
 
-Elements tagged with `data-tour`: sidebar nav items (`nav-dashboard`, etc.), dashboard header (`dash-header`, `dash-scope`, `dash-templates`, `add-insight`), new company/campaign buttons.
+Elements tagged with `data-tour`: sidebar nav items (`nav-dashboard`, etc.), dashboard header/scope controls (`dash-header`, `dash-scope`), and new company/campaign buttons. Two tour steps still reference legacy `dash-templates` and `add-insight` targets; those elements are not mounted in the current fixed Control Room.
 
 ---
 
@@ -551,9 +602,9 @@ Server-only vars (not in browser, but affect API responses the UI consumes): `LI
          ▼                              ▼
 ┌─────────────────┐          ┌─────────────────────┐
 │  Route Handlers │          │  View components     │
-│  + Supabase DB  │          │  InsightDashboard    │
+│  + Supabase     │          │  ControlRoom         │
 │  + callops proxy│          │  CampaignModal       │
-└────────┬────────┘          │  CallQuality, etc.   │
+└────────┬────────┘          │  Products/Contacts   │
          │                   └─────────────────────┘
          ▼
 ┌─────────────────┐
@@ -567,9 +618,9 @@ Server-only vars (not in browser, but affect API responses the UI consumes): `LI
 
 ```
 CampaignModal → parse CSV → upload voice (optional) → POST /api/campaigns
-  → Supabase campaigns + contacts tables → user starts campaign
+  → callops creates campaign + contacts → user starts campaign
   → POST /api/campaigns/{id}/start → callops dials via LiveKit
-  → webhooks update call_records → UI polls /api/logs and /api/reports
+  → callops outcomes + webhook/reconciliation fallback → UI polls /api/logs and /api/reports
 ```
 
 ---
@@ -581,16 +632,16 @@ page.tsx
 ├── Sidebar
 ├── TopBar
 ├── [view content]
-│   ├── InsightDashboard
-│   │   ├── InsightCard (×N)
-│   │   │   └── dashboardInsights render → Charts / InsightCharts / tables
-│   │   └── useDashboardLayout
+│   ├── ControlRoom
+│   ├── ProductsView
+│   ├── ContactsView
+│   ├── LeadsView
 │   ├── CallQuality
 │   ├── SecurityView
 │   ├── SettingsView
 │   ├── TelephonyView
-│   │   └── telephony/CrudSection → EntityFormDialog
-│   ├── STSDashboard
+│   │   ├── telephony/SipTrunksPanel
+│   │   └── telephony/CrudSection → EntityFormDrawer
 │   ├── ProfileView
 │   └── CampaignDetail
 ├── CampaignModal
@@ -603,19 +654,22 @@ page.tsx
 └── AuthView (when logged out)
 ```
 
+Dormant/supporting components not shown in the active graph include `InsightDashboard`, `InsightCard`, `KpiStrip`, and the dashboard-template save/apply flow.
+
 ---
 
 ## 20. Known limitations and placeholders
 
 1. **Single route** — no deep linking to views; refreshing always lands on Control Room default.
-2. **STS Dashboard** — empty placeholder.
-3. **Telephony view** — mock localStorage only; not production telephony management.
-4. **Settings** — no editable platform config in UI.
-5. **Passkey login** — registration UI exists; passwordless sign-in not implemented.
-6. **Profile employee invite** — UI only; no backend invite flow.
-7. **KpiStrip** — component exists but unused in current page layout.
-8. **Chart expand dialog** — state and dialog JSX exist in `page.tsx` but no button currently sets `expandedChart`.
-9. **FloatingNav** — missing Telephony and Profile entries compared to Sidebar.
+2. **Telephony view** — SIP trunks are live through callops; the other tabs remain browser-local mock UI.
+3. **Passkey login** — registration UI exists; passwordless sign-in not implemented.
+4. **Profile employee invite** — UI only; no backend invite flow.
+5. **KpiStrip** — component exists but unused in current page layout.
+6. **InsightDashboard/dashboard templates** — configurable widget grid and template APIs remain in the repo but are not mounted in the current Control Room.
+7. **Chart expand dialog** — state and dialog JSX exist in `page.tsx` but no button currently sets `expandedChart`.
+8. **FloatingNav** — missing some Sidebar entries compared to desktop navigation.
+9. **`/flow-builder`** — visual-only proof of concept with no persistence or campaign execution path.
+10. **Guided tour** — `dash-templates` and `add-insight` steps target legacy dashboard controls that are not currently rendered.
 
 ---
 

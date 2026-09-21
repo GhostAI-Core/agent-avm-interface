@@ -26,7 +26,7 @@ The UI is branded **EVRA** (green-on-dark theme) and targets call-center enginee
 |-------|------------|-------|
 | Framework | **Next.js 16** (App Router) | Single-page shell at `app/page.tsx`; no multi-route page tree beyond root |
 | UI library | **MUI v9** (`@mui/material`) | Components, theming, layout |
-| Styling | **Emotion** (via MUI) + **Tailwind CSS v4** | MUI `sx` props for component styling; global CSS variables in `app/globals.css` |
+| Styling | **Emotion** (via MUI) + **Tailwind CSS v4** | MUI `sx` props/theme own component styling; Tailwind is currently present only through the global CSS build import |
 | Charts | **Chart.js** + **react-chartjs-2** | Dashboard charts in `components/Charts.tsx` and `components/InsightCharts.tsx` |
 | Auth & data | **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) | Browser client for login; server client for API routes |
 | Language | **TypeScript** | Shared types in `types/index.ts` and `types/telephony.ts` |
@@ -133,6 +133,14 @@ Navigation is triggered by:
 │  Replay tour   │  FloatingNav (mobile only, bottom-right)│
 └────────────────┴─────────────────────────────────────────┘
 ```
+
+Responsive behavior is component-driven rather than route-driven:
+
+- `Sidebar` renders a permanent `Drawer` on `lg+` and a temporary `Drawer` below `lg`.
+- `TopBar` exposes an `aria-label="Open navigation menu"` icon button only below `lg`.
+- `FloatingNav` is the mobile quick-nav surface below `lg`; it can be dismissed with Escape and its menu items are focusable only while open.
+- `useIsMobile()` centralizes the phone breakpoint (`theme.breakpoints.down('sm')`) for full-screen dialogs, card/table defaults, and spacing.
+- `ResponsiveDialog` wraps MUI `Dialog` and defaults to `fullScreen` on phones so modal content and actions remain reachable.
 
 ---
 
@@ -455,9 +463,18 @@ Embedded in `CampaignModal` step 3 when voice mode is "generate".
 
 ### 11.3 Global CSS utilities (`app/globals.css`)
 
-- CSS variables mirror `lib/tokens.ts`
-- `.mono` class for tabular numeric data
-- `@keyframes livePulse` for TopBar live indicator
+- `@import "tailwindcss"` is the only Tailwind entrypoint. There is no checked-in `tailwind.config.*`, and current React components do not use Tailwind utility class strings.
+- CSS variables mirror `lib/tokens.ts`; update both files when changing brand colors, surfaces, typography, radius, or chart tokens.
+- `body` sets the EVRA dark background, body font, antialiasing, and default text color. MUI `CssBaseline` then applies matching theme defaults.
+- Remaining global classes are intentionally small:
+  - `.mono` is used for tabular numeric data in KPI, cost, control-room, dashboard-insight, and security-log cells.
+  - `.logo-wordmark` is used by the login screen for the EVRA display-font wordmark.
+  - `.card`, `.input`, `.button-primary`, and `.button-secondary` are legacy utility hooks; prefer MUI primitives and `sx` for new UI unless wiring an older non-MUI surface.
+  - `.fg-ours` scopes the `funnel-graph-js` label/legend recolor because that library renders its own DOM outside MUI.
+- Global `:focus-visible` supplies the baseline keyboard focus ring; MUI `MuiButtonBase` repeats the same outline for button-derived components.
+- `@keyframes livePulse` drives the TopBar live indicator; `@keyframes spin` is available for simple loaders.
+
+**Styling rule of thumb:** new component-level styling should use MUI props, `sx`, and `lib/tokens.ts`. Add global CSS only for document-wide defaults, named compatibility hooks, or third-party DOM that MUI cannot target cleanly.
 
 ---
 

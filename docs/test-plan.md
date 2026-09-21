@@ -1,6 +1,6 @@
 # Agent AVM Interface — Project Overview & Test Plan
 
-_Last updated: 2026-06-30. Owner: GarthGhostai. Companion to `docs/call-rules-inventory.md`._
+_Last updated: 2026-09-21. Owner: GarthGhostai. Companion to `docs/call-rules-inventory.md`._
 
 This is the single map of **what the dashboard does**, **what is verified**, and **what still
 needs testing** — organised by feature area. Update the status columns as items are checked.
@@ -141,8 +141,19 @@ SIP Trunks tab is now CallOps-backed; other Telephony tabs remain mock (no CallO
 |---|---|---|
 | Security Audit (`/api/security`) | ⬜ | Confirm whether operational or auth-plane |
 | Settings / Profile | ⬜ | Appearance/role; non-operational |
-| Tour / FloatingNav / TopBar | ⬜ | UI smoke (issue #15 a11y/keyboard/responsive) |
+| Tour / FloatingNav / TopBar | ⬜ | UI smoke; see §3.11 for a11y/keyboard/responsive checks |
 | Insight dashboard drag/save-template | ⬜ | localStorage layout |
+
+### 3.11 MUI migration QA — styling, a11y, keyboard, responsive smoke
+| Check | Status | How |
+|---|---|---|
+| Tailwind boundary documented and source-audited | ✅ source audit | `app/globals.css` has the only `@import "tailwindcss"` entrypoint; no checked-in `tailwind.config.*`; active React components use MUI `sx` plus named globals (`.mono`, `.logo-wordmark`, `.fg-ours`) rather than Tailwind utility strings. |
+| No conflicting global reset beyond MUI baseline | ✅ source audit | `components/Providers.tsx` wraps the app in MUI `ThemeProvider` + `CssBaseline`; `app/globals.css` sets body defaults, CSS variables, focus ring, scrollbar, and named hooks only. |
+| Keyboard focus visibility | ✅ source; ⬜ browser smoke | Global `:focus-visible` and MUI `MuiButtonBase` both use the EVRA green outline. Browser pass: Tab through login, TopBar, Sidebar, data-table actions, wizard steps, and dialogs; focus must remain visible. |
+| Icon-only controls have labels | ✅ source; ⬜ browser smoke | Confirm labels on TopBar menu/tour/logout, campaign row play/stop/edit/reuse/archive, dialog close buttons, DataTable search, Telephony CRUD actions, and FloatingNav entries. |
+| Mobile navigation is operable by keyboard | ✅ source; ⬜ browser smoke | `FloatingNav` opens/closes with its button, Escape closes the menu, open menu items have `tabIndex=0`, and menu item Enter/Space activates navigation. |
+| Responsive navigation breakpoints | ✅ source; ⬜ browser smoke | `Sidebar` is permanent on `lg+`, temporary below `lg`; `TopBar` menu button is hidden on `lg+`; `FloatingNav` is hidden on `lg+`. |
+| Phone-sized dialogs remain reachable | ✅ source; ⬜ browser smoke | Components using `ResponsiveDialog` become full-screen below `sm` via `useIsMobile()`; verify campaign, company, product, template, chart-expand, campaign-action, and SIP-trunk dialogs do not trap off-screen actions. |
 
 ---
 

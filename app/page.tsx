@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { createClient } from '@/utils/supabase/client'
 import { withTimeout } from '@/lib/async'
 import { resolveUserRole, userMetaFromSession, type AppRole } from '@/lib/roles'
@@ -23,6 +24,8 @@ import ProfileView from '@/components/ProfileView'
 import CampaignDetail from '@/components/CampaignDetail'
 import CallQuality from '@/components/CallQuality'
 import CampaignActionDialog from '@/components/CampaignActionDialog'
+
+const FlowBuilder = dynamic(() => import('@/components/flow-builder/FlowCanvas'), { ssr: false })
 import Grid from '@mui/material/Grid'
 import Stack from '@mui/material/Stack'
 import Box from '@mui/material/Box'
@@ -102,9 +105,13 @@ const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Control Room',
   companies: 'Companies',
   campaigns: 'Campaigns',
+  products:  'Products',
   contacts:  'Contacts',
+  leads:     'Leads',
   reports:   'Campaign Report',
   quality:   'Call Quality',
+  'flow-builder': 'Flow Builder',
+  telephony: 'Telephony',
   security:  'Security Audit Log',
   settings:  'System Settings',
   profile:   'Profile & Appearance',
@@ -668,9 +675,15 @@ export default function Page() {
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: 'background.default', color: 'text.primary' }}>
       <Sidebar view={view} setView={setView} isOpen={sideOpen} onClose={() => setSideOpen(false)} onReplayTour={() => setTourStep(0)} />
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <TopBar title={VIEW_TITLES[view]} campaigns={dashCampaigns} onMenu={() => setSideOpen(true)} onLogout={handleLogout} onTour={() => setTourStep(0)} />
-        <Box component="main" sx={{ flex: 1, p: { xs: 1.5, sm: 3 }, pb: '6rem', overflowY: 'auto' }}>
+        <Box component="main" sx={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          p: view === 'flow-builder' ? 0 : { xs: 1.5, sm: 3 },
+          pb: view === 'flow-builder' ? 0 : '6rem',
+        }}>
           
           {/* ── DASHBOARD ── */}
           {view === 'dashboard' && (
@@ -984,6 +997,9 @@ export default function Page() {
 
           {/* ── PROFILE ── */}
           {view === 'profile' && <ProfileView role={role} />}
+
+          {/* ── FLOW BUILDER ── */}
+          {view === 'flow-builder' && <FlowBuilder embedded />}
 
         </Box>
       </Box>

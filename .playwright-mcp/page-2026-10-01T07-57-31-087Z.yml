@@ -1,0 +1,4 @@
+- generic [active]:
+  - paragraph [ref=f2e3]: Loading AVM board…
+  - button "Open Next.js Dev Tools" [ref=f2e9] [cursor=pointer]
+  - alert [ref=f2e13]

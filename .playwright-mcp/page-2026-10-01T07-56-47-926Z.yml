@@ -1,0 +1,163 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - paragraph [ref=e4]: Flow Builder
+      - paragraph [ref=e5]: Drag onto the canvas, or click to add. Select a node to configure it.
+      - generic [ref=e6]:
+        - button "Dial 12 ▸" [ref=e7] [cursor=pointer]:
+          - paragraph [ref=e9]: Dial
+          - paragraph [ref=e10]: "12"
+          - generic [ref=e11]: ▸
+        - generic [ref=e12]:
+          - generic [ref=e13]: Caller ID
+          - generic [ref=e15]: Select Trunk
+          - generic [ref=e17]: Routing Mode
+          - generic [ref=e19]: Answer Delay
+          - generic [ref=e21]: Ring Timeout
+          - generic [ref=e23]: Max Attempts
+          - generic [ref=e25]: Retry on No-Answer
+          - generic [ref=e27]: AMD Detection
+          - generic [ref=e29]: Voicemail Action
+          - generic [ref=e31]: Rate / Concurrency
+          - generic [ref=e33]: Schedule Window
+          - generic [ref=e35]: Pre-dial Gate
+      - button "Connect / Answer 3 ▸" [ref=e38] [cursor=pointer]:
+        - paragraph [ref=e40]: Connect / Answer
+        - paragraph [ref=e41]: "3"
+        - generic [ref=e42]: ▸
+      - button "Engage / Playback 5 ▸" [ref=e44] [cursor=pointer]:
+        - paragraph [ref=e46]: Engage / Playback
+        - paragraph [ref=e47]: "5"
+        - generic [ref=e48]: ▸
+      - button "Input / DTMF 3 ▸" [ref=e50] [cursor=pointer]:
+        - paragraph [ref=e52]: Input / DTMF
+        - paragraph [ref=e53]: "3"
+        - generic [ref=e54]: ▸
+      - button "Actions / Outcome 7 ▸" [ref=e56] [cursor=pointer]:
+        - paragraph [ref=e58]: Actions / Outcome
+        - paragraph [ref=e59]: "7"
+        - generic [ref=e60]: ▸
+      - button "Compliance 4 ▸" [ref=e62] [cursor=pointer]:
+        - paragraph [ref=e64]: Compliance
+        - paragraph [ref=e65]: "4"
+        - generic [ref=e66]: ▸
+      - button "Flow 2 ▸" [ref=e68] [cursor=pointer]:
+        - paragraph [ref=e70]: Flow
+        - paragraph [ref=e71]: "2"
+        - generic [ref=e72]: ▸
+    - application [ref=e74]:
+      - generic [ref=e76]:
+        - generic:
+          - generic:
+            - img:
+              - group "Edge from start to call" [ref=e129] [cursor=pointer]
+            - img:
+              - group "Edge from call to tts" [ref=e132] [cursor=pointer]:
+                - generic [ref=e135]: answered
+            - img:
+              - group "Edge from call to hang" [ref=e137] [cursor=pointer]:
+                - generic [ref=e140]: no answer
+            - img:
+              - group "Edge from call to hang" [ref=e142] [cursor=pointer]
+            - img:
+              - group "Edge from call to hang" [ref=e145] [cursor=pointer]
+            - img:
+              - group "Edge from tts to collect" [ref=e148] [cursor=pointer]
+            - img:
+              - group "Edge from collect to key" [ref=e151] [cursor=pointer]
+            - img:
+              - group "Edge from key to lead" [ref=e154] [cursor=pointer]:
+                - generic [ref=e157]: press 1
+            - img:
+              - group "Edge from lead to wa"
+            - img:
+              - group "Edge from wa to end" [ref=e159] [cursor=pointer]
+            - img:
+              - group "Edge from key to hang" [ref=e162] [cursor=pointer]:
+                - generic [ref=e165]: no key
+            - img:
+              - group "Edge from hang to end" [ref=e167] [cursor=pointer]
+          - generic:
+            - group [ref=e170]:
+              - generic [ref=e171]: Start
+            - group [ref=e173]:
+              - generic [ref=e174]:
+                - generic [ref=e176]: Connect
+                - generic [ref=e177]: Call Result
+                - generic [ref=e178]:
+                  - generic [ref=e179]: ▽ Answered
+                  - generic [ref=e180]: ▽ No Answer
+                  - generic [ref=e181]: ▽ Busy
+                  - generic [ref=e182]: ▽ Failed
+            - group [ref=e187]:
+              - generic [ref=e188]:
+                - generic [ref=e190]: Action
+                - generic [ref=e191]: Play Message (TTS)
+                - generic [ref=e192]: "\"Hi, this is EVRA on be…\""
+            - group [ref=e194]:
+              - generic [ref=e195]:
+                - generic [ref=e197]: Input
+                - generic [ref=e198]: Collect DTMF
+                - generic [ref=e199]: 1 digit / 4s
+            - group [active] [ref=e201]:
+              - generic [ref=e202]:
+                - generic [ref=e204]: Input
+                - generic [ref=e205]: On Key
+                - generic [ref=e206]: key = 1
+                - generic [ref=e207]:
+                  - generic [ref=e208]: ▽ match
+                  - generic [ref=e209]: ▽ else
+            - group [ref=e212]:
+              - generic [ref=e213]:
+                - generic [ref=e215]: Action
+                - generic [ref=e216]: Mark Lead
+                - generic [ref=e217]: Lead
+            - group [ref=e219]:
+              - generic [ref=e220]:
+                - generic [ref=e222]: Action
+                - generic [ref=e223]: Send WhatsApp
+                - generic [ref=e224]: welcome
+            - group [ref=e226]:
+              - generic [ref=e227]:
+                - generic [ref=e229]: Action
+                - generic [ref=e230]: Hang Up
+                - generic [ref=e231]: Declined
+            - group [ref=e233]:
+              - generic [ref=e234]: End
+      - img "Mini Map" [ref=e78]
+      - generic "Control Panel" [ref=e79]:
+        - button "Zoom In" [ref=e80] [cursor=pointer]
+        - button "Zoom Out" [ref=e83] [cursor=pointer]
+        - button "Fit View" [ref=e86] [cursor=pointer]
+        - button "Toggle Interactivity" [ref=e89] [cursor=pointer]
+      - generic [ref=e93]:
+        - paragraph [ref=e96]: Build with Claude
+        - generic [ref=e98]:
+          - textbox "Describe the flow — e.g. Dial, if answered play a message, press 1 marks a lead and sends WhatsApp, otherwise hang up." [ref=e99]
+          - group [aria-hidden]
+        - generic [ref=e100]:
+          - button "Generate & preview" [disabled]
+          - paragraph [ref=e101]: you approve before it applies
+      - generic [ref=e103]:
+        - button "Export JSON" [ref=e104] [cursor=pointer]
+        - button "Import" [ref=e105] [cursor=pointer]
+        - button "Clear" [ref=e106] [cursor=pointer]
+    - generic [ref=e108]:
+      - paragraph [ref=e109]: Inspector
+      - paragraph [ref=e258]: On Key
+      - paragraph [ref=e259]: Input / DTMF · branch
+      - generic [ref=e260]:
+        - generic [ref=e261]:
+          - generic [ref=e262]: Key
+          - generic [ref=e263]:
+            - textbox "Key" [ref=e264]: "1"
+            - group [aria-hidden]:
+              - generic: Key
+        - generic [ref=e265]:
+          - paragraph [ref=e266]: Outputs
+          - generic [ref=e267]:
+            - paragraph [ref=e270]: match
+            - paragraph [ref=e273]: else
+        - button "Delete node" [ref=e274] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=e251] [cursor=pointer]
+  - alert [ref=e255]

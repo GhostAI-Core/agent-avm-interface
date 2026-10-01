@@ -1,0 +1,82 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - paragraph [ref=e4]: Flow Builder
+    - paragraph [ref=e5]: Drag onto the canvas, or click to add. Select a node to configure it.
+    - generic [ref=e6]:
+      - button "Dial 12 ▸" [ref=e7] [cursor=pointer]:
+        - paragraph [ref=e9]: Dial
+        - paragraph [ref=e10]: "12"
+        - generic [ref=e11]: ▸
+      - generic [ref=e12]:
+        - generic [ref=e13]: Caller ID
+        - generic [ref=e15]: Select Trunk
+        - generic [ref=e17]: Routing Mode
+        - generic [ref=e19]: Answer Delay
+        - generic [ref=e21]: Ring Timeout
+        - generic [ref=e23]: Max Attempts
+        - generic [ref=e25]: Retry on No-Answer
+        - generic [ref=e27]: AMD Detection
+        - generic [ref=e29]: Voicemail Action
+        - generic [ref=e31]: Rate / Concurrency
+        - generic [ref=e33]: Schedule Window
+        - generic [ref=e35]: Pre-dial Gate
+    - button "Connect / Answer 3 ▸" [ref=e38] [cursor=pointer]:
+      - paragraph [ref=e40]: Connect / Answer
+      - paragraph [ref=e41]: "3"
+      - generic [ref=e42]: ▸
+    - button "Engage / Playback 5 ▸" [ref=e44] [cursor=pointer]:
+      - paragraph [ref=e46]: Engage / Playback
+      - paragraph [ref=e47]: "5"
+      - generic [ref=e48]: ▸
+    - button "Input / DTMF 3 ▸" [ref=e50] [cursor=pointer]:
+      - paragraph [ref=e52]: Input / DTMF
+      - paragraph [ref=e53]: "3"
+      - generic [ref=e54]: ▸
+    - button "Actions / Outcome 7 ▸" [ref=e56] [cursor=pointer]:
+      - paragraph [ref=e58]: Actions / Outcome
+      - paragraph [ref=e59]: "7"
+      - generic [ref=e60]: ▸
+    - button "Compliance 4 ▸" [ref=e62] [cursor=pointer]:
+      - paragraph [ref=e64]: Compliance
+      - paragraph [ref=e65]: "4"
+      - generic [ref=e66]: ▸
+    - button "Flow 2 ▸" [ref=e68] [cursor=pointer]:
+      - paragraph [ref=e70]: Flow
+      - paragraph [ref=e71]: "2"
+      - generic [ref=e72]: ▸
+  - application [ref=e74]:
+    - img "Mini Map" [ref=e78]
+    - generic "Control Panel" [ref=e79]:
+      - button "Zoom In" [ref=e80] [cursor=pointer]
+      - button "Zoom Out" [ref=e83] [cursor=pointer]
+      - button "Fit View" [ref=e86] [cursor=pointer]
+      - button "Toggle Interactivity" [ref=e89] [cursor=pointer]
+    - generic [ref=e93]:
+      - paragraph [ref=e96]: Build with Claude
+      - generic [ref=e98]:
+        - textbox "Describe the flow — e.g. Dial, if answered play a message, press 1 marks a lead and sends WhatsApp, otherwise hang up." [ref=e99]
+        - group [aria-hidden]
+      - generic [ref=e100]:
+        - button "Generate & preview" [disabled]
+        - paragraph [ref=e101]: you approve before it applies
+    - generic [ref=e103]:
+      - button "Export JSON" [ref=e104] [cursor=pointer]
+      - button "Import" [ref=e105] [cursor=pointer]
+      - button "Clear" [ref=e106] [cursor=pointer]
+  - generic [ref=e108]:
+    - paragraph [ref=e109]: Inspector
+    - paragraph [ref=e112]: On Key
+    - paragraph [ref=e113]: Input / DTMF · branch
+    - generic [ref=e114]:
+      - generic [ref=e115]:
+        - generic [ref=e116]: Key
+        - generic [ref=e117]:
+          - textbox "Key" [ref=e118]: "1"
+          - group [aria-hidden]:
+            - generic: Key
+      - generic [ref=e119]:
+        - paragraph [ref=e120]: Outputs
+        - generic [ref=e121]:
+          - paragraph [ref=e124]: match
+          - paragraph [ref=e127]: else
+      - button "Delete node" [ref=e128] [cursor=pointer]

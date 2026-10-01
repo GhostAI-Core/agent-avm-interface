@@ -1,0 +1,167 @@
+- generic [ref=e1]:
+  - generic [aria-hidden] [ref=e2]:
+    - generic [ref=e3]:
+      - paragraph [ref=e4]: Flow Builder
+      - paragraph [ref=e5]: Drag onto the canvas, or click to add. Select a node to configure it.
+      - generic [ref=e6]:
+        - button [ref=e275] [cursor=pointer]:
+          - paragraph [ref=e9]: Dial
+          - paragraph [ref=e10]: "12"
+          - generic [ref=e11]: ▸
+        - generic [ref=e12]:
+          - generic [ref=e13]: Caller ID
+          - generic [ref=e15]: Select Trunk
+          - generic [ref=e17]: Routing Mode
+          - generic [ref=e19]: Answer Delay
+          - generic [ref=e21]: Ring Timeout
+          - generic [ref=e23]: Max Attempts
+          - generic [ref=e25]: Retry on No-Answer
+          - generic [ref=e27]: AMD Detection
+          - generic [ref=e29]: Voicemail Action
+          - generic [ref=e31]: Rate / Concurrency
+          - generic [ref=e33]: Schedule Window
+          - generic [ref=e35]: Pre-dial Gate
+      - button [ref=e276] [cursor=pointer]:
+        - paragraph [ref=e40]: Connect / Answer
+        - paragraph [ref=e41]: "3"
+        - generic [ref=e42]: ▸
+      - button [ref=e277] [cursor=pointer]:
+        - paragraph [ref=e46]: Engage / Playback
+        - paragraph [ref=e47]: "5"
+        - generic [ref=e48]: ▸
+      - button [ref=e278] [cursor=pointer]:
+        - paragraph [ref=e52]: Input / DTMF
+        - paragraph [ref=e53]: "3"
+        - generic [ref=e54]: ▸
+      - button [ref=e279] [cursor=pointer]:
+        - paragraph [ref=e58]: Actions / Outcome
+        - paragraph [ref=e59]: "7"
+        - generic [ref=e60]: ▸
+      - button [ref=e280] [cursor=pointer]:
+        - paragraph [ref=e64]: Compliance
+        - paragraph [ref=e65]: "4"
+        - generic [ref=e66]: ▸
+      - button [ref=e281] [cursor=pointer]:
+        - paragraph [ref=e70]: Flow
+        - paragraph [ref=e71]: "2"
+        - generic [ref=e72]: ▸
+    - application [ref=e74]:
+      - generic [ref=e76]:
+        - generic:
+          - img:
+            - group [ref=e282] [cursor=pointer]
+          - img:
+            - group [ref=e283] [cursor=pointer]:
+              - generic [ref=e135]: answered
+          - img:
+            - group [ref=e284] [cursor=pointer]:
+              - generic [ref=e140]: no answer
+          - img:
+            - group [ref=e285] [cursor=pointer]
+          - img:
+            - group [ref=e286] [cursor=pointer]
+          - img:
+            - group [ref=e287] [cursor=pointer]
+          - img:
+            - group [ref=e288] [cursor=pointer]
+          - img:
+            - group [ref=e289] [cursor=pointer]:
+              - generic [ref=e157]: press 1
+          - img:
+            - group [ref=e290] [cursor=pointer]
+          - img:
+            - group [ref=e291] [cursor=pointer]:
+              - generic [ref=e165]: no key
+          - img:
+            - group [ref=e292] [cursor=pointer]
+          - generic:
+            - group [ref=e170]:
+              - generic [ref=e171]: Start
+            - group [ref=e173]:
+              - generic [ref=e174]:
+                - generic [ref=e176]: Connect
+                - generic [ref=e177]: Call Result
+                - generic [ref=e178]:
+                  - generic [ref=e179]: ▽ Answered
+                  - generic [ref=e180]: ▽ No Answer
+                  - generic [ref=e181]: ▽ Busy
+                  - generic [ref=e182]: ▽ Failed
+            - group [ref=e187]:
+              - generic [ref=e188]:
+                - generic [ref=e190]: Action
+                - generic [ref=e191]: Play Message (TTS)
+                - generic [ref=e192]: "\"Hi, this is EVRA on be…\""
+            - group [ref=e194]:
+              - generic [ref=e195]:
+                - generic [ref=e197]: Input
+                - generic [ref=e198]: Collect DTMF
+                - generic [ref=e199]: 1 digit / 4s
+            - group [ref=e201]:
+              - generic [ref=e202]:
+                - generic [ref=e204]: Input
+                - generic [ref=e205]: On Key
+                - generic [ref=e206]: key = 1
+                - generic [ref=e207]:
+                  - generic [ref=e208]: ▽ match
+                  - generic [ref=e209]: ▽ else
+            - group [ref=e212]:
+              - generic [ref=e213]:
+                - generic [ref=e215]: Action
+                - generic [ref=e216]: Mark Lead
+                - generic [ref=e217]: Lead
+            - group [ref=e219]:
+              - generic [ref=e220]:
+                - generic [ref=e222]: Action
+                - generic [ref=e223]: Send WhatsApp
+                - generic [ref=e224]: welcome
+            - group [ref=e226]:
+              - generic [ref=e227]:
+                - generic [ref=e229]: Action
+                - generic [ref=e230]: Hang Up
+                - generic [ref=e231]: Declined
+            - group [ref=e233]:
+              - generic [ref=e234]: End
+      - generic [ref=e294]:
+        - button [ref=e295] [cursor=pointer]
+        - button [ref=e296] [cursor=pointer]
+        - button [ref=e297] [cursor=pointer]
+        - button [ref=e298] [cursor=pointer]
+      - generic [ref=e93]:
+        - paragraph [ref=e96]: Build with Claude
+        - generic [ref=e98]:
+          - textbox [ref=e299]:
+            - /placeholder: Describe the flow — e.g. Dial, if answered play a message, press 1 marks a lead and sends WhatsApp, otherwise hang up.
+          - group [aria-hidden]
+        - generic [ref=e100]:
+          - button [disabled]: Generate & preview
+          - paragraph [ref=e101]: you approve before it applies
+      - generic [ref=e103]:
+        - button [ref=e300] [cursor=pointer]: Export JSON
+        - button [ref=e301] [cursor=pointer]: Import
+        - button [ref=e302] [cursor=pointer]: Clear
+    - generic [ref=e108]:
+      - paragraph [ref=e109]: Inspector
+      - paragraph [ref=e258]: On Key
+      - paragraph [ref=e259]: Input / DTMF · branch
+      - generic [ref=e260]:
+        - generic [ref=e261]:
+          - generic [ref=e262]: Key
+          - generic [ref=e263]:
+            - textbox [ref=e303]: "1"
+            - group [aria-hidden]:
+              - generic: Key
+        - generic [ref=e265]:
+          - paragraph [ref=e266]: Outputs
+          - generic [ref=e267]:
+            - paragraph [ref=e270]: match
+            - paragraph [ref=e273]: else
+        - button [ref=e304] [cursor=pointer]: Delete node
+  - button "Open Next.js Dev Tools" [ref=e251] [cursor=pointer]
+  - alert [ref=e255]
+  - dialog [active] [ref=e307]:
+    - generic [ref=e308]:
+      - paragraph [ref=e309]: Exported flow (JSON)
+      - generic [ref=e311]:
+        - textbox [ref=e312]: "{ \"nodes\": [ { \"id\": \"start\", \"type\": \"spec\", \"position\": { \"x\": 360, \"y\": 0 }, \"data\": { \"specKey\": \"start\", \"params\": {} }, \"measured\": { \"width\": 91, \"height\": 34 } }, { \"id\": \"call\", \"type\": \"spec\", \"position\": { \"x\": 300, \"y\": 80 }, \"data\": { \"specKey\": \"call-result\", \"params\": {} }, \"measured\": { \"width\": 248, \"height\": 89 } }, { \"id\": \"tts\", \"type\": \"spec\", \"position\": { \"x\": 300, \"y\": 230 }, \"data\": { \"specKey\": \"play-tts\", \"params\": { \"message\": \"Hi, this is EVRA on behalf of…\", \"voice\": \"Seeker\" } }, \"measured\": { \"width\": 161, \"height\": 70 } }, { \"id\": \"collect\", \"type\": \"spec\", \"position\": { \"x\": 306, \"y\": 330 }, \"data\": { \"specKey\": \"collect-dtmf\", \"params\": { \"maxDigits\": 1, \"timeout\": 4 } }, \"measured\": { \"width\": 156, \"height\": 70 } }, { \"id\": \"key\", \"type\": \"spec\", \"position\": { \"x\": 300, \"y\": 430 }, \"data\": { \"specKey\": \"dtmf-key\", \"params\": { \"key\": \"1\" } }, \"measured\": { \"width\": 180, \"height\": 108 }, \"selected\": true }, { \"id\": \"lead\", \"type\": \"spec\", \"position\": { \"x\": 140, \"y\": 550 }, \"data\": { \"specKey\": \"mark-lead\", \"params\": { \"tag\": \"Lead\" } }, \"measured\": { \"width\": 156, \"height\": 70 } }, { \"id\": \"wa\", \"type\": \"spec\", \"position\": { \"x\": 140, \"y\": 650 }, \"data\": { \"specKey\": \"whatsapp\", \"params\": { \"template\": \"welcome\", \"immediate\": true } }, \"measured\": { \"width\": 156, \"height\": 70 } }, { \"id\": \"hang\", \"type\": \"spec\", \"position\": { \"x\": 520, \"y\": 560 }, \"data\": { \"specKey\": \"hang-up\", \"params\": { \"reason\": \"Declined\" } }, \"measured\": { \"width\": 156, \"height\": 70 } }, { \"id\": \"end\", \"type\": \"spec\", \"position\": { \"x\": 360, \"y\": 760 }, \"data\": { \"specKey\": \"end\", \"params\": {} }, \"measured\": { \"width\": 74, \"height\": 34 } } ], \"edges\": [ { \"id\": \"e-s\", \"source\": \"start\", \"target\": \"call\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#909090\" }, \"style\": { \"stroke\": \"#909090\", \"strokeWidth\": 1.5 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-ans\", \"source\": \"call\", \"target\": \"tts\", \"sourceHandle\": \"Answered\", \"label\": \"answered\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#37A660\" }, \"style\": { \"stroke\": \"#37A660\", \"strokeWidth\": 2 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-na\", \"source\": \"call\", \"target\": \"hang\", \"sourceHandle\": \"No Answer\", \"label\": \"no answer\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#E0524F\" }, \"style\": { \"stroke\": \"#E0524F\", \"strokeWidth\": 2 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-busy\", \"source\": \"call\", \"target\": \"hang\", \"sourceHandle\": \"Busy\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#E0524F\" }, \"style\": { \"stroke\": \"#E0524F\", \"strokeWidth\": 2 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-fail\", \"source\": \"call\", \"target\": \"hang\", \"sourceHandle\": \"Failed\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#E0524F\" }, \"style\": { \"stroke\": \"#E0524F\", \"strokeWidth\": 2 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-tc\", \"source\": \"tts\", \"target\": \"collect\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#909090\" }, \"style\": { \"stroke\": \"#909090\", \"strokeWidth\": 1.5 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-ck\", \"source\": \"collect\", \"target\": \"key\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#909090\" }, \"style\": { \"stroke\": \"#909090\", \"strokeWidth\": 1.5 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-match\", \"source\": \"key\", \"target\": \"lead\", \"sourceHandle\": \"match\", \"label\": \"press 1\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#37A660\" }, \"style\": { \"stroke\": \"#37A660\", \"strokeWidth\": 2 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-lw\", \"source\": \"lead\", \"target\": \"wa\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#909090\" }, \"style\": { \"stroke\": \"#909090\", \"strokeWidth\": 1.5 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-we\", \"source\": \"wa\", \"target\": \"end\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#909090\" }, \"style\": { \"stroke\": \"#909090\", \"strokeWidth\": 1.5 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-else\", \"source\": \"key\", \"target\": \"hang\", \"sourceHandle\": \"else\", \"label\": \"no key\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#E0524F\" }, \"style\": { \"stroke\": \"#E0524F\", \"strokeWidth\": 2 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } }, { \"id\": \"e-he\", \"source\": \"hang\", \"target\": \"end\", \"markerEnd\": { \"type\": \"arrowclosed\", \"color\": \"#909090\" }, \"style\": { \"stroke\": \"#909090\", \"strokeWidth\": 1.5 }, \"labelStyle\": { \"fill\": \"#909090\", \"fontSize\": 10 }, \"labelBgStyle\": { \"fill\": \"#1F1F1F\" } } ] }"
+        - group [aria-hidden]
+      - button "Download .json" [ref=e314] [cursor=pointer]

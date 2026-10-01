@@ -15,6 +15,7 @@ import ShieldOutlined from '@mui/icons-material/ShieldOutlined'
 import SettingsOutlined from '@mui/icons-material/SettingsOutlined'
 import PersonOutlineOutlined from '@mui/icons-material/PersonOutlineOutlined'
 import HelpOutlineOutlined from '@mui/icons-material/HelpOutlineOutlined'
+import AccountTreeOutlined from '@mui/icons-material/AccountTreeOutlined'
 import type { SvgIconComponent } from '@mui/icons-material'
 import { colors } from '@/lib/tokens'
 
@@ -34,6 +35,7 @@ const NAV_GROUPS: { label: string; items: { id: string; label: string; icon: Svg
       { id: 'leads',     label: 'Leads',           icon: PersonAddAltOutlined },
       { id: 'reports',   label: 'Campaign Report', icon: AssessmentOutlined },
       { id: 'quality',   label: 'Call Quality',    icon: GraphicEqOutlined },
+      { id: 'flow-builder', label: 'Flow Builder', icon: AccountTreeOutlined },
     ],
   },
   {

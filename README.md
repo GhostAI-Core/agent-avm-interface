@@ -79,15 +79,27 @@ The UI is a **client-rendered single page** (`app/page.tsx`) wrapped in MUI them
 
 | View ID | Component(s) | Purpose |
 |---------|--------------|---------|
-| `dashboard` | `InsightDashboard`, `KpiStrip`, `InsightCharts` | Control Room — configurable KPI cards, charts, filters by company/campaign/agent/date |
-| `sts` | `STSDashboard` | STS-specific metrics view |
+| `dashboard` | `ControlRoom`, `InsightCharts`, 3D cone / `FunnelGraphFlow` | Control Room — KPI cards, live sparklines, funnel viz, filters by company/campaign/date |
 | `companies` | Inline in `page.tsx` | Company roster (card/table toggle) |
 | `campaigns` | `CampaignModal`, `CampaignActionDialog` | Campaign list, create/edit/reuse/archive, play/pause/stop |
+| `products` | `ProductsView` | Company-scoped product + script-version catalog (proxied from callops) |
+| `contacts` | `ContactsView` | Per-campaign contact list, network breakdown, archive/retry/DNC actions |
+| `leads` | `LeadsView` | Press-1 opt-in leads (single vs double) from callops |
 | `reports` | `Charts`, `CampaignDetail` | Aggregate campaign report — outcome donut, funnel, spend |
 | `quality` | `CallQuality` | Per-call quality and recording review |
+| `flow-builder` | `FlowCanvas` | n8n-style campaign flow POC (React Flow + Claude NL generation). Visual only — no persistence |
+| `telephony` | `TelephonyView` | SIP trunk catalog / test-call admin (callops LiveKit proxies) |
 | `security` | `SecurityView` | Security audit log |
-| `settings` | `SettingsView` | Read-only telephony configuration note; carrier settings live in LiveKit/callops |
+| `settings` | `SettingsView` | Platform settings (carrier cost-per-minute via callops) |
 | `profile` | `ProfileView` | User profile and appearance |
+
+Standalone routes (not the main SPA):
+
+| Route | Purpose |
+|-------|---------|
+| `/tv` | Read-only smart-TV wall board — KPI tiles, remote-navigable campaign grid, auto-cycle |
+| `/flow-builder` | Full-viewport copy of the flow-builder POC (same `FlowCanvas`) |
+| `site/` | Static evra-ai.com marketing + legal pages (Meta Tech Provider verification) |
 
 ### Data loading pattern
 
@@ -215,6 +227,8 @@ Copy `.env.local.example` (local) or `.env.example` (production). Key groups:
 | `INWORLD_API_KEY` | Inworld TTS Basic auth credential (base64, server only) for `/api/tts/generate` |
 | `AVM_SCRIPT_AUDIO_STORAGE_*` | Supabase S3 credentials + public URL for generated campaign audio (`script-{campaign-slug}-{DD-MM-YYYY}.mp3` via PutObject) |
 | `STS_RELAY_SECRET`, `STS_SDP_BASE_URL`, `STS_GUID_<PRODUCT>` | Optional STS subscribe/opt-out relay guard, base URL, and per-product GUIDs for `/api/sts/mark` |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | Optional WhatsApp Cloud API send + webhook (unset = feature off) |
+| `ANTHROPIC_API_KEY` | Optional Claude key for `/api/flow-builder/generate` |
 | `NEXT_PUBLIC_POLL_INTERVAL_MS` | Dashboard refresh interval (default 15000) |
 
 Per-campaign overrides: `campaigns.sip_trunk_id` stores the integer `sip_trunks.id` selected in the campaign wizard. callops resolves that to `sip_trunks.livekit_trunk_id`.
@@ -238,16 +252,34 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 | `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts`; optional text creates reusable `voice_scripts` row |
 | `/api/scripts` | GET | User | List saved campaign script MP3s for campaign edit reuse |
 | `/api/voice-scripts` | GET | User | List saved voice script text/audio rows for voice-generator reuse |
+| `/api/script-audio` | GET, POST | User | Per-campaign script/audio history via callops |
 | `/api/companies` | GET, POST | User | Company management |
+| `/api/products` | GET, POST | User | Company-scoped product catalog via callops |
+| `/api/products/:id` | GET, PATCH | User | Product detail / update |
+| `/api/products/:id/versions` | GET, POST | User | Product script version history |
+| `/api/products/:id/versions/:versionId/activate` | POST | User | Activate a script version |
+| `/api/leads` | GET | User | Merged press-1 leads across the user's companies |
+| `/api/campaigns/:id/contacts` | GET | User | Paginated campaign contacts + network breakdown |
+| `/api/campaigns/:id/contacts/import` | POST | User | Contact CSV import |
+| `/api/contacts/:id/:action` | POST | User | `archive` / `retry` / `do-not-call` via callops |
+| `/api/calls/:id` | GET | User | Single-call detail from callops |
+| `/api/calls/:id/recording` | GET | User | Signed recording URL |
+| `/api/calls/:id/telemetry` | GET | User | Per-call telemetry |
+| `/api/calls/:id/call-report` | GET | User | Per-call report |
 | `/api/trunks` | GET, POST | User | SIP trunk catalog and trunk create proxy through callops |
 | `/api/trunks/:trunk_id` | PATCH, DELETE | User | LiveKit SIP trunk update/delete proxy through callops |
 | `/api/trunks/test-call` | POST | User | One-off SIP test call through callops/LiveKit |
+| `/api/sip-trunks/:id` | GET, PATCH | User | Callops SIP trunk detail (bearer) |
+| `/api/settings` | GET, PATCH | User | Platform settings (cost-per-minute ZAR) |
+| `/api/lookups/:type` | GET | User | Allowlisted callops lookup tables |
 | `/api/logs` | GET | User | Per-call `call_records` |
 | `/api/reports` | GET | User | Aggregate `call_logs` |
 | `/api/intents` | GET | User | Intent waterfall data |
 | `/api/security` | GET | User | Security logs |
 | `/api/dashboard-templates` | GET, POST, DELETE | User | Saved dashboard layouts |
 | `/api/sts/mark` | POST | Optional `x-relay-secret` | Relay product subscribe/opt-out keypresses to STS SDP |
+| `/api/whatsapp/webhook` | GET, POST | Meta verify / HMAC | WhatsApp Cloud API inbound + verification handshake |
+| `/api/flow-builder/generate` | POST | User session not required; needs `ANTHROPIC_API_KEY` | Claude NL → flow JSON (POC) |
 | `/api/livekit/webhook` | POST | LiveKit signature | Room lifecycle updates |
 | `/api/calls/result` | POST | None | Deprecated no-op; agents should use callops `/calls/outcome` |
 | `/api/health` | GET | None | Health check for deploy |
@@ -261,15 +293,20 @@ app/
   page.tsx              # Main SPA — auth gate, all views, polling, campaign controls
   layout.tsx            # Root layout, MUI Providers, fonts
   globals.css           # EVRA design tokens and global styles
+  tv/page.tsx           # Read-only smart-TV wall board
+  flow-builder/page.tsx # Standalone flow-builder POC
   api/                  # Next.js Route Handlers (see table above)
-components/             # UI modules (AuthView, Sidebar, charts, campaign modals, …)
-lib/                    # Business logic (outbound-call diagnostics, livekit, voice, roles, …)
+components/             # UI modules (AuthView, Sidebar, Control Room, flow-builder, …)
+lib/                    # Business logic (compliance gate, STS, WhatsApp, roles, …)
 types/                  # Shared TypeScript interfaces
 utils/supabase/         # Browser, server, admin clients; auth helpers; middleware
+utils/callops.ts        # Server-side callops HTTP client
 supabase/migrations/    # Ordered SQL migrations (source of truth for schema)
-scripts/                # dial-outbound CLI, env preload
+scripts/                # dial-outbound CLI, callops smoke, env preload
+site/                   # Static evra-ai.com marketing + legal
 infrastructure/deploy/  # Docker Compose deploy runbook
-docs/                   # Integration guides (LiveKit)
+docs/                   # Integration guides (callops, LiveKit, STS)
+openspec/               # Specs and change proposals
 proxy.ts                # Next.js middleware entry — session cookie refresh
 schema.sql              # Idempotent initial schema snapshot
 ```
@@ -309,6 +346,7 @@ WebAuthn requires HTTPS or `localhost`. For LAN testing, Chrome flag: `chrome://
 
 ```bash
 npm run dev     # http://localhost:3000
+npm test        # unit tests (compliance gate, STS, WhatsApp, flow specs, …)
 npm run build   # production build
 npm run start   # production server
 ```
@@ -324,7 +362,7 @@ Docker Compose + GitHub Actions workflow (`.github/workflows/deploy-agent-avm.ym
 | Layer | Choice |
 |-------|--------|
 | Framework | Next.js 16 (App Router) |
-| UI | React 19, MUI 9, Chart.js, EVRA design tokens |
+| UI | React 19, MUI 9, Chart.js, funnel-graph-js, React Flow, EVRA design tokens |
 | Database & Auth | Supabase (PostgreSQL, Auth, Storage, RLS) |
 | Telephony | LiveKit Server SDK — agent dispatch + SIP outbound |
 | Runtime | Node.js API routes (`runtime = 'nodejs'` on telephony routes) |

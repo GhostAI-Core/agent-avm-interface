@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { SPECS } from '@/components/flow-builder/nodeSpecs'
+import { sanitizeGeneratedFlow } from '@/components/flow-builder/sanitizeFlow'
 
 export const runtime = 'nodejs'
 
@@ -93,10 +94,7 @@ export async function POST(req: Request) {
     if (!tu || tu.type !== 'tool_use') return NextResponse.json({ error: 'Claude did not return a flow.' }, { status: 502 })
 
     const input = tu.input as { nodes?: RawNode[]; edges?: RawEdge[] }
-    const valid = new Set(SPECS.map(s => s.key))
-    const nodes = (input.nodes ?? []).filter(n => !!n?.id && !!n.specKey && valid.has(n.specKey))
-    const ids = new Set(nodes.map(n => n.id))
-    const edges = (input.edges ?? []).filter(e => !!e?.source && !!e.target && ids.has(e.source) && ids.has(e.target))
+    const { nodes, edges } = sanitizeGeneratedFlow(input)
     if (!nodes.length) return NextResponse.json({ error: 'Claude returned an empty flow — try rephrasing.' }, { status: 502 })
     return NextResponse.json({ nodes, edges })
   } catch (e) {

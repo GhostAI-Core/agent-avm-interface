@@ -11,5 +11,7 @@ Documentation for integrating and operating the Agent AVM dashboard, callops lif
 | [evra-callops OpenAPI](./openapi.json) | Backend integration | External callops API contract; not the Next.js app route spec |
 | [Deployment runbook](../infrastructure/deploy/runbook.md) | Ops | Docker/Cloudflare deploy steps and environment checklist |
 | [Server verification checklist](../infrastructure/deploy/cursor-server-verify.md) | Ops | Post-deploy health, env, and callops smoke checks |
+| [Public site](../site/README.md) | Ops / Meta review | Static evra-ai.com marketing + legal pages |
+| [Voice samples](../public/voice-samples/README.md) | Product | Local Inworld voice preview clips |
 
 Start with **app-api-reference.md** to understand this repo's API surface, then **livekit-outbound-integration.md** for outbound calling operations.

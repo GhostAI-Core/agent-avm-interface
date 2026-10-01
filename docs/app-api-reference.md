@@ -24,6 +24,9 @@ app/api/*
   ├─ GET  /api/campaigns/{id}/status            ──X-Webhook-Secret──► evra-callops
   ├─ /api/trunks/*                              ──X-Webhook-Secret──► callops LiveKit admin
   ├─ POST /api/sts/mark                         ──optional x-relay-secret──► STS SDP
+  ├─ /api/products, /leads, /contacts, /calls   ──user bearer──► evra-callops
+  ├─ GET/POST /api/whatsapp/webhook ◄────── Meta Cloud API HMAC / verify token
+  ├─ POST /api/flow-builder/generate ── ANTHROPIC_API_KEY ──► Claude
   ├─ POST /api/livekit/webhook ◄──────────── signed LiveKit room events
   └─ POST /api/calls/result ── deprecated no-op; use callops /calls/outcome
 ```
@@ -38,7 +41,8 @@ app/api/*
 | `X-Webhook-Secret` | Sent server-side from this app to `CALLOPS_URL` | callops lifecycle/status/trunk admin/test-call cross-checks |
 | `x-relay-secret` | Optional shared secret checked when `STS_RELAY_SECRET` is set | `POST /api/sts/mark` |
 | LiveKit webhook JWT | `Authorization` header; validated by `WebhookReceiver` | `POST /api/livekit/webhook` |
-| None | Public | `GET /api/health`, deprecated `POST /api/calls/result` no-op; `POST /api/sts/mark` only when `STS_RELAY_SECRET` is unset |
+| Meta webhook | `hub.verify_token` (GET) / `X-Hub-Signature-256` (POST) | `GET`/`POST /api/whatsapp/webhook` |
+| None | Public | `GET /api/health`, deprecated `POST /api/calls/result` no-op; `POST /api/sts/mark` only when `STS_RELAY_SECRET` is unset; `POST /api/flow-builder/generate` (POC, key-gated) |
 
 The browser never receives `CALLOPS_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, LiveKit API secrets, Inworld credentials, or STS relay/GUID secrets.
 
@@ -364,6 +368,53 @@ When `text` is provided, the route best-effort inserts a `voice_scripts` row so 
 | Response | `{ scripts: [{ id, text, voice_id, audio_url, campaign_name, created_at }] }` |
 | Supabase tables | `voice_scripts`; newest 50 rows |
 
+### Callops-proxied product / lead / contact / call surfaces
+
+These routes authenticate with a Supabase session, then forward the user's access token to evra-callops. They do not write the local Supabase tables for those entities.
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/products?company_id=` | GET, POST | Company-scoped product catalog |
+| `/api/products/:id` | GET, PATCH | Product detail / update |
+| `/api/products/:id/versions` | GET, POST | Script version history |
+| `/api/products/:id/versions/:versionId/activate` | POST | Activate a script version |
+| `/api/leads` | GET | Merged press-1 leads (single + double opt-in) across the user's companies |
+| `/api/campaigns/:id/contacts` | GET | Paginated contacts + campaign-wide network breakdown |
+| `/api/campaigns/:id/contacts/import` | POST | Contact CSV import |
+| `/api/contacts/:id/archive\|retry\|do-not-call` | POST | Allowlisted per-contact actions |
+| `/api/calls/:id` | GET | Single-call detail (`call`, `contact`, `campaign`) |
+| `/api/calls/:id/recording` | GET | Signed recording URL |
+| `/api/calls/:id/telemetry` | GET | Per-call telemetry |
+| `/api/calls/:id/call-report` | GET | Per-call report |
+| `/api/script-audio?campaign_id=` | GET, POST | Per-campaign script/audio history |
+| `/api/settings` | GET, PATCH | Platform `cost_per_minute_zar` |
+| `/api/lookups/:type` | GET | Allowlisted lookup tables (`call-outcomes`, `campaign-statuses`, …) |
+| `/api/sip-trunks/:id` | GET, PATCH | Callops SIP trunk detail (bearer); credentials never returned |
+| `/api/sip-trunks/:id/health` | GET | Trunk health |
+| `/api/sip-trunks/:id/test-call` | POST | Trunk-scoped test call |
+| `/api/sip-trunks/:id/archive` | POST | Archive a trunk |
+| `/api/companies/:id/sip-trunks` | GET | Company trunk list |
+
+### `GET` / `POST /api/whatsapp/webhook`
+
+| | |
+|---|---|
+| Auth | GET: `hub.verify_token` must match `WHATSAPP_WEBHOOK_VERIFY_TOKEN`. POST: `X-Hub-Signature-256` HMAC of the **raw** body using `WHATSAPP_APP_SECRET` |
+| Purpose | Meta Cloud API webhook — verification handshake + inbound messages / delivery statuses |
+| GET | Echo `hub.challenge` as `text/plain` on success; **503** if verify token unset; **403** on mismatch |
+| POST | ACK 200 after signature check; opt-out words (`stop`, `unsubscribe`, …) are classified by `isOptOutMessage` |
+| Unconfigured | **503** when `WHATSAPP_APP_SECRET` / verify token is missing |
+
+### `POST /api/flow-builder/generate`
+
+| | |
+|---|---|
+| Auth | None (POC). Requires `ANTHROPIC_API_KEY` |
+| Body | `{ prompt }` |
+| Response | `{ nodes, edges }` after `sanitizeGeneratedFlow` drops unknown spec keys and dangling edges |
+| Missing key / empty prompt | **400** |
+| Empty Claude payload | **502** |
+
 ---
 
 ## Routes Documented Elsewhere But Not Implemented Here
@@ -371,7 +422,7 @@ When `text` is provided, the route best-effort inserts a `voice_scripts` row so 
 | Route | Status |
 |-------|--------|
 | `GET /api/campaigns/:id` | Not implemented; only `PUT` and `DELETE` exist for this path |
-| `/api/providers` | Not implemented; Settings is informational and telephony admin UI uses local mock data |
+| `/api/providers` | Not implemented; telephony admin uses `/api/trunks` + `/api/sip-trunks` + callops |
 | `POST /api/security` | Not implemented |
 | `POST /api/simulate` | Not implemented |
 
@@ -468,6 +519,8 @@ OpenAPI endpoints for telemetry, dispatch jobs, and rooms are not surfaced direc
 | `INWORLD_API_KEY` | `/api/tts/generate` |
 | `AVM_SCRIPT_AUDIO_STORAGE_*` | `/api/tts/save`, `/api/scripts` |
 | `STS_RELAY_SECRET`, `STS_SDP_BASE_URL`, `STS_GUID_<PRODUCT>` | `/api/sts/mark` |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | `/api/whatsapp/webhook` and `lib/whatsapp/client.ts` |
+| `ANTHROPIC_API_KEY` | `/api/flow-builder/generate` |
 
 ---
 
@@ -483,6 +536,10 @@ OpenAPI endpoints for telemetry, dispatch jobs, and rooms are not surfaced direc
 | `app/api/scripts/route.ts` | saved script audio object listing |
 | `app/api/voice-scripts/route.ts` | saved script text/audio reuse library |
 | `app/api/sts/mark/route.ts` | STS subscribe/opt-out relay |
+| `app/api/whatsapp/webhook/route.ts` | WhatsApp Cloud API webhook |
+| `app/api/flow-builder/generate/route.ts` | Claude NL flow generation (POC) |
+| `app/api/products/route.ts` | callops product catalog proxy |
+| `app/api/leads/route.ts` | callops leads proxy |
 | `app/api/calls/result/route.ts` | deprecated no-op result endpoint |
 | `app/api/livekit/webhook/route.ts` | signed LiveKit webhook fallback updates |
 | `scripts/callops-test.ts` | callops smoke/integration test harness |

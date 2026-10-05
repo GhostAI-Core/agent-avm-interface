@@ -32,11 +32,12 @@ Configure in **Cloudflare Zero Trust → Networks → Tunnels → \[tunnel\] →
 
 Target must match the compose **service name** and **expose** port exactly.
 
-## GitHub repository secrets
+## Deployment inputs
 
-| Secret | Example value |
+There is no checked-in GitHub Actions deploy workflow. Keep these values in the team's release tooling or operator notes, not in the repository.
+
+| Value | Example |
 | --- | --- |
-| `DEPLOY_SSH_PRIVATE_KEY` | Deploy user private key |
 | `DEPLOY_HOST` | Server hostname or IP |
 | `DEPLOY_USER` | `deploy` |
 | `DEPLOY_PATH` | `/opt/docker/production/evra_avm` |
@@ -58,7 +59,7 @@ cd /opt/docker/production/evra_avm
 docker compose up -d --build
 ```
 
-`.env` lives only on the server. The deploy workflow does not sync or overwrite it.
+`.env` lives only on the server. There is no checked-in GitHub Actions deploy workflow; sync code by the team's current release process, then run the Docker Compose commands in this runbook on the server.
 
 ## Runtime environment checklist
 
@@ -70,8 +71,9 @@ docker compose up -d --build
 | LiveKit | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Webhook validation and direct diagnostic CLI |
 | LiveKit diagnostics | `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`, `LIVEKIT_AGENT_NAME`, `LIVEKIT_RECORD_*` | `npm run dial` and optional egress |
 | TTS | `INWORLD_API_KEY`, `AVM_SCRIPT_AUDIO_STORAGE_*` | Campaign script generation and saved audio |
+| Flow builder | `ANTHROPIC_API_KEY` | Optional `/flow-builder` AI draft generation |
 
-If `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is blank, lifecycle buttons fall back to local status updates and do not dispatch calls.
+If `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is blank in production, lifecycle buttons return 503 and do not dispatch calls.
 
 ## Post-deploy validation
 
@@ -86,7 +88,7 @@ docker network inspect shared | grep agent-avm-web-web
 docker exec $(docker compose ps -q agent-avm-web-web) \
   wget -q -O - http://localhost:3000/api/health
 
-grep -E '^(CALLOPS_|LIVEKIT_|NEXT_PUBLIC_SUPABASE|SUPABASE_SERVICE|INWORLD_|AVM_SCRIPT_)' .env | sed 's/=.*/=***/'
+grep -E '^(CALLOPS_|LIVEKIT_|NEXT_PUBLIC_SUPABASE|SUPABASE_SERVICE|INWORLD_|AVM_SCRIPT_|ANTHROPIC_API_KEY)' .env | sed 's/=.*/=***/'
 ```
 
 External (after Cloudflare route exists):
@@ -108,7 +110,7 @@ cd /opt/docker/production/evra_avm
 docker compose up -d
 ```
 
-Prefer re-running a prior successful GitHub Actions deploy from a known-good commit on `production`.
+Prefer checking out a known-good commit on the server and re-running `docker compose up -d --build`.
 
 ## Debugging without host ports
 

@@ -41,17 +41,16 @@ A table MAY be dropped only when it is confirmed to have zero rows AND zero code
 - **WHEN** a relation (e.g. `campaign_report`) is found to be a live reporting VIEW rather than a table
 - **THEN** its real definition is captured as a `CREATE OR REPLACE VIEW` migration and it is retained, NOT `DROP TABLE`-d
 
-### Requirement: Coupled `/dial` tables are dropped only after the route is retired
+### Requirement: Coupled `/dial` tables stay retired after route deletion
 
-`campaign_contacts` and `compliance_events` are referenced only by the orphaned dashboard `/dial` route. They MUST NOT be dropped until that route (`app/api/campaigns/[id]/dial/route.ts`) is deleted, so no live code path loses its table.
+`campaign_contacts` and `compliance_events` were coupled to the orphaned dashboard `/dial` route. That route has been deleted, and migration `20260703090000_drop_dial_tables.sql` backs up and drops those tables after zero-row verification. The route and the dropped-table dependencies MUST NOT be reintroduced.
 
-#### Scenario: Tier 2 drop follows route deletion
+#### Scenario: Tier 2 drop remains represented in migrations
 
-- **WHEN** the orphaned `/dial` route has been deleted and the build passes
-- **THEN** `campaign_contacts` and `compliance_events` are verified 0-row and unreferenced
-- **AND** each is backed up and dropped, and dashboard build + health checks still pass
+- **WHEN** a developer inspects `supabase/migrations/`
+- **THEN** `20260703090000_drop_dial_tables.sql` documents the zero-row guard, backup tables, and `DROP TABLE` operations for `campaign_contacts` and `compliance_events`
 
-#### Scenario: Tier 2 drop is blocked while `/dial` exists
+#### Scenario: `/dial` route is not resurrected
 
-- **WHEN** the `/dial` route still exists in the codebase
-- **THEN** `campaign_contacts` and `compliance_events` are NOT dropped
+- **WHEN** a developer searches `app/api/campaigns`
+- **THEN** there is no `app/api/campaigns/[id]/dial/route.ts`

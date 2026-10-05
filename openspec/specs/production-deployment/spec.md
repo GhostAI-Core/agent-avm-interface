@@ -49,23 +49,23 @@ The repository SHALL include `.env.example` listing all required production envi
 - **WHEN** `.env` is absent and `docker compose config` is run
 - **THEN** compose parsing succeeds without error
 
-### Requirement: GitHub Actions deploy workflow
+### Requirement: Manual Docker Compose deploy path
 
-The repository SHALL include `.github/workflows/deploy-agent-avm.yml` that on push to `main` (and `workflow_dispatch`): checks out code, connects via SSH, verifies `shared` network exists, rsyncs the repo to `DEPLOY_PATH` excluding `.git/` and `.github/`, and runs `docker compose up -d --build` from the compose directory.
+The repository SHALL NOT rely on a checked-in GitHub Actions deploy workflow. Operators SHALL deploy the app by syncing a selected commit to `DEPLOY_PATH`, verifying the external `shared` network exists, preserving the server-local `.env`, and running `docker compose up -d --build` from the compose directory.
 
-#### Scenario: Shared network missing fails deploy
+#### Scenario: Shared network missing blocks deploy
 
-- **WHEN** the deploy workflow runs and `docker network inspect shared` fails on the server
-- **THEN** the workflow exits with error before rsync or compose
+- **WHEN** an operator validates the server and `docker network inspect shared` fails
+- **THEN** they create or request the shared network before running compose
 
-#### Scenario: Concurrent deploys serialized
+#### Scenario: Server-local environment is preserved
 
-- **WHEN** two deploy workflows are triggered for the same project
-- **THEN** only one runs at a time via concurrency group `agent-avm-deploy`
+- **WHEN** a new commit is synced to `DEPLOY_PATH`
+- **THEN** the server-local `.env` is not committed, overwritten, or removed by the repository
 
 ### Requirement: Deploy runbook
 
-The repository SHALL include `infrastructure/deploy/runbook.md` documenting deploy path, service names, Cloudflare tunnel target, GitHub secrets, first-deploy bootstrap steps, and post-deploy validation commands.
+The repository SHALL include `infrastructure/deploy/runbook.md` documenting deploy path, service names, Cloudflare tunnel target, first-deploy bootstrap steps, runtime environment variables, and post-deploy validation commands.
 
 #### Scenario: Operator can validate deployment
 

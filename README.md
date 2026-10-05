@@ -19,7 +19,7 @@ At a high level, Agent AVM connects four concerns:
 flowchart TB
   subgraph UI["Browser (app/page.tsx)"]
     Auth[AuthView]
-    Dash[InsightDashboard / Charts]
+    Dash[ControlRoom / Charts]
     Camp[Campaigns & Companies]
   end
 
@@ -79,7 +79,7 @@ The UI is a **client-rendered single page** (`app/page.tsx`) wrapped in MUI them
 
 | View ID | Component(s) | Purpose |
 |---------|--------------|---------|
-| `dashboard` | `InsightDashboard`, `KpiStrip`, `InsightCharts` | Control Room — configurable KPI cards, charts, filters by company/campaign/agent/date |
+| `dashboard` | `ControlRoom`, `FunnelGraphFlow`, `InsightCharts` | Control Room — fixed live-ops dashboard with scope/date filters, KPI groups, funnel/outcome panels, campaign drill-down |
 | `sts` | `STSDashboard` | STS-specific metrics view |
 | `companies` | Inline in `page.tsx` | Company roster (card/table toggle) |
 | `campaigns` | `CampaignModal`, `CampaignActionDialog` | Campaign list, create/edit/reuse/archive, play/pause/stop |
@@ -102,9 +102,18 @@ After auth, the page polls backend APIs on an interval (`NEXT_PUBLIC_POLL_INTERV
 
 Starting, pausing, or stopping a campaign (`updateStatus`) triggers `POST /api/campaigns/:id/start|pause|stop`. When `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset, those POSTs fall back to a local campaign status update only outside production; production returns 503 so callops remains the lifecycle owner. `GET /status` reports `{ mode: 'unconfigured' }` when callops env is missing.
 
-### Dashboard layout
+### Control Room layout
 
-`lib/useDashboardLayout.ts` and `SaveTemplateDialog` persist custom card order/pin/hide state. Layouts can be saved as `dashboard_templates` rows via `GET/POST /api/dashboard-templates`.
+The active dashboard body is `ControlRoom`, a fixed layout with a live campaign band, grouped KPI cards, a 3D/flow funnel toggle, live outcome feed, outcome donut, and campaign performance drill-down dialog. `InsightDashboard`, `lib/useDashboardLayout.ts`, and `SaveTemplateDialog` remain in the tree for the older configurable dashboard/template path, but they are not mounted by `app/page.tsx` today.
+
+### Standalone flow builder
+
+`/flow-builder` mounts `components/flow-builder/FlowCanvas.tsx` outside the authenticated dashboard shell. It is a visual POC built with React Flow (`@xyflow/react`):
+
+- Nodes are generated from `components/flow-builder/nodeSpecs.ts`; the same spec registry drives the palette, handles, inspector fields, defaults, and Claude prompt catalog.
+- Operators can drag/click nodes, wire branch outputs, import/export/download JSON, and preview AI-generated flows before applying them to the canvas.
+- The route has no persistence and does not create, update, or execute campaigns.
+- `POST /api/flow-builder/generate` requires `ANTHROPIC_API_KEY` and returns a tool-constrained `{ nodes, edges }` draft.
 
 ---
 
@@ -228,16 +237,16 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 | Route | Method | Auth | Description |
 |-------|--------|------|-------------|
 | `/api/campaigns` | GET, POST | User | List / create campaigns |
-| `/api/campaigns/:id` | PUT, DELETE | User | Campaign updates / soft delete |
+| `/api/campaigns/:id` | GET, PUT, DELETE | User | Campaign summary read-through, updates, and CallOps archive |
 | `/api/campaigns/:id/start` | POST | User | Proxy campaign start to callops; local status fallback only outside production |
 | `/api/campaigns/:id/pause` | POST | User | Proxy campaign pause to callops; local status fallback only outside production |
 | `/api/campaigns/:id/stop` | POST | User | Proxy campaign stop to callops; local status fallback only outside production |
 | `/api/campaigns/:id/status` | GET | User | Proxy live queue/call stats from callops |
-| `/api/campaigns/:id/dial` | POST | User | Legacy direct LiveKit diagnostic batch dial; not the production UI lifecycle path |
 | `/api/tts/generate` | POST | User | Generate campaign voice audio via Inworld TTS |
 | `/api/tts/save` | POST | User | Save generated script audio to `avm-scripts`; optional text creates reusable `voice_scripts` row |
 | `/api/scripts` | GET | User | List saved campaign script MP3s for campaign edit reuse |
 | `/api/voice-scripts` | GET | User | List saved voice script text/audio rows for voice-generator reuse |
+| `/api/flow-builder/generate` | POST | None | Generate a visual flow-builder draft through Anthropic; no persistence/execution |
 | `/api/companies` | GET, POST | User | Company management |
 | `/api/trunks` | GET, POST | User | SIP trunk catalog and trunk create proxy through callops |
 | `/api/trunks/:trunk_id` | PATCH, DELETE | User | LiveKit SIP trunk update/delete proxy through callops |
@@ -259,6 +268,7 @@ For a deeper file-by-file guide to the LiveKit path, see [docs/livekit-outbound-
 ```text
 app/
   page.tsx              # Main SPA — auth gate, all views, polling, campaign controls
+  flow-builder/page.tsx # Standalone visual campaign-flow builder POC
   layout.tsx            # Root layout, MUI Providers, fonts
   globals.css           # EVRA design tokens and global styles
   api/                  # Next.js Route Handlers (see table above)
@@ -315,7 +325,7 @@ npm run start   # production server
 
 ### 6. Production deploy
 
-Docker Compose + GitHub Actions workflow (`.github/workflows/deploy-agent-avm.yml`). See [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) for server paths, Cloudflare tunnel, and secrets.
+Docker Compose is the checked-in deployment path. There is no active `.github/workflows` deploy workflow in this repo; see [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) for server paths, Cloudflare tunnel, and secrets.
 
 ---
 
@@ -324,7 +334,7 @@ Docker Compose + GitHub Actions workflow (`.github/workflows/deploy-agent-avm.ym
 | Layer | Choice |
 |-------|--------|
 | Framework | Next.js 16 (App Router) |
-| UI | React 19, MUI 9, Chart.js, EVRA design tokens |
+| UI | React 19, MUI 9, Chart.js, React Flow, EVRA design tokens |
 | Database & Auth | Supabase (PostgreSQL, Auth, Storage, RLS) |
 | Telephony | LiveKit Server SDK — agent dispatch + SIP outbound |
 | Runtime | Node.js API routes (`runtime = 'nodejs'` on telephony routes) |

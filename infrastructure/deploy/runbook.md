@@ -9,7 +9,6 @@
 | `COMPOSE_DIR` | `.` (repo root) |
 | `DEPLOY_PATH` | `/opt/docker/production/evra_avm` |
 | `DEPLOY_USER` | `deploy` |
-| `CONCURRENCY_GROUP` | `agent-avm-deploy` |
 | `PUBLIC_DOMAIN` | Confirm with ops (e.g. `vas.inc`) |
 
 ## Services
@@ -32,14 +31,11 @@ Configure in **Cloudflare Zero Trust → Networks → Tunnels → \[tunnel\] →
 
 Target must match the compose **service name** and **expose** port exactly.
 
-## GitHub repository secrets
+## Deploy source and secrets
 
-| Secret | Example value |
-| --- | --- |
-| `DEPLOY_SSH_PRIVATE_KEY` | Deploy user private key |
-| `DEPLOY_HOST` | Server hostname or IP |
-| `DEPLOY_USER` | `deploy` |
-| `DEPLOY_PATH` | `/opt/docker/production/evra_avm` |
+There is no checked-in GitHub Actions workflow for this project. Deploy from a trusted operator shell or external release job that can update `DEPLOY_PATH` on the server, then run Docker Compose there.
+
+Production secrets live only in `${DEPLOY_PATH}/.env`. Do not commit `.env`, and do not overwrite it during source syncs.
 
 ## First deploy (manual bootstrap)
 
@@ -48,7 +44,7 @@ Target must match the compose **service name** and **expose** port exactly.
 sudo mkdir -p /opt/docker/production/evra_avm
 sudo chown -R deploy:deploy /opt/docker/production/evra_avm
 
-# After first rsync or clone
+# After first sync or clone
 cp /opt/docker/production/evra_avm/.env.example /opt/docker/production/evra_avm/.env
 nano /opt/docker/production/evra_avm/.env   # fill Supabase + callops + LiveKit/TTS keys
 
@@ -58,7 +54,24 @@ cd /opt/docker/production/evra_avm
 docker compose up -d --build
 ```
 
-`.env` lives only on the server. The deploy workflow does not sync or overwrite it.
+If cloning directly on the server, check out the intended release branch before building. If syncing from another machine, exclude `.git/`, `.github/`, local `.env*` files, `node_modules/`, `.next/`, and other generated artifacts.
+
+## Routine deploy
+
+```bash
+ssh deploy@{DEPLOY_HOST}
+cd /opt/docker/production/evra_avm
+
+# Bring source to the intended release commit, for example:
+git fetch --all --prune
+git checkout main
+git pull --ff-only
+
+docker compose up -d --build
+docker compose ps
+```
+
+When source is delivered by rsync or another release job instead of `git pull`, run the same Compose commands after the sync finishes. Keep `.env` server-local.
 
 ## Runtime environment checklist
 
@@ -71,7 +84,7 @@ docker compose up -d --build
 | LiveKit diagnostics | `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`, `LIVEKIT_AGENT_NAME`, `LIVEKIT_RECORD_*` | `npm run dial` and optional egress |
 | TTS | `INWORLD_API_KEY`, `AVM_SCRIPT_AUDIO_STORAGE_*` | Campaign script generation and saved audio |
 
-If `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is blank, lifecycle buttons fall back to local status updates and do not dispatch calls.
+If `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is blank in production, lifecycle POSTs return 503 and do not dispatch calls. Local development is the only environment where lifecycle POSTs fall back to direct campaign status writes.
 
 ## Post-deploy validation
 
@@ -105,10 +118,11 @@ npm run callops -- status <campaignId>
 
 ```bash
 cd /opt/docker/production/evra_avm
-docker compose up -d
+git checkout <known-good-commit-or-tag>
+docker compose up -d --build
 ```
 
-Prefer re-running a prior successful GitHub Actions deploy from a known-good commit on `production`.
+If the previous image still exists and only a container restart is needed, `docker compose up -d` is enough. For source rollbacks, rebuild after checking out the known-good ref.
 
 ## Debugging without host ports
 

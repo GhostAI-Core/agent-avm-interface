@@ -50,14 +50,16 @@ components/
   TopBar.tsx          # Sticky header with title, live indicator, logout
   FloatingNav.tsx     # Mobile-only radial quick-nav FAB
   AuthView.tsx        # Login screen (unauthenticated)
-  InsightDashboard.tsx # Control Room widget grid
+  ControlRoom.tsx     # Mounted Control Room live-ops dashboard
+  FunnelGraphFlow.tsx # Optional funnel-graph-js flow visualization
+  InsightDashboard.tsx # Legacy configurable widget grid (not mounted today)
   CampaignModal.tsx   # 3-step new-campaign wizard
   ... (view components, ui primitives, telephony subfolder)
 lib/
   theme.ts            # MUI theme from design tokens
   tokens.ts           # EVRA color/spacing/typography tokens
-  dashboardInsights.tsx # Insight widget registry
-  useDashboardLayout.ts # Dashboard layout persistence hook
+  dashboardInsights.tsx # Legacy insight widget registry/types used by ControlRoom ctx
+  useDashboardLayout.ts # Legacy dashboard layout/template hook
 types/
   index.ts            # Campaign, Report, CallRecord, etc.
 utils/supabase/
@@ -105,7 +107,7 @@ The app uses **client-side view switching**, not URL-based routing. A single str
 
 | `view` value | Screen title | Primary component |
 |--------------|--------------|-------------------|
-| `dashboard` | Control Room | `InsightDashboard` + scope filters |
+| `dashboard` | Control Room | `ControlRoom` + scope/range filters |
 | `sts` | STS Dashboard | `STSDashboard` (placeholder) |
 | `companies` | Companies | Inline JSX in `page.tsx` |
 | `campaigns` | Campaigns | Inline JSX in `page.tsx` |
@@ -188,7 +190,7 @@ When `companyFilter` or `campaignFilter` is set, derived arrays feed the Control
 - `dashCalls` — call logs filtered likewise
 - `dashIntents` — intent stats filtered likewise
 
-These are passed to `InsightDashboard` as `ctx`.
+These are passed to `ControlRoom` as `ctx`.
 
 ### 5.4 Campaign lifecycle actions
 
@@ -245,12 +247,14 @@ The primary operational screen.
 - Company `<Select>` — `companyFilter`
 - Campaign `<Select>` — `campaignFilter` (scoped to selected company)
 
-**Body** — `InsightDashboard`:
+**Body** — `ControlRoom`:
 
-- Receives `dash` from `useDashboardLayout()` hook
-- Receives `ctx` with scoped `reports`, `calls`, `intents`, `campaigns`, and `actions` (play/pause/stop/edit/reuse/archive callbacks)
+- Receives `ctx` with scoped `reports`, `calls`, `intents`, and `campaigns`
+- Receives `liveStatus`, keyed by campaign id, from `GET /api/campaigns/{id}/status`
+- Renders Live Now campaign cards, grouped KPI cards, dialling funnel/outcome panels, and a campaign performance table
+- Clicking a campaign performance row opens an in-dashboard drill-down dialog for that campaign
 
-See [Section 8](#8-control-room-insight-system) for the insight widget architecture.
+See [Section 8](#8-control-room-dashboard-system) for the mounted dashboard architecture.
 
 ### 7.3 Companies — `companies` view
 
@@ -323,55 +327,30 @@ Note: Telephony appears in `Sidebar` but **not** in `FloatingNav`.
 
 ---
 
-## 8. Control Room insight system
+## 8. Control Room dashboard system
 
-The Control Room is a **configurable dashboard** built from a registry of "insight" widgets.
+The mounted Control Room is a fixed live-operations dashboard in `components/ControlRoom.tsx`. It replaces the older configurable `InsightDashboard` grid for the `dashboard` view, while still reusing the `InsightCtx` type from `lib/dashboardInsights.tsx`.
 
 ### 8.1 Architecture
 
 ```
-useDashboardLayout()          lib/dashboardInsights.tsx
-        │                              │
-        │ layout: { order,             │ INSIGHTS[] registry
-        │   pinned, hidden }           │ each: id, title, size, render(ctx)
-        ▼                              ▼
-InsightDashboard ──────────► InsightCard (drag/pin/hide chrome)
-                                      │
-                                      └── def.render(ctx) → charts/tables/KPIs
+app/page.tsx
+  ├─ scope/range controls
+  ├─ derives dashReports, dashCalls, dashIntents, dashCampaigns
+  ├─ polls liveStatus via /api/campaigns/{id}/status
+  └─ ControlRoom
+       ├─ Live Now campaign cards
+       ├─ grouped KPI cards with Sparkline
+       ├─ dialling funnel (3D cone or funnel-graph-js flow)
+       ├─ live outcome feed + donut
+       └─ campaign performance table + drill-down Dialog
 ```
 
-### 8.2 Layout persistence
+`ControlRoom` is display-only. Campaign lifecycle buttons live in the Campaigns list and action dialogs; campaign performance row clicks only open the drill-down modal.
 
-`lib/useDashboardLayout.ts`:
+### 8.2 Data inputs and derived metrics
 
-- **localStorage key**: `avm.dash.layout.v3`
-- **Default layout**: `DEFAULT_INSIGHTS` visible; all other registered insights hidden (available via "Add insight" dropdown)
-- **Operations**: pin (move to top), hide, drag-reorder, reset, save/apply templates
-- **Templates**: `GET/POST /api/dashboard-templates` (stored in Supabase for team sharing)
-
-### 8.3 Insight sizes (grid spans)
-
-| Size | MUI Grid span (xs / sm / md) |
-|------|------------------------------|
-| `sm` | 6 / 4 / 3 (quarter width on desktop) |
-| `md` | 12 / 12 / 6 (half width) |
-| `lg` | 12 / 12 / 12 (full width) |
-
-### 8.4 Insight registry (`INSIGHTS` in `lib/dashboardInsights.tsx`)
-
-**Default visible insights** (`DEFAULT_INSIGHTS`):
-
-- Tables: `campaigns-table`, `campaign-report`
-- KPI cards: `dialed`, `connected`, `qualified`, `avg-talk`, `hangup`, `callback`, `avg-cpl`, `total-spent`
-- Charts: `outcome-donut`, `campaign-compare`, `spend-cpl`, `funnel`
-
-**Add-on insights** (hidden by default, user can add):
-
-- KPIs: `transfer-rate`, `voicemail`, `no-answer`, `spend-efficiency`, `active-campaigns`
-- Charts: `company-compare`, `calls-trend`, `busiest-hours`, `talk-distribution`, `dropoff`, `status-breakdown`, `agent-split`
-- Tables: `recent-calls`, `leaderboard`, `call-quality`
-
-Each insight's `render(ctx)` receives `InsightCtx`:
+`ControlRoom` receives:
 
 ```typescript
 interface InsightCtx {
@@ -383,12 +362,34 @@ interface InsightCtx {
 }
 ```
 
+Important derived values:
+
+- **Live Now**: active calls and queue stats come from `liveStatus`, not from stored report rows.
+- **Funnel stages**: Dialed, Connected, Engaged (`connected - hangup`, floored by qualified), Qualified, Opt-in / Lead.
+- **Outcome feed**: latest 9 scoped calls sorted by `called_at`; phone numbers are masked with `maskPhone()`.
+- **Campaign drill-down**: uses the selected report plus matching campaign/live status; it does not fetch additional data.
+
+### 8.3 Funnel visualizations
+
+The "Dialling Funnel" panel has a local segmented toggle:
+
+| Mode | Implementation | Notes |
+|------|----------------|-------|
+| `3D Funnel` | Inline SVG `Funnel` in `ControlRoom.tsx` | Default; numbered cone/frustum stages with counts and conversion labels |
+| `Flow` | `components/FunnelGraphFlow.tsx` wrapping `funnel-graph-js` | Campaign split: top 3 campaigns by dialed volume plus `Other (n)` roll-up |
+
+`FunnelGraphFlow` is DOM-driven: it draws into a generated container id inside `useEffect`, clears/redraws on data or resize, and uses `.fg-ours` global CSS hooks for EVRA styling.
+
+### 8.4 Legacy insight dashboard
+
+The older `InsightDashboard`, `InsightCard`, `dashboardInsights.tsx` registry, and `useDashboardLayout()` hook remain in the repo but are not mounted by the current `dashboard` view. `useDashboardLayout()` is still instantiated in `app/page.tsx` for dormant template-save plumbing, and `/api/dashboard-templates` remains available for saved layout rows.
+
 ### 8.5 Chart components
 
 | Component file | Used for |
 |----------------|----------|
 | `components/Charts.tsx` | `OutcomeDonut`, `FunnelChart`, `CampaignBar`, `SpendChart` — styled Chart.js charts using `lib/chartTheme.ts` |
-| `components/InsightCharts.tsx` | `BarChart`, `LineChart`, `DonutChart`, `Sparkline`, `MiniBars` — lighter charts for KPI sparklines and add-on insights |
+| `components/InsightCharts.tsx` | `BarChart`, `LineChart`, `DonutChart`, `Sparkline`, `MiniBars` — lighter charts; `ControlRoom` uses `Sparkline` for KPI cards |
 
 `components/KpiStrip.tsx` exists as a standalone KPI row component but is **not currently mounted** in `app/page.tsx` (superseded by individual insight KPI cards).
 
@@ -400,7 +401,7 @@ interface InsightCtx {
 |-----------|---------|---------|
 | `CampaignModal` | "+ New Campaign" | 3-step wizard: Campaign → Schedule → Voice & Contacts |
 | `CampaignActionDialog` | Edit / Reuse on campaign | Edit MP4 URL or clone campaign with new CSV |
-| `SaveTemplateDialog` | "Save layout template" on dashboard | Names and saves current insight layout |
+| `SaveTemplateDialog` | Dormant legacy dashboard-template path | Names and saves the legacy insight layout if a trigger is reintroduced |
 | `TutorialOverlay` | First visit or "Replay tour" / `?` button | Spotlight guided tour (`TOUR_STEPS`) |
 | Chart expand `Dialog` | (legacy path in page.tsx) | Full-screen chart with campaign filter — `expandedChart` state exists but no current UI sets it |
 | New Company `Dialog` | "+ New Company" | Inline in `page.tsx` |
@@ -551,7 +552,7 @@ Server-only vars (not in browser, but affect API responses the UI consumes): `LI
          ▼                              ▼
 ┌─────────────────┐          ┌─────────────────────┐
 │  Route Handlers │          │  View components     │
-│  + Supabase DB  │          │  InsightDashboard    │
+│  + Supabase DB  │          │  ControlRoom         │
 │  + callops proxy│          │  CampaignModal       │
 └────────┬────────┘          │  CallQuality, etc.   │
          │                   └─────────────────────┘
@@ -581,10 +582,9 @@ page.tsx
 ├── Sidebar
 ├── TopBar
 ├── [view content]
-│   ├── InsightDashboard
-│   │   ├── InsightCard (×N)
-│   │   │   └── dashboardInsights render → Charts / InsightCharts / tables
-│   │   └── useDashboardLayout
+│   ├── ControlRoom
+│   │   ├── FunnelGraphFlow
+│   │   └── InsightCharts/Sparkline
 │   ├── CallQuality
 │   ├── SecurityView
 │   ├── SettingsView
@@ -616,6 +616,7 @@ page.tsx
 7. **KpiStrip** — component exists but unused in current page layout.
 8. **Chart expand dialog** — state and dialog JSX exist in `page.tsx` but no button currently sets `expandedChart`.
 9. **FloatingNav** — missing Telephony and Profile entries compared to Sidebar.
+10. **Legacy insight dashboard** — `InsightDashboard`, `InsightCard`, and template layout APIs remain in the repo but are not mounted by the current Control Room.
 
 ---
 

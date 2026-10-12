@@ -1,7 +1,7 @@
 # production-deployment Specification
 
 ## Purpose
-TBD - created by archiving change production-server-deployment. Update Purpose after archive.
+Define the production packaging and deployment contract for the Agent AVM Next.js web app on the shared Docker host.
 ## Requirements
 ### Requirement: Production Docker Compose uses shared network
 
@@ -49,23 +49,23 @@ The repository SHALL include `.env.example` listing all required production envi
 - **WHEN** `.env` is absent and `docker compose config` is run
 - **THEN** compose parsing succeeds without error
 
-### Requirement: GitHub Actions deploy workflow
+### Requirement: Manual Docker Compose deployment
 
-The repository SHALL include `.github/workflows/deploy-agent-avm.yml` that on push to `main` (and `workflow_dispatch`): checks out code, connects via SSH, verifies `shared` network exists, rsyncs the repo to `DEPLOY_PATH` excluding `.git/` and `.github/`, and runs `docker compose up -d --build` from the compose directory.
+The repository SHALL be deployable by updating source at `/opt/docker/production/evra_avm` and running `docker compose up -d --build` from the repo root on a host where the external `shared` Docker network already exists. Production secrets SHALL remain in the server-local `.env` file and MUST NOT be committed or overwritten by source syncs.
 
-#### Scenario: Shared network missing fails deploy
+#### Scenario: Shared network missing fails compose
 
-- **WHEN** the deploy workflow runs and `docker network inspect shared` fails on the server
-- **THEN** the workflow exits with error before rsync or compose
+- **WHEN** `docker compose up -d --build` runs on a server without the external `shared` network
+- **THEN** Compose fails before starting the web service
 
-#### Scenario: Concurrent deploys serialized
+#### Scenario: Source rollback
 
-- **WHEN** two deploy workflows are triggered for the same project
-- **THEN** only one runs at a time via concurrency group `agent-avm-deploy`
+- **WHEN** an operator checks out a known-good commit at `DEPLOY_PATH` and runs `docker compose up -d --build`
+- **THEN** the web service is rebuilt and restarted from that ref while preserving the server-local `.env`
 
 ### Requirement: Deploy runbook
 
-The repository SHALL include `infrastructure/deploy/runbook.md` documenting deploy path, service names, Cloudflare tunnel target, GitHub secrets, first-deploy bootstrap steps, and post-deploy validation commands.
+The repository SHALL include `infrastructure/deploy/runbook.md` documenting deploy path, service names, Cloudflare tunnel target, server-local environment handling, first-deploy bootstrap steps, routine deploy, rollback, and post-deploy validation commands.
 
 #### Scenario: Operator can validate deployment
 

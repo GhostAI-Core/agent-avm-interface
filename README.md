@@ -19,7 +19,7 @@ At a high level, Agent AVM connects four concerns:
 flowchart TB
   subgraph UI["Browser (app/page.tsx)"]
     Auth[AuthView]
-    Dash[InsightDashboard / Charts]
+    Dash[ControlRoom / Charts]
     Camp[Campaigns & Companies]
   end
 
@@ -79,7 +79,7 @@ The UI is a **client-rendered single page** (`app/page.tsx`) wrapped in MUI them
 
 | View ID | Component(s) | Purpose |
 |---------|--------------|---------|
-| `dashboard` | `InsightDashboard`, `KpiStrip`, `InsightCharts` | Control Room — configurable KPI cards, charts, filters by company/campaign/agent/date |
+| `dashboard` | `ControlRoom`, `FunnelGraphFlow`, `InsightCharts` | Control Room — fixed live-ops dashboard with Live Now cards, KPI groups, funnel/outcome panels, and company/campaign/date filters |
 | `sts` | `STSDashboard` | STS-specific metrics view |
 | `companies` | Inline in `page.tsx` | Company roster (card/table toggle) |
 | `campaigns` | `CampaignModal`, `CampaignActionDialog` | Campaign list, create/edit/reuse/archive, play/pause/stop |
@@ -102,9 +102,9 @@ After auth, the page polls backend APIs on an interval (`NEXT_PUBLIC_POLL_INTERV
 
 Starting, pausing, or stopping a campaign (`updateStatus`) triggers `POST /api/campaigns/:id/start|pause|stop`. When `CALLOPS_URL` or `CALLOPS_WEBHOOK_SECRET` is unset, those POSTs fall back to a local campaign status update only outside production; production returns 503 so callops remains the lifecycle owner. `GET /status` reports `{ mode: 'unconfigured' }` when callops env is missing.
 
-### Dashboard layout
+### Control Room dashboard
 
-`lib/useDashboardLayout.ts` and `SaveTemplateDialog` persist custom card order/pin/hide state. Layouts can be saved as `dashboard_templates` rows via `GET/POST /api/dashboard-templates`.
+The mounted dashboard is `components/ControlRoom.tsx`: a fixed live-ops layout with Live Now cards, KPI groups, a 3D/flow funnel toggle, outcome feed, and campaign drill-down dialog. The older `useDashboardLayout` / `SaveTemplateDialog` template path still exists in code for saved `dashboard_templates` rows, but it is not exposed by the current Control Room UI.
 
 ---
 
@@ -315,7 +315,7 @@ npm run start   # production server
 
 ### 6. Production deploy
 
-Docker Compose + GitHub Actions workflow (`.github/workflows/deploy-agent-avm.yml`). See [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) for server paths, Cloudflare tunnel, and secrets.
+Production deploy is manual Docker Compose on the shared server network; there is no checked-in GitHub Actions deploy workflow. See [infrastructure/deploy/runbook.md](./infrastructure/deploy/runbook.md) for server paths, Cloudflare tunnel setup, environment variables, validation, and rollback steps.
 
 ---
 
